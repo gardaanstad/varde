@@ -34,6 +34,34 @@ const shapeStyle = (line: boolean, selected: boolean) => ({
   fillOpacity: selected ? 0.34 : 0.2,
 });
 const dotRadius = (selected: boolean) => (selected ? 8 : 6);
+// Below this zoom areas collapse to dots and nearby projects group together.
+const clusterZoom = 12;
+// Screen distance within which projects join a group.
+const clusterRadius = 44;
+// Alignments only group once they're this short on screen.
+const clusterLineExtent = 64;
+
+function clusterIcon(members: Project[]) {
+  const counts = new Map<string, number>();
+  for (const project of members)
+    counts.set(project.status, (counts.get(project.status) ?? 0) + 1);
+  // The ring shows the group's mix of statuses, in the legend's order.
+  let angle = 0;
+  const ring = Object.entries(statuses)
+    .filter(([status]) => counts.has(status))
+    .map(([status, { color }]) => {
+      const start = angle;
+      angle += (counts.get(status)! / members.length) * 360;
+      return `${color} ${start}deg ${angle}deg`;
+    })
+    .join(", ");
+  const size = members.length < 10 ? 34 : members.length < 50 ? 40 : 46;
+  return L.divIcon({
+    className: "project-cluster",
+    iconSize: [size, size],
+    html: `<span style="background: conic-gradient(${ring})"><span>${members.length}</span></span>`,
+  });
+}
 // Sticky tooltips follow the pointer instead of pinning to the shape's centre.
 const tooltipOptions: L.TooltipOptions = {
   sticky: true,
@@ -155,6 +183,9 @@ export default function ProjectMap({
   const shapesRef = useRef(new Map<string, L.Polygon | L.Polyline>());
   const dotsRef = useRef(new Map<string, L.CircleMarker>());
   const casingsRef = useRef(new Map<string, L.Polyline>());
+  const hitsRef = useRef(new Map<string, L.Polyline>());
+  // Regroups projects, e.g. so the selected one leaves its group.
+  const clusterRef = useRef(() => {});
   const projectsRef = useRef(projects);
   // Editing an existing shape opens framed on it.
   const initialPoints = useRef(points);
@@ -327,7 +358,15 @@ export default function ProjectMap({
     const map = mapRef.current;
     if (!ready || !map) return;
     const group = L.layerGroup().addTo(map);
-    const dots = L.layerGroup();
+    const dots = L.layerGroup().addTo(map);
+    const clusters = L.layerGroup().addTo(map);
+    // Thin and dashed alignments get an invisible, wider band to hit.
+    const hitWeight = window.matchMedia("(pointer: coarse)").matches ? 28 : 18;
+    const select = (project: Project, shape: L.Path) => {
+      const element = shape.getElement();
+      if (element instanceof SVGElement) element.focus({ preventScroll: true });
+      handlers.current.onSelect(project.id);
+    };
     for (const project of projects) {
       const color = statuses[project.status].color;
       const selected = project.id === selectedRef.current;
@@ -362,13 +401,30 @@ export default function ProjectMap({
         : L.polygon(project.geometry, options);
       shape.addTo(group).on("click", (event) => {
         L.DomEvent.stopPropagation(event);
-        const element = shape.getElement();
-        if (element instanceof SVGElement)
-          element.focus({ preventScroll: true });
-        handlers.current.onSelect(project.id);
+        select(project, shape);
       });
       shapesRef.current.set(project.id, shape);
       const element = shape.getElement();
+      if (line && element instanceof SVGElement) {
+        // The band takes the pointer; the drawn line keeps focus and styling.
+        element.style.pointerEvents = "none";
+        const hit = L.polyline(project.geometry, {
+          opacity: 0,
+          weight: hitWeight,
+          lineCap: "round",
+          lineJoin: "round",
+          bubblingMouseEvents: false,
+        })
+          .addTo(group)
+          .on("click", (event) => {
+            L.DomEvent.stopPropagation(event);
+            select(project, shape);
+          })
+          .on("mouseover", () => element.classList.add("is-hovered"))
+          .on("mouseout", () => element.classList.remove("is-hovered"))
+          .bindTooltip(projectTooltip(project), tooltipOptions);
+        hitsRef.current.set(project.id, hit);
+      }
       if (element && !draw) {
         element.setAttribute("tabindex", "0");
         element.setAttribute("role", "button");
@@ -387,7 +443,7 @@ export default function ProjectMap({
           }
         });
       }
-      shape.bindTooltip(projectTooltip(project), tooltipOptions);
+      if (!line) shape.bindTooltip(projectTooltip(project), tooltipOptions);
       // Areas are only a few pixels wide at regional zoom; alignments stay visible.
       if (line) continue;
       const dot = L.circleMarker(project.center, {
@@ -398,7 +454,6 @@ export default function ProjectMap({
         fillOpacity: 1,
         bubblingMouseEvents: false,
       })
-        .addTo(dots)
         .on("click", (event) => {
           L.DomEvent.stopPropagation(event);
           handlers.current.onSelect(project.id);
@@ -406,25 +461,107 @@ export default function ProjectMap({
         .bindTooltip(projectTooltip(project), tooltipOptions);
       dotsRef.current.set(project.id, dot);
     }
-    const syncDots = () => {
-      if (map.getZoom() < 12) dots.addTo(map);
-      else dots.remove();
-    };
-    map.on("zoomend", syncDots);
-    syncDots();
     const shapes = shapesRef.current;
     const dotMarkers = dotsRef.current;
     const casings = casingsRef.current;
+    const hits = hitsRef.current;
+    const lineBounds = new Map(
+      projects
+        .filter((project) => project.geometryType === "line")
+        .map((project) => [project.id, L.latLngBounds(project.geometry)]),
+    );
+    // Greedy screen-space grouping, redone whenever the zoom changes.
+    const cluster = () => {
+      clusters.clearLayers();
+      const zoom = map.getZoom();
+      const grouped = new Set<string>();
+      if (zoom < clusterZoom) {
+        const candidates = projects.flatMap((project) => {
+          if (project.id === selectedRef.current) return [];
+          const bounds = lineBounds.get(project.id);
+          if (
+            bounds &&
+            map
+              .project(bounds.getNorthWest(), zoom)
+              .distanceTo(map.project(bounds.getSouthEast(), zoom)) >
+              clusterLineExtent
+          )
+            return [];
+          return [{ project, at: map.project(project.center, zoom) }];
+        });
+        for (const seed of candidates) {
+          if (grouped.has(seed.project.id)) continue;
+          const members = candidates.filter(
+            ({ project, at }) =>
+              !grouped.has(project.id) &&
+              at.distanceTo(seed.at) <= clusterRadius,
+          );
+          if (members.length < 2) continue;
+          for (const { project } of members) grouped.add(project.id);
+          const at = members
+            .reduce((sum, { at }) => sum.add(at), L.point(0, 0))
+            .divideBy(members.length);
+          const list = members.map(({ project }) => project);
+          const marker = L.marker(map.unproject(at, zoom), {
+            icon: clusterIcon(list),
+            keyboard: true,
+            bubblingMouseEvents: false,
+          })
+            .addTo(clusters)
+            .on("click", (event) => {
+              L.DomEvent.stopPropagation(event);
+              // Zoom in far enough to frame the group, at least one step.
+              const bounds = L.latLngBounds(
+                list.flatMap((project) => project.geometry),
+              );
+              const target = Math.min(
+                Math.max(
+                  map.getBoundsZoom(bounds, false, L.point(96, 96)),
+                  zoom + 1,
+                ),
+                map.getMaxZoom(),
+              );
+              map.setView(bounds.getCenter(), target);
+            });
+          marker
+            .getElement()
+            ?.setAttribute("aria-label", `${list.length} prosjekter`);
+        }
+      }
+      for (const project of projects) {
+        const shown = !grouped.has(project.id);
+        for (const layer of [
+          shapes.get(project.id),
+          casings.get(project.id),
+          hits.get(project.id),
+        ]) {
+          const element = layer?.getElement();
+          if (element instanceof SVGElement)
+            element.style.display = shown ? "" : "none";
+          if (!shown) layer?.closeTooltip();
+        }
+        const dot = dotMarkers.get(project.id);
+        if (dot && shown && zoom < clusterZoom) dots.addLayer(dot);
+        else if (dot) dots.removeLayer(dot);
+      }
+    };
+    clusterRef.current = cluster;
+    map.on("zoomend", cluster);
+    cluster();
     return () => {
-      map.off("zoomend", syncDots);
+      map.off("zoomend", cluster);
+      clusterRef.current = () => {};
       group.remove();
       dots.remove();
+      clusters.remove();
       shapes.clear();
       dotMarkers.clear();
       casings.clear();
+      hits.clear();
     };
   }, [projects, ready, draw]);
   useEffect(() => {
+    clusterRef.current();
     for (const project of projects) {
       const selected = project.id === selectedId;
       const shape = shapesRef.current.get(project.id);
@@ -438,6 +575,7 @@ export default function ProjectMap({
         const wasFocused = element === document.activeElement;
         casingsRef.current.get(project.id)?.bringToFront();
         shape?.bringToFront();
+        hitsRef.current.get(project.id)?.bringToFront();
         if (wasFocused && element instanceof SVGElement)
           element.focus({ preventScroll: true });
         shape?.closeTooltip();
@@ -472,6 +610,13 @@ export default function ProjectMap({
     }).addTo(group);
     const midpoints = L.layerGroup().addTo(group);
     const hover = window.matchMedia("(hover: hover)").matches;
+    // Set while a handle is dragged, so the preview stays out of the way.
+    let editing = false;
+    const startEditing = () => {
+      editing = true;
+      preview.setLatLngs([]);
+      midpoints.remove();
+    };
     points.forEach((point, index) => {
       const vertex = L.marker(point, {
         icon: vertexIcon,
@@ -492,57 +637,127 @@ export default function ProjectMap({
         return next;
       };
       vertex
-        .on("mouseover", () => preview.setLatLngs([]))
         .on("dragstart", () => {
-          midpoints.remove();
+          startEditing();
+          ghost.remove();
           vertex.closeTooltip();
         })
         .on("drag", () => reshape(moved()))
         .on("dragend", () => commit(moved()))
         .on("click", () => commit(points.filter((_, i) => i !== index)));
     });
-    // A handle on each side: click to add a point there, or drag it into place.
     const sides =
       points.length > 1
         ? area && points.length > 2
           ? points.length
           : points.length - 1
         : 0;
-    for (let index = 0; index < sides; index++) {
-      const a = points[index];
-      const b = points[(index + 1) % points.length];
-      const handle = L.marker([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], {
-        icon: midpointIcon,
-        draggable: true,
-        autoPan: true,
-        keyboard: false,
-      }).addTo(midpoints);
-      const inserted = () => [
-        ...points.slice(0, index + 1),
-        toPoint(handle.getLatLng()),
-        ...points.slice(index + 1),
-      ];
-      handle
-        .on("mouseover", () => preview.setLatLngs([]))
-        .on("drag", () => reshape(inserted()))
-        .on("dragend", () => commit(inserted()))
-        .on("click", () => commit(inserted()));
-    }
-    const add = (event: L.LeafletMouseEvent) =>
-      commit([...points, toPoint(event.latlng)]);
-    const follow = (event: L.LeafletMouseEvent) => {
-      const last = points.at(-1);
-      if (!last) return;
-      preview.setLatLngs(
-        area && points.length > 1
-          ? [last, event.latlng, points[0]]
-          : [last, event.latlng],
+    const inserted = (side: number, point: Point) => [
+      ...points.slice(0, side + 1),
+      point,
+      ...points.slice(side + 1),
+    ];
+    // The closest spot on a side within reach of the pointer, away from corners.
+    const reach = hover ? 10 : 18;
+    const near = (cursor: L.Point) => {
+      let best: { side: number; spot: L.Point; distance: number } | null = null;
+      for (let side = 0; side < sides; side++) {
+        const a = map.latLngToContainerPoint(points[side]);
+        const b = map.latLngToContainerPoint(
+          points[(side + 1) % points.length],
+        );
+        const spot = L.LineUtil.closestPointOnSegment(cursor, a, b);
+        const distance = cursor.distanceTo(spot);
+        if (
+          distance <= reach &&
+          spot.distanceTo(a) > 12 &&
+          spot.distanceTo(b) > 12 &&
+          (!best || distance < best.distance)
+        )
+          best = { side, spot, distance };
+      }
+      return (
+        best && {
+          side: best.side,
+          latlng: map.containerPointToLatLng(best.spot),
+        }
       );
     };
-    const clear = () => preview.setLatLngs([]);
-    map.on("click", add).on("mousemove", follow).on("mouseout", clear);
+    // Fine pointers get a handle that slides along the outline under the
+    // cursor: click to add a point there, or drag it into place.
+    let ghostSide = 0;
+    const ghost = L.marker([0, 0], {
+      icon: midpointIcon,
+      draggable: true,
+      autoPan: true,
+      keyboard: false,
+    });
+    const ghostInserted = () => inserted(ghostSide, toPoint(ghost.getLatLng()));
+    ghost
+      .on("dragstart", startEditing)
+      .on("drag", () => reshape(ghostInserted()))
+      .on("dragend", () => commit(ghostInserted()))
+      .on("click", () => commit(ghostInserted()));
+    // Touch has no hover, so each side gets a fixed handle at its middle.
+    if (!hover)
+      for (let side = 0; side < sides; side++) {
+        const a = points[side];
+        const b = points[(side + 1) % points.length];
+        const handle = L.marker([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], {
+          icon: midpointIcon,
+          draggable: true,
+          autoPan: true,
+          keyboard: false,
+        }).addTo(midpoints);
+        const placed = () => inserted(side, toPoint(handle.getLatLng()));
+        handle
+          .on("dragstart", startEditing)
+          .on("drag", () => reshape(placed()))
+          .on("dragend", () => commit(placed()))
+          .on("click", () => commit(placed()));
+      }
+    // A tap on a side adds a point there; anywhere else extends the outline.
+    const add = (event: L.LeafletMouseEvent) => {
+      const spot = near(event.containerPoint);
+      commit(
+        spot
+          ? inserted(spot.side, toPoint(spot.latlng))
+          : [...points, toPoint(event.latlng)],
+      );
+    };
+    const element = map.getContainer();
+    const track = (event: MouseEvent) => {
+      if (editing) return;
+      const cursor = map.mouseEventToContainerPoint(event);
+      const onVertex =
+        event.target instanceof Element && event.target.closest(".draw-vertex");
+      const spot = hover && !onVertex ? near(cursor) : null;
+      if (spot) {
+        ghostSide = spot.side;
+        ghost.setLatLng(spot.latlng).addTo(group);
+      } else ghost.remove();
+      const last = points.at(-1);
+      const latlng = map.containerPointToLatLng(cursor);
+      preview.setLatLngs(
+        onVertex || spot || !last
+          ? []
+          : area && points.length > 1
+            ? [last, latlng, points[0]]
+            : [last, latlng],
+      );
+    };
+    const leave = () => {
+      if (editing) return;
+      preview.setLatLngs([]);
+      ghost.remove();
+    };
+    map.on("click", add);
+    element.addEventListener("mousemove", track);
+    element.addEventListener("mouseleave", leave);
     return () => {
-      map.off("click", add).off("mousemove", follow).off("mouseout", clear);
+      map.off("click", add);
+      element.removeEventListener("mousemove", track);
+      element.removeEventListener("mouseleave", leave);
       group.remove();
     };
   }, [points, ready, draw, geometryType]);
