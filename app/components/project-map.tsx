@@ -41,25 +41,12 @@ const clusterRadius = 44;
 // Alignments only group once they're this short on screen.
 const clusterLineExtent = 64;
 
-function clusterIcon(members: Project[]) {
-  const counts = new Map<string, number>();
-  for (const project of members)
-    counts.set(project.status, (counts.get(project.status) ?? 0) + 1);
-  // The ring shows the group's mix of statuses, in the legend's order.
-  let angle = 0;
-  const ring = Object.entries(statuses)
-    .filter(([status]) => counts.has(status))
-    .map(([status, { color }]) => {
-      const start = angle;
-      angle += (counts.get(status)! / members.length) * 360;
-      return `${color} ${start}deg ${angle}deg`;
-    })
-    .join(", ");
-  const size = members.length < 10 ? 34 : members.length < 50 ? 40 : 46;
+function clusterIcon(count: number) {
+  const size = count < 10 ? 32 : count < 50 ? 38 : 44;
   return L.divIcon({
     className: "project-cluster",
     iconSize: [size, size],
-    html: `<span style="background: conic-gradient(${ring})"><span>${members.length}</span></span>`,
+    html: `<span>${count}</span>`,
   });
 }
 // Sticky tooltips follow the pointer instead of pinning to the shape's centre.
@@ -409,6 +396,7 @@ export default function ProjectMap({
         // The band takes the pointer; the drawn line keeps focus and styling.
         element.style.pointerEvents = "none";
         const hit = L.polyline(project.geometry, {
+          className: "project-hit",
           opacity: 0,
           weight: hitWeight,
           lineCap: "round",
@@ -503,7 +491,7 @@ export default function ProjectMap({
             .divideBy(members.length);
           const list = members.map(({ project }) => project);
           const marker = L.marker(map.unproject(at, zoom), {
-            icon: clusterIcon(list),
+            icon: clusterIcon(list.length),
             keyboard: true,
             bubblingMouseEvents: false,
           })
