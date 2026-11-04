@@ -45,27 +45,31 @@ bun run setup
 bun dev
 ```
 
-`setup` creates `.env.local` with a cryptographically random session secret if the file does not already exist. It also runs migrations and inserts the illustrative project/comment seed data without overwriting existing records. The local database is `local.db`, which is gitignored. Restart the development server after changing environment variables.
+`setup` creates `.env.local` with a cryptographically random session secret if the file does not already exist. It also runs migrations and inserts the illustrative project/comment seed data without overwriting existing records. The seed only runs against local SQLite files. The local database is `local.db`, which is gitignored. Restart the development server after changing environment variables.
 
 The UI remains browsable without Google credentials and explains that sign-in is unavailable. The secret and database still need to be initialized with `setup`.
 
-## Production with Turso
+## Deploy to Vercel
 
-Create a hosted Turso database and a database access token. Set these on your Node.js hosting service:
+1. Import the GitHub repository in Vercel. It detects Next.js and Bun; `vercel.json` sets the build command and the Stockholm (`arn1`) region.
+2. Add a Turso database from the Vercel Marketplace (Storage → Turso), in an EU region near Stockholm. It provides `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`, which the app reads directly. `DATABASE_URL` and `DATABASE_AUTH_TOKEN` also work and take precedence.
+3. Add these environment variables for Production and Preview:
 
 ```dotenv
-BETTER_AUTH_URL=https://YOUR-DOMAIN
 BETTER_AUTH_SECRET=a-separate-random-production-secret-at-least-32-characters
-DATABASE_URL=libsql://YOUR-DATABASE.turso.io
-DATABASE_AUTH_TOKEN=your-database-token
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
 MODERATOR_EMAILS=your-verified-google-email@example.com
 ```
 
-Generate the production secret with `openssl rand -base64 32`. Keep it stable across deployments and shared across instances. Rotating it invalidates session signatures and affects encrypted OAuth tokens.
+4. Add `https://YOUR-DOMAIN/api/auth/callback/google` to the Google OAuth client and publish the OAuth app.
+5. Deploy.
 
-Run `bun run db:migrate` once against the production database as a release step, then build and start the app with `bun run build` and `bun start`. The migration command reads environment variables and `.env.local`; confirm you are targeting the intended database. Production requires an explicit `DATABASE_URL` and `BETTER_AUTH_URL`. Local SQLite is also supported on a single Node server with persistent disk, but is unsuitable for ephemeral serverless storage.
+Generate the secret with `openssl rand -base64 32`. Keep it stable across deployments; rotating it signs everyone out and invalidates encrypted OAuth tokens.
+
+Production builds apply pending migrations before `next build`. Production starts without content; the illustrative seed is development-only. The site origin defaults to Vercel's production domain (your custom domain once added), so `BETTER_AUTH_URL` is only needed to override it. Preview deployments use that same origin for sign-in and so are browse-only: sign-in and saving work only on the production domain. Previews read whichever database their environment variables point to, and never run migrations.
+
+Outside Vercel, set `BETTER_AUTH_URL` and `DATABASE_URL` explicitly, run `bun run db:migrate` as a release step, then `bun run build` and `bun start`. A local SQLite file is only suitable on a single server with persistent disk.
 
 `MODERATOR_EMAILS` is an optional comma-separated list of verified Google email addresses. Only those accounts can create or update projects. User input cannot grant moderator access. Leave it empty to keep all accounts as regular members.
 

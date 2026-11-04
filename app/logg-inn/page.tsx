@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getPageSession } from "../lib/auth";
 import {
@@ -43,7 +44,10 @@ export default async function LoginPage({
       <GoogleSignIn next={next} reauthenticate={!!params.reauth} />
       <p className="mt-5 text-center text-xs leading-5 text-muted">
         Nye brukere velger et offentlig brukernavn. Navn og e-post fra Google
-        vises ikke.
+        vises ikke.{" "}
+        <Link href="/personvern" className="underline hover:text-ink">
+          Personvern
+        </Link>
       </p>
     </AuthShell>
   );

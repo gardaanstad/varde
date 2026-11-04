@@ -11,10 +11,15 @@ export function googleConfigured() {
     process.env.BETTER_AUTH_SECRET,
   );
 }
-/** The public site origin; development falls back to localhost. */
+/**
+ * The public site origin. On Vercel it defaults to the production domain,
+ * so preview deployments are browse-only; development falls back to localhost.
+ */
 export function siteURL() {
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL;
   const url =
     process.env.BETTER_AUTH_URL ||
+    (vercel ? `https://${vercel}` : "") ||
     (process.env.NODE_ENV !== "production" ? "http://localhost:3000" : "");
   if (!url) throw new Error("Set BETTER_AUTH_URL to the public site origin.");
   return url;

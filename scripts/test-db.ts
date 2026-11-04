@@ -5,3 +5,4 @@ for (const suffix of ["", "-shm", "-wal"])
 process.env.DATABASE_URL = "file:./test-auth.db";
 process.env.DATABASE_AUTH_TOKEN = "";
 await import("./migrate");
+await import("./seed");

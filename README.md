@@ -13,7 +13,7 @@ bun dev
 
 Open http://localhost:3000. See [Google OAuth and production setup](docs/google-auth.md) for the Client ID, Client Secret, callback URLs, and Turso configuration.
 
-Production commands: `bun run build` and `bun start`. Validation: `bun run lint`, `bun run typecheck`, and `bun run test` (Playwright/Chromium).
+Deployment: see [Deploy to Vercel](docs/google-auth.md#deploy-to-vercel). Validation: `bun run lint`, `bun run typecheck`, and `bun run test` (Playwright/Chromium).
 
 ## Included
 
@@ -27,6 +27,7 @@ Production commands: `bun run build` and `bun start`. Validation: `bun run lint`
 - Existing comments, votes, and replies are preserved; previous update associations become optional references. Historical “Om prosjektet” entries are read as project context.
 - HTTPS source links for project pages and updates; moderators can edit the reference description without publishing a timeline entry. Visible pages refresh every minute and when returning to the tab.
 - Saved projects with a dedicated collection view.
+- A privacy page at `/personvern`, linked from login.
 - Moderator tools: add project details, draw an area or alignment, undo points, enter coordinates, and publish project updates or status changes.
 - Responsive layouts, native modal focus management, keyboard dismissal, a search shortcut, and reduced-motion styling.
 
@@ -39,9 +40,9 @@ Production commands: `bun run build` and `bun start`. Validation: `bun run lint`
 - Moderator access is configured with verified emails in `MODERATOR_EMAILS` and enforced on the server.
 - Local SQLite for development, with hosted Turso support using `DATABASE_URL` and `DATABASE_AUTH_TOKEN`.
 
-`bun run setup` generates a local session secret and applies the committed Drizzle migrations. `bun run db:migrate` applies migrations and seeds illustrative projects/comments idempotently. Use `bun run db:generate` after schema changes. Do not use a local database file on ephemeral production hosting.
+`bun run setup` generates a local session secret, applies the committed Drizzle migrations, and seeds illustrative projects/comments. `bun run db:migrate` only applies migrations; `bun run db:seed` adds the illustrative content idempotently and refuses to run against a hosted database, so production starts empty. Use `bun run db:generate` after schema changes.
 
-The seeded projects still use illustrative statuses, dates, descriptions, and approximate geometries. They are not an authoritative live development register. Seed profiles are explicitly marked as examples and their usernames cannot be claimed. Old localStorage demo activity remains in the browser and is not imported into real accounts.
+The seeded development projects use illustrative statuses, dates, descriptions, and approximate geometries. They are not an authoritative live development register. Seed profiles are explicitly marked as examples and their usernames cannot be claimed. Old localStorage demo activity remains in the browser and is not imported into real accounts.
 
 Map tiles load from Esri's Light Gray Canvas service, with an OpenStreetMap street layer for detailed inspection and drawing. The services are credited on the map. Tile errors leave the project list usable. Google Geist fonts are loaded through `next/font`.
 
@@ -72,4 +73,4 @@ Map tiles load from Esri's Light Gray Canvas service, with an OpenStreetMap stre
 
 All comments belong to `projectId`. `updateId` is optional in the API and is only a reference, never a separate discussion boundary. An empty string in the existing database column represents no reference; reads normalize old overview references and missing update references to an omitted `updateId`. This preserves existing rows and votes without rebuilding tables. Replies must stay within the same project but can cite a different update.
 
-Run `bun run db:migrate` for existing installations. Migration `0002_infrastructure_categories` moves the government quarter to Offentlige bygg, and the seed adds national infrastructure examples (Follobanen, Fornebubanen, E39 Rogfast, Sotrasambandet, Hålogalandsbrua, Ny vannforsyning Oslo, Nye Aker sykehus, Northern Lights). Migration `0001_project_sources` adds verified project links and sample-data labels to the seeded projects without replacing their content or existing links. The links lead to project owners, municipalities, or project designers; the illustrative statuses and updates are still not a live register.
+Run `bun run db:migrate` for existing installations. Migration `0002_infrastructure_categories` moves the government quarter to Offentlige bygg, and the development seed adds national infrastructure examples (Follobanen, Fornebubanen, E39 Rogfast, Sotrasambandet, Hålogalandsbrua, Ny vannforsyning Oslo, Nye Aker sykehus, Northern Lights). Migration `0001_project_sources` adds verified project links and sample-data labels to the seeded projects without replacing their content or existing links. The links lead to project owners, municipalities, or project designers; the illustrative statuses and updates are still not a live register.

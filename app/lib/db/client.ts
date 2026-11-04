@@ -1,17 +1,15 @@
 import "server-only";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
+import { databaseConfig } from "./config";
 import * as schema from "./schema";
 
 function connect() {
-  const url =
-    process.env.DATABASE_URL ||
-    (process.env.NODE_ENV !== "production" ? "file:./local.db" : "");
-  if (!url) throw new Error("DATABASE_URL must be configured in production.");
+  const { url, authToken } = databaseConfig();
   return drizzle(
     createClient({
       url,
-      authToken: process.env.DATABASE_AUTH_TOKEN,
+      authToken,
       timeout: 5000,
       concurrency: url.startsWith("file:") ? 1 : 20,
     }),
