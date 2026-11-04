@@ -6,10 +6,14 @@ import { member, mutation, signIn } from "./support";
 const project = seedProjects[0];
 const projectPath = `/prosjekt/${project.id}`;
 
-async function expectDrawerHeight(page: Page, fraction: number) {
+async function expectDrawerHeight(
+  page: Page,
+  fraction: number,
+  drawer: "explorer" | "project" = "explorer",
+) {
   await expect
     .poll(() =>
-      page.locator('[data-slot="drawer-popup"]').evaluate((element) => {
+      page.locator(`[data-${drawer}-drawer]`).evaluate((element) => {
         return (
           (window.innerHeight - element.getBoundingClientRect().top) /
           window.innerHeight
@@ -100,10 +104,10 @@ for (const viewport of [
   test.describe(`mobile explorer at ${viewport.width}px`, () => {
     test.use({ viewport, isMobile: true, hasTouch: true });
 
-    test("project browsing opens full height and preserves map, history, and reading space", async ({
+    test("projects open in their own full-height drawer and preserve map, history, and reading space", async ({
       page,
     }) => {
-      // The list opens at the middle height; projects open full height.
+      // The list opens at the middle height; projects open above it at full height.
       await page.goto("/");
       await expectDrawerHeight(page, 0.58);
       await expect(
@@ -113,29 +117,39 @@ for (const viewport of [
         .getByRole("region", { name: "Prosjektliste", exact: true })
         .getByRole("button", { name: new RegExp(project.title) })
         .first();
+      const projectDrawer = page.locator("[data-project-drawer]");
       await result.click();
       await expect(page).toHaveURL(projectPath);
-      await expectDrawerHeight(page, 1);
-      await expect(page.locator("[data-project-post]")).toBeVisible();
+      await expectDrawerHeight(page, 1, "project");
+      await expect(projectDrawer.locator("[data-project-post]")).toBeVisible();
       await page
         .getByRole("button", { name: "Lukk prosjekt", exact: true })
         .click();
       await expect(page).toHaveURL("/");
+      await expect(projectDrawer).toBeHidden();
       await expectDrawerHeight(page, 0.58);
+      await expect(result).toBeFocused();
       await result.click();
       await page.goBack();
+      await expect(projectDrawer).toBeHidden();
       await expectDrawerHeight(page, 0.58);
       await page.goForward();
-      await expectDrawerHeight(page, 1);
+      await expectDrawerHeight(page, 1, "project");
       await page.reload();
-      await expectDrawerHeight(page, 1);
+      await expectDrawerHeight(page, 1, "project");
       await page
         .getByRole("button", { name: "Vis i kartet", exact: true })
         .click();
+      await expect(projectDrawer).toBeHidden();
       await expectDrawerHeight(page, 136 / viewport.height);
       await page.locator(`[data-project-id="${project.id}"]`).press("Enter");
       await expect(page).toHaveURL(projectPath);
-      await expectDrawerHeight(page, 1);
+      await expectDrawerHeight(page, 1, "project");
+      // Swiping the project away returns to the map just as it was left.
+      await swipeDown(page, projectDrawer.locator("[aria-hidden]").first());
+      await expect(page).toHaveURL("/");
+      await expect(projectDrawer).toBeHidden();
+      await expectDrawerHeight(page, 136 / viewport.height);
       await expect
         .poll(() =>
           page.evaluate(
@@ -145,33 +159,36 @@ for (const viewport of [
         .toBe(true);
     });
 
-    test("wheel and touch expand the map drawer before scrolling project and account content", async ({
+    test("wheel and touch expand the map drawer before scrolling list, project, and account content", async ({
       page,
     }) => {
       await page.goto(projectPath);
-      await expectDrawerHeight(page, 1);
-      await page
-        .getByRole("button", { name: "Vis mer av kartet", exact: true })
-        .click();
-      await expectDrawerHeight(page, 0.58);
+      await expectDrawerHeight(page, 1, "project");
+      // The project drawer has no lower heights; it scrolls right away.
       const content = page.locator("[data-project-scroll]");
-      await content.hover();
-      await page.mouse.wheel(0, 200);
-      await expectDrawerHeight(page, 1);
       await content.hover();
       await page.mouse.wheel(0, 300);
       await expect
         .poll(() => content.evaluate((element) => element.scrollTop))
         .toBeGreaterThan(0);
+      await expectDrawerHeight(page, 1, "project");
+      await page
+        .getByRole("button", { name: "Lukk prosjekt", exact: true })
+        .click();
+      await expectDrawerHeight(page, 0.58);
+      const list = page.getByRole("region", {
+        name: "Prosjektliste",
+        exact: true,
+      });
+      await list.hover();
+      await page.mouse.wheel(0, 200);
+      await expectDrawerHeight(page, 1);
       await page
         .getByRole("button", { name: "Vis mer av kartet", exact: true })
         .click();
       await expectDrawerHeight(page, 0.58);
-      await swipeUp(page, content);
+      await swipeUp(page, list);
       await expectDrawerHeight(page, 1);
-      await page
-        .getByRole("button", { name: "Lukk prosjekt", exact: true })
-        .click();
       await page.getByRole("button", { name: "Logg inn", exact: true }).click();
       await expectDrawerHeight(page, 1);
       await page
@@ -254,7 +271,7 @@ for (const viewport of [
       await search.fill(project.title);
       await search.press("Enter");
       await expect(page).toHaveURL(projectPath);
-      await expectDrawerHeight(page, 1);
+      await expectDrawerHeight(page, 1, "project");
       await page
         .getByRole("button", { name: "Lukk prosjekt", exact: true })
         .click();
@@ -351,7 +368,7 @@ test("saved projects keep their collection and full reading height", async ({
     .getByRole("button", { name: new RegExp(project.title) })
     .first()
     .click();
-  await expectDrawerHeight(page, 1);
+  await expectDrawerHeight(page, 1, "project");
   await page
     .getByRole("button", { name: "Lukk prosjekt", exact: true })
     .click();

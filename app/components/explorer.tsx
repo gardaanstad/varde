@@ -4,7 +4,6 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -173,10 +172,24 @@ const sortChoiceClasses = [
 
 const mobileDrawerClasses = [
   "z-[800] rounded-t-[22px] border border-b-0 border-border bg-surface text-ink shadow-[0_-4px_12px_rgb(20_28_24/0.04),0_-16px_50px_rgb(20_28_24/0.08)]",
-  "[--explorer-snap-offset:max(0px,calc(var(--drawer-snap-point-offset,0px)+var(--drawer-swipe-movement-y,0px)))]",
-  "[--drawer-content-height:100dvh] [--drawer-content-max-height:calc(100dvh_-_12px_-_env(safe-area-inset-top))]! [--drawer-bleed-background:var(--color-surface)]",
+  "[--drawer-content-height:100dvh] [--drawer-bleed-background:var(--color-surface)]",
   "motion-reduce:transition-none motion-reduce:[&_*]:transition-none motion-reduce:[&_*]:animate-none",
 ].join(" ");
+const explorerDrawerClasses = cn(
+  mobileDrawerClasses,
+  "[--explorer-snap-offset:max(0px,calc(var(--drawer-snap-point-offset,0px)+var(--drawer-swipe-movement-y,0px)))]",
+  "[--drawer-content-max-height:calc(100dvh_-_12px_-_env(safe-area-inset-top))]!",
+  // Under a project at full height, the explorer peeks out just above it.
+  // Until the project measures, it keeps its own height rather than none.
+  "[--peek:10px] [--stack-height:var(--drawer-frontmost-height,100dvh)]",
+);
+// Projects sit a little lower, so the explorer shows behind them.
+const projectDrawerClasses = cn(
+  mobileDrawerClasses,
+  "[--drawer-content-max-height:calc(100dvh_-_22px_-_env(safe-area-inset-top))]!",
+);
+const projectDrawerInnerClasses =
+  "flex min-h-0 flex-1 flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]";
 
 const mobileDrawerInnerClasses = [
   "min-h-0 flex-none overflow-hidden",
@@ -213,16 +226,18 @@ export default function Explorer({
   // does, a static copy in the same place shows its contents, then both swap
   // in one render so nothing shifts or flashes.
   const [drawerReady, setDrawerReady] = useState(false);
-  // The list opens at the middle height so the map shows; links open full.
+  // Likewise for a project or profile the page was opened on.
+  const [projectDrawerReady, setProjectDrawerReady] = useState(
+    !initialProjectId && !initialProfile,
+  );
+  // The list opens at the middle height so the map shows. Projects open in
+  // their own drawer above it, so it stays where it was left.
   const [snapPoint, setSnapPoint] = useState<DrawerSnapPoint | null>(
-    initialProjectId || initialProfile ? 1 : middleSnapPoint,
+    middleSnapPoint,
   );
   const drawerContentRef = useRef<HTMLDivElement>(null);
   const drawerHandleRef = useRef<HTMLButtonElement>(null);
-  const projectResultsRef = useRef<HTMLElement>(null);
   const projectTriggerRef = useRef<HTMLElement | SVGElement | null>(null);
-  const projectReturnSnapPoint = useRef<DrawerSnapPoint>(middleSnapPoint);
-  const listScrollRef = useRef(0);
   const { user, pending: authPending, canModerate, requireAccount } = useAuth();
   const { projects, saved, comments, mutate } = useCommunity();
   const pendingBookmarks = useRef(new Set<string>());
@@ -242,20 +257,27 @@ export default function Explorer({
   );
   const [modal, setModal] = useState<"profile" | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
-  const viewBeforePost = useRef<"map" | "list" | "saved">("list");
+  // Mobile: the project drawer keeps its contents while it slides away.
+  const projectDrawerOpen = Boolean(postId || profileName);
+  const [shown, setShown] = useState({ postId, profileName });
+  if (
+    projectDrawerOpen &&
+    (shown.postId !== postId || shown.profileName !== profileName)
+  )
+    setShown({ postId, profileName });
   const previousExplorerView = useRef<"map" | "list">("list");
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const notify = (message: string) => setToast({ message });
   const searchRef = useRef<HTMLInputElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const openSearch = useCallback(() => {
-    if (postId || modal || view === "saved") return;
+    if (postId || profileName || modal || view === "saved") return;
     // Focus during the tap so mobile browsers also open the keyboard.
     if (isMobile) flushSync(() => setMobileSearchOpen(true));
     // Search lives above the list, so leave the map for it.
     else if (view === "map") flushSync(() => setView("list"));
     searchRef.current?.focus({ preventScroll: true });
-  }, [isMobile, modal, postId, view, setView]);
+  }, [isMobile, modal, postId, profileName, view, setView]);
 
   function closeMobileSearch() {
     flushSync(() => {
@@ -265,11 +287,6 @@ export default function Explorer({
     searchTriggerRef.current?.focus({ preventScroll: true });
   }
 
-  useLayoutEffect(() => {
-    if (postId || !isMobile) return;
-    if (projectResultsRef.current)
-      projectResultsRef.current.scrollTop = listScrollRef.current;
-  }, [postId, isMobile]);
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {
       if (
@@ -289,27 +306,10 @@ export default function Explorer({
         // Moving forward into a profile keeps whatever it was opened over.
         setProfileName(profile);
         setPostId(window.history.state?.profileOver ?? null);
-        setSnapPoint(1);
         return;
       }
       setProfileName(null);
-      const project = routeParam(path, "/prosjekt/");
-      if (project) {
-        projectReturnSnapPoint.current =
-          window.history.state?.drawerReturnSnapPoint ??
-          projectReturnSnapPoint.current;
-        setSnapPoint(1);
-      } else if (window.matchMedia(mobileQuery).matches) {
-        setSnapPoint(projectReturnSnapPoint.current);
-        setView(
-          projectReturnSnapPoint.current === 1
-            ? viewBeforePost.current === "saved"
-              ? "saved"
-              : "list"
-            : "map",
-        );
-      }
-      setPostId(project ?? null);
+      setPostId(routeParam(path, "/prosjekt/") ?? null);
     };
 
     window.addEventListener("keydown", keys);
@@ -400,7 +400,10 @@ export default function Explorer({
   const savedOnly = view === "saved";
   const listedProjects = savedOnly ? savedProjects : searched;
 
-  const post = projects.find((project) => project.id === postId);
+  // Mobile shows the project its drawer holds, also while that drawer closes.
+  const post = projects.find(
+    (project) => project.id === (isMobile ? shown.postId : postId),
+  );
   const cityOptions = useMemo(() => {
     const counts = new Map<string, number>();
     for (const place of Object.keys(cities)) counts.set(place, 0);
@@ -423,7 +426,6 @@ export default function Explorer({
       profileHref(username),
     );
     setModal(null);
-    setSnapPoint(1);
     setProfileName(username);
   }
   const onOpenProfile = useEffectEvent((event: Event) =>
@@ -448,15 +450,11 @@ export default function Explorer({
     setProfileName(null);
     if (id === postId && overlay) return window.history.back();
     window.history.replaceState(
-      {
-        projectOverlay: overlay,
-        drawerReturnSnapPoint: projectReturnSnapPoint.current,
-      },
+      { projectOverlay: overlay },
       "",
       projectHref(id),
     );
     setPostUpdateId(undefined);
-    setSnapPoint(1);
     setPostId(id);
     setSelectedId(id);
   }
@@ -503,147 +501,28 @@ export default function Explorer({
     };
   }, [isMobile]);
 
-  // Mobile: with the drawer at full height, projects rise in over the still
-  // list and sink back down over it on the way out.
-  const shownPostId = useRef(postId);
-  const leavingPost = useRef<{
-    node: HTMLElement;
-    rect: DOMRect;
-    scrollTop: number;
-  } | null>(null);
-  const sinkingPost = useRef<HTMLElement | null>(null);
-  // React removes the project with its wrapper, so keep the outgoing page
-  // while it is still on screen and animate that.
-  const keepLeavingPost = useCallback((wrapper: HTMLDivElement | null) => {
-    if (!wrapper) return;
-    return () => {
-      const node = wrapper.querySelector<HTMLElement>(
-        "article[data-project-post]",
-      );
-      const rect = node?.getBoundingClientRect();
-      leavingPost.current =
-        node && rect?.height
-          ? {
-              node,
-              rect,
-              scrollTop:
-                node.querySelector("[data-project-scroll]")?.scrollTop ?? 0,
-            }
-          : null;
-    };
-  }, []);
-  useLayoutEffect(() => {
-    const previous = shownPostId.current;
-    shownPostId.current = postId;
-    const leaving = leavingPost.current;
-    leavingPost.current = null;
-    if (!isMobile || previous === postId) return;
-    if (postId) {
-      sinkingPost.current?.remove();
-      sinkingPost.current = null;
-    }
-    // From or back to a lower drawer, the drawer's own slide is the motion.
-    if (projectReturnSnapPoint.current !== 1) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const easing = "cubic-bezier(0.22, 1, 0.36, 1)";
-    if (postId) {
-      drawerContentRef.current
-        ?.querySelector("article[data-project-post]")
-        ?.animate(
-          [
-            { opacity: 0, transform: "translateY(32px)" },
-            { opacity: 1, transform: "none" },
-          ],
-          { duration: 320, easing },
-        );
-      return;
-    }
-    const host = drawerContentRef.current?.querySelector(
-      "[data-slot=drawer-content]",
-    );
-    if (!leaving || !host) return;
-    const { node, rect, scrollTop } = leaving;
-    node.inert = true;
-    node.setAttribute("aria-hidden", "true");
-    host.append(node);
-    // The drawer's own rules size the page with !important.
-    const place = (property: string, value: string) =>
-      node.style.setProperty(property, value, "important");
-    place("position", "absolute");
-    place("z-index", "20");
-    place("pointer-events", "none");
-    // Absolute offsets start inside the drawer's border.
-    const parent = node.offsetParent ?? host;
-    const origin = parent.getBoundingClientRect();
-    place("top", `${rect.top - origin.top - parent.clientTop}px`);
-    place("left", `${rect.left - origin.left - parent.clientLeft}px`);
-    place("width", `${rect.width}px`);
-    place("height", `${rect.height}px`);
-    const scroller = node.querySelector("[data-project-scroll]");
-    if (scroller) scroller.scrollTop = scrollTop;
-    sinkingPost.current = node;
-    node
-      .animate(
-        [
-          { opacity: 1, transform: "none" },
-          { opacity: 0, offset: 0.8 },
-          { opacity: 0, transform: "translateY(32px)" },
-        ],
-        // The way in reversed: fast out of the gate, faded before it settles.
-        { duration: 280, easing },
-      )
-      .finished.catch(() => {})
-      .finally(() => {
-        node.remove();
-        if (sinkingPost.current === node) sinkingPost.current = null;
-      });
-  }, [isMobile, postId]);
-
   function openPost(id: string, updateId?: string) {
     setPostUpdateId(updateId);
-    if (!postId) {
-      projectReturnSnapPoint.current = snapPoint ?? middleSnapPoint;
-      viewBeforePost.current = view;
-    }
     projectTriggerRef.current =
       document.activeElement instanceof HTMLElement ||
       document.activeElement instanceof SVGElement
         ? document.activeElement
         : null;
-    listScrollRef.current = projectResultsRef.current?.scrollTop || 0;
     setModal(null);
-    setSnapPoint(1);
     setPostId(id);
     setSelectedId(id);
-    window.history.pushState(
-      {
-        projectOverlay: true,
-        drawerReturnSnapPoint: projectReturnSnapPoint.current,
-      },
-      "",
-      projectHref(id),
-    );
+    window.history.pushState({ projectOverlay: true }, "", projectHref(id));
   }
 
-  function closePost(returnPoint = projectReturnSnapPoint.current) {
-    projectReturnSnapPoint.current = returnPoint;
+  /** The compact drawer hides the list, so focus returns to its handle. */
+  function closePost(
+    focusTrigger = !isMobile || snapPoint !== compactSnapPoint,
+  ) {
     setPostId(null);
     setSelectedId(null);
-    if (isMobile) {
-      setSnapPoint(returnPoint);
-      setView(
-        returnPoint === 1
-          ? viewBeforePost.current === "saved"
-            ? "saved"
-            : "list"
-          : "map",
-      );
-    }
     requestAnimationFrame(() => {
-      if (projectResultsRef.current)
-        projectResultsRef.current.scrollTop = listScrollRef.current;
       const trigger = projectTriggerRef.current;
-      if (trigger?.isConnected && returnPoint !== compactSnapPoint)
+      if (trigger?.isConnected && focusTrigger)
         trigger.focus({ preventScroll: true });
       else drawerHandleRef.current?.focus({ preventScroll: true });
     });
@@ -711,7 +590,7 @@ export default function Explorer({
   }
 
   function showMap() {
-    if (postId) closePost(compactSnapPoint);
+    if (postId) closePost(false);
     setModal(null);
     setView("map");
     setSnapPoint(compactSnapPoint);
@@ -726,7 +605,7 @@ export default function Explorer({
   function showSaved() {
     if (!requireAccount()) return;
     if (postId) {
-      closePost(1);
+      closePost();
       if (view !== "saved") {
         previousExplorerView.current = view === "list" ? "list" : "map";
         setView("saved");
@@ -764,7 +643,7 @@ export default function Explorer({
       onClick={(event) => {
         event.preventDefault();
         resetFilters();
-        if (postId) closePost(1);
+        if (postId) closePost();
         showList();
       }}
     >
@@ -1112,7 +991,6 @@ export default function Explorer({
   ];
   const projectResults = (
     <section
-      ref={projectResultsRef}
       data-drawer-scroll
       className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain bg-surface scrollbar-thin max-md:bg-transparent"
       aria-label="Prosjektliste"
@@ -1302,7 +1180,7 @@ export default function Explorer({
   }
 
   function minimizeDrawer() {
-    if (postId) closePost(compactSnapPoint);
+    if (postId) closePost(false);
     setModal(null);
     setSnapPoint(compactSnapPoint);
     setView("map");
@@ -1314,36 +1192,20 @@ export default function Explorer({
   };
   const drawerBody = (
     <>
-      {profileName && (
-        <ProfileOverlay
-          key={profileName}
-          username={profileName}
-          embedded
-          onClose={closeProfile}
-          onOpenProject={openFromProfile}
-        />
-      )}
-      {postId ? (
-        // Kept mounted under a profile so its scroll and drafts survive.
-        <div
-          ref={keepLeavingPost}
-          className={profileName ? "hidden" : "contents"}
-        >
-          {projectPost || missingProject}
-        </div>
-      ) : profileName ? null : modal === "profile" ? (
+      {modal === "profile" && (
         <div className="min-h-0 flex-1 pb-(--drawer-keyboard-inset,0px)">
           {profileContent}
         </div>
-      ) : null}
+      )}
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col",
-          (postId || modal) &&
+          modal &&
             "invisible pointer-events-none absolute inset-x-0 top-11 bottom-0 opacity-0",
         )}
-        inert={Boolean(postId || modal)}
-        aria-hidden={postId || modal ? true : undefined}
+        // Under the project drawer it stays in place, ready to swipe back to.
+        inert={Boolean(modal || projectDrawerOpen)}
+        aria-hidden={modal || projectDrawerOpen ? true : undefined}
       >
         <div className="relative z-10 shrink-0 bg-surface px-4.5 pb-0.5 max-xs:px-3.5">
           <div className="flex h-11 items-center justify-between">
@@ -1381,20 +1243,41 @@ export default function Explorer({
       </div>
     </>
   );
+  const projectDrawerBody = (
+    <>
+      {shown.profileName && (
+        <ProfileOverlay
+          key={shown.profileName}
+          username={shown.profileName}
+          embedded
+          onClose={closeProfile}
+          onOpenProject={openFromProfile}
+        />
+      )}
+      {shown.postId && (
+        // Kept mounted under a profile so its scroll and drafts survive.
+        <div className={shown.profileName ? "hidden" : "contents"}>
+          {projectPost || missingProject}
+        </div>
+      )}
+    </>
+  );
+  const drawerGrip = (
+    <span className="h-[3px] w-[34px] rounded bg-border-strong transition-colors group-hover/handle:bg-muted/60 motion-reduce:transition-none" />
+  );
   const drawerShell = isMobile && !drawerReady && (
     <div
       aria-hidden="true"
       className={cn(
-        mobileDrawerClasses,
+        explorerDrawerClasses,
         "fixed inset-x-0 bottom-0 z-[900] flex flex-col",
         snapPoint === 1
           ? "h-[calc(100dvh-12px-env(safe-area-inset-top))]"
           : "h-[58dvh]",
-        postId && "bg-surface",
       )}
     >
       <div className="flex h-6 shrink-0 items-center justify-center">
-        <span className="h-[3px] w-[34px] rounded bg-border-strong" />
+        {drawerGrip}
       </div>
       <div
         data-slot="drawer-content"
@@ -1407,6 +1290,24 @@ export default function Explorer({
       </div>
     </div>
   );
+  const projectDrawerShell = isMobile &&
+    projectDrawerOpen &&
+    !projectDrawerReady && (
+      <div
+        aria-hidden="true"
+        className={cn(
+          projectDrawerClasses,
+          "fixed inset-x-0 bottom-0 z-[900] flex h-[calc(100dvh-22px-env(safe-area-inset-top))] flex-col",
+        )}
+      >
+        <div className="flex h-6 shrink-0 items-center justify-center">
+          {drawerGrip}
+        </div>
+        <div data-slot="drawer-content" className={projectDrawerInnerClasses}>
+          {projectDrawerBody}
+        </div>
+      </div>
+    );
 
   return (
     <div
@@ -1566,12 +1467,12 @@ export default function Explorer({
               // Give the middle stop a little more reach than the default halfway threshold.
               if (distanceToMiddle > 0 && movement >= distanceToMiddle * 0.44) {
                 setSnapPoint(middleSnapPoint);
-                if (!postId && !modal) setView("map");
+                if (!modal) setView("map");
                 return;
               }
             }
             setSnapPoint(point);
-            if (!postId && !modal) {
+            if (!modal) {
               if (point === 1)
                 setView((current) => (current === "saved" ? "saved" : "list"));
               else setView("map");
@@ -1580,22 +1481,25 @@ export default function Explorer({
           onOpenChange={(open, details) => {
             if (open) return;
             details.cancel();
-            if (postId) closePost();
-            else if (modal) backToExplorer();
+            if (modal) backToExplorer();
             else minimizeDrawer();
           }}
         >
           <DrawerVirtualKeyboardProvider>
             <DrawerContent
               ref={drawerPopupRef}
+              data-explorer-drawer=""
               className={cn(
-                mobileDrawerClasses,
-                postId && "bg-surface",
+                explorerDrawerClasses,
                 // Let Base UI swipe the drawer before its content starts scrolling.
                 snapPoint !== 1 &&
                   "[&_[data-drawer-scroll]]:overflow-y-hidden",
               )}
-              contentClassName={mobileDrawerInnerClasses}
+              // The list stays in view behind a project, only stepped back.
+              contentClassName={cn(
+                mobileDrawerInnerClasses,
+                "group-data-nested-drawer-open/drawer-popup:opacity-100",
+              )}
               initialFocus={false}
               finalFocus={false}
               onWheel={(event) => {
@@ -1611,7 +1515,7 @@ export default function Explorer({
                 }
 
                 setSnapPoint(1);
-                if (!postId && !modal)
+                if (!modal)
                   setView((current) =>
                     current === "saved" ? "saved" : "list",
                   );
@@ -1621,30 +1525,25 @@ export default function Explorer({
                   ref={drawerHandleRef}
                   className={cn(
                     "group/handle flex h-6 w-full shrink-0 touch-none cursor-grab items-center justify-center p-0 active:cursor-grabbing",
-                    "transition-colors duration-150 hover:text-accent active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100",
+                    "transition-[color,opacity] duration-150 hover:text-accent active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100",
+                    "group-data-nested-drawer-open/drawer-popup:opacity-0 group-data-nested-drawer-swiping/drawer-popup:opacity-100",
                   )}
                   aria-label={
                     snapPoint === 1
                       ? "Vis mer av kartet"
-                      : postId
-                        ? "Utvid prosjektet"
-                        : "Utvid prosjektlisten"
+                      : "Utvid prosjektlisten"
                   }
                   onClick={() => {
                     setSnapPoint(snapPoint === 1 ? middleSnapPoint : 1);
-                    if (!postId && !modal)
-                      setView(snapPoint === 1 ? "map" : "list");
+                    if (!modal) setView(snapPoint === 1 ? "map" : "list");
                   }}
                 >
-                  <span className="h-[3px] w-[34px] rounded bg-border-strong transition-colors group-hover/handle:bg-muted/60 motion-reduce:transition-none" />
+                  {drawerGrip}
                 </button>
               }
             >
               <DrawerTitle className="sr-only">
-                {profileName
-                  ? `Profilen til ${profileName}`
-                  : post?.title ||
-                    (modal === "profile" ? "Din profil" : "Utforsk prosjekter")}
+                {modal === "profile" ? "Din profil" : "Utforsk prosjekter"}
               </DrawerTitle>
               <DrawerDescription className="sr-only">
                 Dra eller trykk på håndtaket for å endre høyden. Utforsk kart,
@@ -1653,8 +1552,54 @@ export default function Explorer({
               {drawerReady && drawerBody}
             </DrawerContent>
           </DrawerVirtualKeyboardProvider>
+          {/* Nested, so the explorer steps back behind it and follows its swipe. */}
+          <Drawer
+            open={projectDrawerOpen}
+            modal={false}
+            disablePointerDismissal
+            onOpenChange={(open, details) => {
+              if (open) return;
+              if (!profileName) return closePost();
+              // A profile opened from a project steps back to that project.
+              if (postId) details.cancel();
+              closeProfile();
+            }}
+            onOpenChangeComplete={(open) => {
+              if (!open) setShown({ postId: null, profileName: null });
+            }}
+          >
+            <DrawerVirtualKeyboardProvider>
+              <DrawerContent
+                ref={(node) => {
+                  if (node) setProjectDrawerReady(true);
+                }}
+                data-project-drawer=""
+                className={projectDrawerClasses}
+                viewportClassName="z-[51]"
+                contentClassName={projectDrawerInnerClasses}
+                initialFocus={false}
+                finalFocus={false}
+                handle={
+                  <div
+                    aria-hidden="true"
+                    className="flex h-6 w-full shrink-0 touch-none cursor-grab items-center justify-center active:cursor-grabbing"
+                  >
+                    {drawerGrip}
+                  </div>
+                }
+              >
+                <DrawerTitle className="sr-only">
+                  {shown.profileName
+                    ? `Profilen til ${shown.profileName}`
+                    : post?.title || "Prosjektet finnes ikke"}
+                </DrawerTitle>
+                {projectDrawerReady && projectDrawerBody}
+              </DrawerContent>
+            </DrawerVirtualKeyboardProvider>
+          </Drawer>
         </Drawer>
       )}
+      {projectDrawerShell}
       {!isMobile && projectPost}
       {!isMobile && profileName && (
         <Dialog
