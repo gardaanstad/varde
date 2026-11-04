@@ -1,0 +1,92 @@
+@reference "../globals.css";
+/* Fixes the layer order even if this file loads before globals.css. */
+@layer theme, base, components, utilities;
+
+/*
+ * Reply threads: a line runs down from each avatar and curves into its
+ * replies' avatars. Any part of the line folds the replies beneath it.
+ */
+@layer components {
+  .branch {
+    position: relative;
+    padding-left: 30px;
+
+    &[data-folded] {
+      padding-top: 12px;
+    }
+
+    @variant max-sm {
+      padding-left: 14px;
+
+      & & & {
+        padding-left: 0;
+      }
+
+      &[data-folded] {
+        display: none;
+      }
+    }
+  }
+
+  .rail,
+  .through,
+  .elbow {
+    position: absolute;
+    left: 8px;
+    color: var(--color-border-strong);
+    cursor: pointer;
+    transition: color 120ms;
+
+    &::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 0 7.25px;
+      border-left: 1.5px solid currentColor;
+    }
+
+    @variant max-sm {
+      display: none;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
+
+  .rail,
+  .through {
+    bottom: 0;
+    width: 16px;
+  }
+
+  .rail {
+    top: 36px;
+    border-radius: 4px;
+  }
+
+  .through {
+    top: 0;
+  }
+
+  .elbow {
+    top: 0;
+    width: 22px;
+    height: 29px;
+
+    &::before {
+      border-bottom: 1.5px solid currentColor;
+      border-bottom-left-radius: 12px;
+    }
+  }
+
+  /* Hovering any part of a thread's line darkens all of it. */
+  .thread:has(
+      > .self > .rail:is(:hover, :focus-visible),
+      > .replies > .branch > :is(.through, .elbow):hover
+    ) {
+    & > .self > .rail,
+    & > .replies > .branch > :is(.through, .elbow) {
+      color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+    }
+  }
+}

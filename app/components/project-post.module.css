@@ -1,0 +1,109 @@
+@reference "../globals.css";
+/* Fixes the layer order even if this file loads before globals.css. */
+@layer theme, base, components, utilities;
+
+@layer components {
+  /* Updates hang off a rail; the newest, or the one linked to, is marked. */
+  .timeline {
+    margin: 8px 0 0 5px;
+    padding-left: 24px;
+    border-left: 1px solid var(--color-border-strong);
+
+    @variant max-sm {
+      padding-left: 16px;
+    }
+  }
+
+  .entry {
+    position: relative;
+    margin-bottom: 24px;
+    padding-bottom: 24px;
+    scroll-margin-top: 64px;
+
+    &::before {
+      content: "";
+      position: absolute;
+      top: 4px;
+      left: -30px;
+      width: 11px;
+      height: 11px;
+      border: 2px solid var(--color-border-strong);
+      border-radius: 50%;
+      background: var(--color-surface);
+    }
+
+    &:first-child::before,
+    &[data-highlighted="true"]::before {
+      border-color: var(--color-accent);
+      background: var(--color-accent);
+      box-shadow: 0 0 0 3px var(--color-accent-soft);
+    }
+
+    @variant max-sm {
+      margin-bottom: 20px;
+      padding-bottom: 20px;
+
+      &::before {
+        left: -22px;
+      }
+    }
+  }
+
+  /* Mobile summary text (MobileIntro). */
+  .introText {
+    overflow: hidden;
+    color: var(--color-ink-soft);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    transition: height 320ms var(--ease-out-soft);
+
+    & > p {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    & > p + p {
+      margin-top: 10px;
+    }
+
+    /* Two lines with an ellipsis; paragraphs run together while clamped. */
+    &[data-clamped="true"] {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+
+      & > p {
+        display: inline;
+        white-space: normal;
+      }
+
+      & > p + p::before {
+        content: " ";
+      }
+    }
+
+    /* No photo: three lines that fade out when there is more. */
+    &[data-clamped="true"][data-photo="false"] {
+      display: block;
+      max-height: 4.8em;
+      -webkit-line-clamp: none;
+
+      & > p {
+        display: block;
+        white-space: pre-wrap;
+      }
+
+      & > p + p::before {
+        content: none;
+      }
+
+      &[data-overflows="true"] {
+        mask-image: linear-gradient(to bottom, #000 35%, transparent);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
+}

@@ -7,3 +7,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+# Testing
+
+The Playwright suite (`bun run test`) takes about a minute. While iterating on UI, validate with `bun run lint` and `bun run typecheck`, and run only the spec covering the change, e.g. `bun run test tests/explorer.spec.ts -g "<test name>"`. Run the full suite only when asked or before committing, and run it in the background. Each worktree gets its own test port, database, and build directory, so runs in different worktrees don't block each other.

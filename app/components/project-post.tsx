@@ -1,0 +1,1335 @@
+"use client";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { flushSync } from "react-dom";
+import Image from "next/image";
+import dynamic from "next/dynamic";
+import {
+  ArrowUp,
+  ArrowUpRight,
+  ImagePlus,
+  Megaphone,
+  ChevronDown,
+  MessageCircle,
+  MessagesSquare,
+} from "lucide-react";
+import {
+  categories,
+  type Category,
+  formatDateYear,
+  getProjectUpdates,
+  hasPhoto,
+  presetPlaces,
+  type Project,
+  type ProjectImage,
+  projectHref,
+  projectPlace,
+  type Status,
+  statuses,
+  statusOrder,
+  type Comment,
+  unknownDeveloper,
+} from "../lib/data";
+import { useAuth } from "./auth-provider";
+import { useCommunity } from "./community-provider";
+import { errorMessage } from "../lib/api-client";
+import { cn } from "../lib/cn";
+import {
+  composer,
+  composerField,
+  composerSend,
+  statusTone,
+} from "../lib/ui";
+import Dialog from "./dialog";
+import ProjectPostHeader, {
+  headerOverlap,
+  ProjectActions,
+  ProjectPostHeaderDetails,
+} from "./project-post-header";
+import ProjectDiscussion from "./project-discussion";
+import CategoryIcon from "./category-icon";
+import RelativeTime from "./relative-time";
+import {
+  changedFields,
+  changesToSave,
+  EditBar,
+  EditField,
+  editInput,
+  editState,
+  type EditStage,
+  type FieldId,
+  fields,
+  ProjectEditContext,
+  toDraft,
+  useProjectEdit,
+} from "./project-edit";
+import EmptyState from "./empty-state";
+import styles from "./project-post.module.css";
+
+const ProjectMap = dynamic(() => import("./project-map"), { ssr: false });
+
+const galleryChoices = [
+  { src: "/images/bjorvika.jpg", label: "Havn" },
+  { src: "/images/architecture.jpg", label: "Bygg" },
+  { src: "/images/park.jpg", label: "Byrom" },
+  { src: "/images/railway.jpg", label: "Samferdsel" },
+  { src: "/images/regjeringskvartalet.jpg", label: "Kvartal" },
+  { src: "/images/fornebubanen.jpg", label: "Anlegg" },
+];
+const galleryLayout = {
+  1: "[&>*]:min-h-[220px] max-sm:[&>*]:min-h-[200px]",
+  2: "grid-cols-2 [&>*]:min-h-[180px] max-sm:[&>*]:min-h-[150px]",
+  3: "h-[260px] max-sm:h-[216px] grid-cols-[1.4fr_1fr] grid-rows-2 [&>*]:min-h-0 [&>*:first-child]:row-span-2",
+  4: "h-[260px] max-sm:h-[216px] grid-cols-2 grid-rows-2 [&>*]:min-h-0",
+} as const;
+const cover =
+  "relative aspect-3/2 w-full overflow-hidden rounded-[10px] bg-surface-muted";
+const credit = "mt-1.5 block text-2xs leading-normal text-muted";
+const note = "mt-3 text-xs leading-[1.6] text-muted";
+/**
+ * "Les mer" / "Skjul kommentarer": sticks to the bottom (when `sticky`) and
+ * becomes a floating pill while stuck.
+ */
+const stickyToggle = cn(
+  "bottom-3 z-2 mx-auto mt-1 mb-0.5 flex min-h-9 items-center gap-1 rounded-full border border-transparent pr-3 pl-3.5",
+  "text-ui font-medium text-ink transition-[background-color,border-color,box-shadow] duration-150 hover:bg-ink/5",
+  "data-[stuck=true]:border-border data-[stuck=true]:bg-surface data-[stuck=true]:shadow-float",
+  "[&>svg]:text-muted [&>svg]:transition-transform [&>svg]:duration-240 motion-reduce:[&>svg]:transition-none",
+);
+/** Plain text actions under each update; the comments toggle leads. */
+const updateAction = cn(
+  "inline-flex min-h-8.5 items-center gap-1.5 text-ui font-medium text-ink underline-offset-4",
+  "hover:[&>span]:underline [&>svg]:shrink-0 [&>svg]:text-muted max-sm:min-h-10",
+);
+const composerTool = cn(
+  "inline-flex min-h-8 items-center gap-1.5 rounded-full px-2.5 text-xs leading-normal font-medium text-muted",
+  "transition-colors duration-120 hover:bg-ink/6 hover:text-ink focus-within:bg-ink/6 focus-within:text-ink",
+  "aria-expanded:bg-ink/6 aria-expanded:text-ink",
+);
+type Props = {
+  project: Project;
+  initialUpdateId?: string;
+  embedded?: boolean;
+  onClose: () => void;
+  feedback?: ReactNode;
+  saved: boolean;
+  onSave: () => void;
+  onMap: () => void;
+  comments: Comment[];
+  onNotify: (message: string) => void;
+};
+function galleryCount(images: ProjectImage[]): 1 | 2 | 3 | 4 {
+  return Math.min(Math.max(images.length, 1), 4) as 1 | 2 | 3 | 4;
+}
+
+function UpdateGallery({
+  images,
+  title,
+}: {
+  images: ProjectImage[];
+  title: string;
+}) {
+  if (images.length === 0) return null;
+  const credits = [
+    ...new Set(images.map((image) => image.credit).filter(Boolean)),
+  ];
+  const count = galleryCount(images);
+  return (
+    <figure className="my-3.5 mb-0.5">
+      <div
+        className={cn(
+          "grid gap-1.25 overflow-hidden rounded-xl bg-surface-muted",
+          galleryLayout[count],
+        )}
+        data-count={count}
+        role="group"
+        aria-label={`Bilder til ${title}`}
+      >
+        {images.slice(0, 4).map((image, index) => (
+          <div className="relative min-h-42.5" key={`${image.src}-${index}`}>
+            <Image
+              src={image.src}
+              alt={image.alt || ""}
+              fill
+              sizes="(max-width: 640px) 100vw, 720px"
+              className="object-cover"
+            />
+            {index === 3 && images.length > 4 && (
+              <span className="absolute inset-0 grid place-items-center bg-ink/55 text-[22px] font-semibold text-white">
+                +{images.length - 4}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+      {credits.length > 0 && (
+        <figcaption className="mt-2 text-xs leading-relaxed text-muted">
+          {credits.join(" · ")}
+        </figcaption>
+      )}
+    </figure>
+  );
+}
+
+const factRow =
+  "flex justify-between gap-4 border-b border-border py-2.25 text-ui leading-normal first:border-t";
+const factValue =
+  "flex items-center justify-end gap-1.5 text-right font-medium text-ink [&_svg]:shrink-0 [&_svg]:text-muted";
+
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className={factRow}>
+      <dt className="shrink-0 text-muted">{label}</dt>
+      <dd className={factValue}>{children}</dd>
+    </div>
+  );
+}
+
+function ProjectFacts({
+  project,
+  className,
+}: {
+  project: Project;
+  className?: string;
+}) {
+  const developer =
+    project.developer !== unknownDeveloper ? project.developer : "";
+  return (
+    <dl className={cn("my-4", className)}>
+      <Fact label="Status">
+        <i
+          className={cn(
+            "inline-block size-2 shrink-0 rounded-full",
+            statusTone[project.status].dot,
+          )}
+        />
+        {statuses[project.status].label}
+      </Fact>
+      <Fact
+        label={
+          project.status === "completed" ? "Ferdigstilt" : "Ferdigstilles"
+        }
+      >
+        {project.year || "–"}
+      </Fact>
+      <Fact label="Kategori">
+        <CategoryIcon category={project.category} size={14} />
+        {project.category}
+      </Fact>
+      <Fact label="Sted">{projectPlace(project)}</Fact>
+      {developer && <Fact label="Byggherre">{developer}</Fact>}
+      {/* The website sits as a final fact: right-aligned, underlined, no label. */}
+      {project.website && (
+        <div className={cn(factRow, "justify-end border-b-0")}>
+          <dt className="sr-only">Nettside</dt>
+          <dd className={factValue}>
+            <a
+              href={project.website}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 underline decoration-border-strong decoration-1 underline-offset-3 transition-[text-decoration-color] duration-120 hover:decoration-current"
+            >
+              Prosjektets nettside
+              <ArrowUpRight size={14} aria-hidden="true" />
+            </a>
+          </dd>
+        </div>
+      )}
+    </dl>
+  );
+}
+
+/** Edit mode: every fact as a field, then the outline on a small map. */
+function EditFacts() {
+  const edit = useProjectEdit();
+  if (!edit) return null;
+  const { draft, change } = edit;
+  return (
+    // Short fields pair up; place, link and map take the full width.
+    <div className="mt-5 grid grid-cols-2 gap-4 max-xs:grid-cols-1">
+      <EditField id="status">
+        <select
+          className={editInput}
+          aria-label="Status"
+          value={draft.status}
+          onChange={(event) => change({ status: event.target.value as Status })}
+        >
+          {statusOrder.map((status) => (
+            <option key={status} value={status}>
+              {statuses[status].label}
+            </option>
+          ))}
+        </select>
+      </EditField>
+      <EditField id="category">
+        <select
+          className={editInput}
+          aria-label="Kategori"
+          value={draft.category}
+          onChange={(event) =>
+            change({ category: event.target.value as Category })
+          }
+        >
+          {categories.map((category) => (
+            <option key={category}>{category}</option>
+          ))}
+        </select>
+      </EditField>
+      <EditField
+        id="year"
+        label={draft.status === "completed" ? "Ferdigstilt" : "Ferdigstilles"}
+      >
+        <input
+          className={editInput}
+          aria-label="Årstall"
+          inputMode="numeric"
+          maxLength={4}
+          placeholder="2030"
+          value={draft.year}
+          onChange={(event) => change({ year: event.target.value })}
+        />
+      </EditField>
+      <EditField id="developer">
+        <input
+          className={editInput}
+          aria-label="Byggherre"
+          placeholder={unknownDeveloper}
+          maxLength={100}
+          value={draft.developer}
+          onChange={(event) => change({ developer: event.target.value })}
+        />
+      </EditField>
+      <EditField id="place" wide>
+        <div className="grid grid-cols-2 gap-1.5">
+          <input
+            className={editInput}
+            aria-label="Sted"
+            list={`places-${draft.id}`}
+            maxLength={80}
+            value={draft.city}
+            onChange={(event) => change({ city: event.target.value })}
+          />
+          <datalist id={`places-${draft.id}`}>
+            {presetPlaces.map((city) => (
+              <option key={city} value={city} />
+            ))}
+          </datalist>
+          <input
+            className={editInput}
+            aria-label="Område / bydel"
+            placeholder="Bydel"
+            maxLength={80}
+            value={draft.district}
+            onChange={(event) => change({ district: event.target.value })}
+          />
+        </div>
+      </EditField>
+      <EditField id="website" wide>
+        <input
+          className={editInput}
+          aria-label="Prosjektlenke"
+          type="url"
+          maxLength={2000}
+          placeholder="https://…"
+          value={draft.website || ""}
+          onChange={(event) => change({ website: event.target.value })}
+        />
+      </EditField>
+      <EditField id="geometry" wide>
+        <div
+          className={cn(
+            "h-90 overflow-hidden rounded-lg border border-border-strong max-md:h-80",
+            editState,
+          )}
+          data-base-ui-swipe-ignore
+        >
+          <ProjectMap
+            city={draft.city.trim() || draft.city}
+            draw
+            compact
+            points={draft.geometry}
+            geometryType={draft.geometryType}
+            onGeometryChange={(geometryType) => change({ geometryType })}
+            onPointsChange={(geometry) => change({ geometry })}
+          />
+        </div>
+      </EditField>
+    </div>
+  );
+}
+
+function EditDescription() {
+  const edit = useProjectEdit();
+  if (!edit) return null;
+  return (
+    <EditField id="description">
+      <textarea
+        className={cn(
+          editInput,
+          "field-sizing-content min-h-32 resize-none px-3 py-2 text-body leading-[1.65] max-md:text-[14px] max-md:leading-[1.6] max-sm:text-base",
+        )}
+        aria-label="Beskrivelse"
+        maxLength={10000}
+        value={edit.draft.description}
+        onChange={(event) => edit.change({ description: event.target.value })}
+      />
+    </EditField>
+  );
+}
+
+const stickyGap = 12;
+
+/** Animates `property` between two pixel values, then clears the inline value. */
+function slide(
+  element: HTMLElement,
+  property: "height" | "maxHeight",
+  from: number,
+  to: number,
+  done?: () => void,
+) {
+  // Jump to the start without a transition (sizes can animate from auto).
+  element.style.transition = "none";
+  element.style[property] = `${from}px`;
+  element.getBoundingClientRect();
+  element.style.transition = "";
+  element.style[property] = `${to}px`;
+  const finish = (event?: TransitionEvent) => {
+    if (event && event.target !== element) return;
+    element.removeEventListener("transitionend", finish);
+    element.style[property] = "";
+    done?.();
+  };
+  if (from === to) finish();
+  else element.addEventListener("transitionend", finish);
+}
+
+/**
+ * Mobile summary: two lines of the description above the image.
+ * "Les mer" grows the text and reveals the facts the desktop sidebar shows.
+ */
+function MobileIntro({ project }: { project: Project }) {
+  const [open, setOpen] = useState(false);
+  // The ellipsis clamp lifts before expanding and returns after collapsing.
+  const [clamped, setClamped] = useState(true);
+  const [stuck, setStuck] = useState(false);
+  // Without a photo, three lines show and fade out instead of an ellipsis.
+  const photo = hasPhoto(project);
+  const [overflows, setOverflows] = useState(true);
+  const body = useRef<HTMLDivElement>(null);
+  const text = useRef<HTMLDivElement>(null);
+  const details = useRef<HTMLDivElement>(null);
+  const end = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const copy = text.current;
+    if (photo || !copy || !clamped) return;
+    const measure = () =>
+      setOverflows(copy.scrollHeight > copy.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(copy);
+    return () => observer.disconnect();
+  }, [clamped, photo]);
+
+  // While expanded, the toggle sticks to the bottom until its own spot scrolls in.
+  useEffect(() => {
+    const marker = end.current;
+    const scroller = marker?.closest("[data-project-scroll]");
+    if (!open || !marker || !scroller) return;
+    const update = () =>
+      setStuck(
+        marker.getBoundingClientRect().top >
+          scroller.getBoundingClientRect().bottom - stickyGap,
+      );
+    // Re-check as the expand animation grows the intro.
+    const resize = new ResizeObserver(update);
+    resize.observe(scroller);
+    if (body.current) resize.observe(body.current);
+    scroller.addEventListener("scroll", update, { passive: true });
+    return () => {
+      resize.disconnect();
+      scroller.removeEventListener("scroll", update);
+      setStuck(false);
+    };
+  }, [open]);
+
+  function toggle() {
+    const copy = text.current;
+    const more = details.current;
+    if (!copy || !more) return;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (open) {
+      // Collapsing returns to the top, so reading resumes from the start.
+      more
+        .closest("[data-project-scroll]")
+        ?.scrollTo({ top: 0, behavior: still ? "auto" : "smooth" });
+      setOpen(false);
+      if (still) return setClamped(true);
+      const lines =
+        parseFloat(getComputedStyle(copy).lineHeight) * (photo ? 2 : 3);
+      const target = Math.min(lines, copy.scrollHeight);
+      slide(copy, "height", copy.offsetHeight, target, () => setClamped(true));
+      more.dataset.expanded = "false";
+      const peek = more.offsetHeight;
+      more.dataset.expanded = "true";
+      slide(more, "maxHeight", more.offsetHeight, peek);
+      return;
+    }
+    const from = copy.offsetHeight;
+    const peek = more.offsetHeight;
+    flushSync(() => {
+      setClamped(false);
+      setOpen(true);
+    });
+    if (still) return;
+    slide(copy, "height", from, copy.scrollHeight);
+    slide(more, "maxHeight", peek, more.scrollHeight);
+  }
+  return (
+    <div data-project-header-hero="">
+      <div ref={body} id={`intro-${project.id}`}>
+        <div
+          ref={text}
+          className={styles.introText}
+          data-clamped={clamped}
+          data-photo={photo}
+          data-overflows={overflows}
+        >
+          {project.description.split("\n\n").map((paragraph, index) => (
+            <p key={index}>{paragraph}</p>
+          ))}
+        </div>
+        {photo && (
+          <figure className="mt-3.5">
+            <div className={cover}>
+              <Image
+                src={project.image}
+                alt={project.title}
+                fill
+                sizes="100vw"
+                className="object-cover"
+              />
+            </div>
+            {project.imageCredit && (
+              <figcaption className={credit}>
+                {project.imageCredit}
+              </figcaption>
+            )}
+          </figure>
+        )}
+        {/* Spacing sits inside the clip, so the panel can close fully. */}
+        <div
+          ref={details}
+          className={cn(
+            "flex flex-col gap-1 overflow-hidden transition-[max-height] duration-320 ease-out-soft motion-reduce:transition-none",
+            "data-[expanded=false]:max-h-0 *:shrink-0",
+          )}
+          data-expanded={open}
+          inert={!open}
+        >
+          <ProjectFacts project={project} className="mt-4 mb-2" />
+          <p className={cn(note, "mt-1")}>
+            Sist redigert {formatDateYear(project.updated)}
+          </p>
+        </div>
+      </div>
+      <button
+        type="button"
+        className={cn(
+          stickyToggle,
+          open && "sticky",
+          "aria-expanded:[&>svg]:rotate-180",
+        )}
+        data-stuck={stuck}
+        aria-expanded={open}
+        aria-controls={`intro-${project.id}`}
+        onClick={toggle}
+      >
+        {open ? "Vis mindre" : "Les mer"}
+        <ChevronDown size={16} aria-hidden="true" />
+      </button>
+      <div ref={end} aria-hidden="true" />
+    </div>
+  );
+}
+
+/** Desktop description: first paragraph, "Les mer" for the rest. */
+function DesktopIntro({ project }: { project: Project }) {
+  const [expanded, setExpanded] = useState(false);
+  const paragraphs = project.description.split("\n\n");
+  const shown = expanded ? paragraphs : paragraphs.slice(0, 1);
+  return (
+    <>
+      {shown.map((paragraph, index) => (
+        <p
+          key={index}
+          className={cn(
+            "text-body leading-[1.65] whitespace-pre-wrap wrap-anywhere text-ink-soft max-md:text-sm max-md:leading-[1.6]",
+            index > 0 && "mt-3",
+          )}
+        >
+          {paragraph}
+        </p>
+      ))}
+      {paragraphs.length > 1 && (
+        <div className="mt-0.5 flex flex-wrap gap-x-4.5">
+          <button
+            type="button"
+            className="inline-flex min-h-9 items-center gap-1.5 text-left text-ui font-medium text-accent underline-offset-4 hover:underline max-md:min-h-11"
+            aria-expanded={expanded}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? "Vis mindre" : "Les mer"}
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * Mobile "Skjul kommentarer" at the end of an update's comment section. Like
+ * the intro's "Vis mindre", it sticks to the bottom until its spot scrolls in.
+ */
+function CommentsDock({
+  id,
+  open,
+  onClose,
+}: {
+  id: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [stuck, setStuck] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const end = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const section = button.current?.closest<HTMLElement>(
+      "[data-update-comments]",
+    );
+    const scroller = section?.closest("[data-project-scroll]");
+    if (!open || !section || !scroller) return;
+    const update = () => {
+      const view = scroller.getBoundingClientRect();
+      const marker = end.current?.getBoundingClientRect();
+      setStuck(!!marker && marker.top > view.bottom - stickyGap);
+    };
+    const resize = new ResizeObserver(update);
+    resize.observe(scroller);
+    resize.observe(section);
+    scroller.addEventListener("scroll", update, { passive: true });
+    update();
+    return () => {
+      resize.disconnect();
+      scroller.removeEventListener("scroll", update);
+    };
+  }, [open]);
+  function close() {
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    flushSync(onClose);
+    const toggle = document.querySelector<HTMLElement>(
+      `[data-comments-toggle][aria-controls="update-comments-${id}"]`,
+    );
+    // It stays put while the section below it closes, so scroll back to it.
+    toggle?.scrollIntoView({
+      block: "center",
+      behavior: still ? "auto" : "smooth",
+    });
+    toggle?.focus({ preventScroll: true });
+  }
+  return (
+    <>
+      <button
+        ref={button}
+        type="button"
+        className={cn(stickyToggle, "sticky sm:hidden [&>svg]:rotate-180")}
+        data-stuck={stuck}
+        aria-expanded={open}
+        aria-controls={`update-comments-${id}`}
+        onClick={close}
+      >
+        Skjul kommentarer
+        <ChevronDown size={16} aria-hidden="true" />
+      </button>
+      <div ref={end} aria-hidden="true" />
+    </>
+  );
+}
+
+/** Moderators publish updates from a composer that opens like the comment one. */
+function UpdateComposer({
+  project,
+  onUpdate,
+  onNotify,
+  onPublished,
+}: {
+  project: Project;
+  onUpdate: (project: Project) => Promise<void>;
+  onNotify: (message: string) => void;
+  onPublished: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [source, setSource] = useState("");
+  const [status, setStatus] = useState<Status>(project.status);
+  const [images, setImages] = useState<string[]>([]);
+  const [picking, setPicking] = useState(false);
+  const titleRef = useRef<HTMLInputElement>(null);
+  const empty =
+    !title.trim() && !body.trim() && !source.trim() && !images.length;
+  function reset() {
+    setOpen(false);
+    setPicking(false);
+    setTitle("");
+    setBody("");
+    setSource("");
+    setImages([]);
+    setStatus(project.status);
+  }
+  function toggleImage(src: string) {
+    setImages((current) =>
+      current.includes(src)
+        ? current.filter((image) => image !== src)
+        : [...current, src],
+    );
+  }
+  async function publish(event?: React.FormEvent) {
+    event?.preventDefault();
+    if (publishing || !title.trim() || !body.trim()) return;
+    setPublishing(true);
+    try {
+      const date = new Date().toISOString();
+      const id = crypto.randomUUID();
+      await onUpdate({
+        ...project,
+        status,
+        updated: date,
+        updates: [
+          {
+            id,
+            title: title.trim(),
+            body: body.trim(),
+            date,
+            sourceUrl: source.trim() || undefined,
+            images: images.map((src) => ({ src })),
+          },
+          ...project.updates,
+        ],
+      });
+      reset();
+      onPublished(id);
+      onNotify("Oppdateringen er publisert");
+    } catch (error) {
+      onNotify(errorMessage(error, "Kunne ikke publisere oppdateringen."));
+    } finally {
+      setPublishing(false);
+    }
+  }
+  const send = (
+    <button
+      type="submit"
+      className={composerSend}
+      disabled={publishing || !title.trim() || !body.trim()}
+      aria-label="Publiser oppdatering"
+    >
+      <ArrowUp size={16} strokeWidth={2.25} />
+    </button>
+  );
+  return (
+    <form
+      id="project-update-form"
+      className={cn(
+        composer,
+        "mb-6 flex-col items-stretch gap-0 data-open:rounded-2xl",
+      )}
+      data-open={open || undefined}
+      onSubmit={publish}
+      onFocus={() => setOpen(true)}
+      onBlur={(event) => {
+        // Closes when focus leaves an untouched composer.
+        if (empty && !event.currentTarget.contains(event.relatedTarget))
+          reset();
+      }}
+      onKeyDown={(event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+          event.preventDefault();
+          void publish();
+        }
+        if (event.key === "Escape" && open) {
+          event.preventDefault();
+          event.stopPropagation();
+          reset();
+          titleRef.current?.blur();
+        }
+      }}
+    >
+      <div className="flex items-center gap-1.5">
+        <input
+          ref={titleRef}
+          className={cn(composerField, open && "font-semibold")}
+          aria-label="Overskrift"
+          placeholder={open ? "Overskrift" : "Skriv en oppdatering"}
+          required
+          maxLength={120}
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+        />
+        {!open && send}
+      </div>
+      {open && (
+        <>
+          <textarea
+            className={cn(
+              composerField,
+              "block max-h-65 min-h-[calc(3lh+10px)] flex-none resize-none field-sizing-content",
+            )}
+            aria-label="Oppdatering"
+            placeholder="Hva har skjedd siden sist?"
+            required
+            maxLength={5000}
+            rows={3}
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+          />
+          <input
+            type="url"
+            aria-label="Kildelenke (valgfritt)"
+            placeholder="Kildelenke (valgfritt)"
+            pattern="https://.*"
+            maxLength={2000}
+            className={composerField}
+            value={source}
+            onChange={(event) => setSource(event.target.value)}
+          />
+          {picking && (
+            <div
+              id="update-composer-images"
+              className="grid grid-cols-3 gap-2 px-2 pt-1 pb-2"
+            >
+              {galleryChoices.map((choice) => (
+                <button
+                  key={choice.src}
+                  type="button"
+                  className={cn(
+                    "relative h-18 overflow-hidden rounded-lg border-2 border-transparent",
+                    "transition-[border-color,box-shadow] hover:border-accent/40",
+                    "aria-pressed:border-accent aria-pressed:ring-2 aria-pressed:ring-accent/15 motion-reduce:transition-none",
+                  )}
+                  aria-pressed={images.includes(choice.src)}
+                  onClick={() => toggleImage(choice.src)}
+                >
+                  <Image
+                    src={choice.src}
+                    alt=""
+                    fill
+                    sizes="(max-width: 640px) 30vw, 240px"
+                    className="object-cover"
+                  />
+                  <span className="absolute bottom-1.5 left-1.75 text-[10px] font-semibold text-white [text-shadow:0_1px_4px_#0008]">
+                    {choice.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="mt-1 flex items-center gap-1 border-t border-border pt-1">
+            <button
+              type="button"
+              className={composerTool}
+              aria-expanded={picking}
+              aria-controls="update-composer-images"
+              onClick={() => setPicking(!picking)}
+            >
+              <ImagePlus size={15} aria-hidden="true" />
+              Bilder
+              {images.length > 0 && (
+                <small className="text-2xs tabular-nums">{images.length}</small>
+              )}
+            </button>
+            <label className={composerTool}>
+              <i
+                className={cn("size-2 rounded-full", statusTone[status].dot)}
+                aria-hidden="true"
+              />
+              <span className="sr-only">Prosjektstatus</span>
+              <select
+                className="cursor-pointer appearance-none bg-transparent outline-none"
+                value={status}
+                onChange={(event) => setStatus(event.target.value as Status)}
+              >
+                {statusOrder.map((value) => (
+                  <option key={value} value={value}>
+                    {statuses[value].label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className={cn(composerTool, "ml-auto")}
+              onClick={reset}
+            >
+              Avbryt
+            </button>
+            {send}
+          </div>
+        </>
+      )}
+    </form>
+  );
+}
+
+export default function ProjectPost({
+  project,
+  initialUpdateId,
+  embedded = false,
+  onClose,
+  feedback,
+  saved,
+  onSave,
+  onMap,
+  comments,
+  onNotify,
+}: Props) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const tabScroll = useRef<Record<string, number>>({});
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!root) return;
+    const measure = () =>
+      root.parentElement?.style.setProperty(
+        "--scrollbar-width",
+        `${root.offsetWidth - root.clientWidth}px`,
+      );
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    measure();
+    return () => observer.disconnect();
+  }, []);
+  const { canModerate } = useAuth();
+  const { mutate } = useCommunity();
+  const onUpdate = (next: Project) =>
+    mutate({ action: "project", project: next, create: false });
+  const [tab, setTab] = useState(initialUpdateId ? "updates" : "discussion");
+  // Updates whose comment section is open; mounted ones stay for the collapse.
+  const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
+  const [highlightId, setHighlightId] = useState(initialUpdateId || "");
+  const [copied, setCopied] = useState(false);
+  // Edit mode works on a draft; only the changed fields are saved.
+  const [draft, setDraft] = useState<Project | null>(null);
+  const [stage, setStage] = useState<EditStage>("edit");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const changed = draft ? changedFields(draft, project) : [];
+  const dirty = changed.length > 0;
+  const edit = draft && {
+    draft,
+    original: project,
+    changed,
+    change: (patch: Partial<Project>) =>
+      setDraft((current) => current && { ...current, ...patch }),
+    revert: (id: FieldId) => {
+      const saved = toDraft(project);
+      setDraft(
+        (current) =>
+          current && {
+            ...current,
+            ...Object.fromEntries(
+              fields[id].keys.map((key) => [key, saved[key]]),
+            ),
+          },
+      );
+    },
+  };
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+  function startEditing() {
+    setDraft(toDraft(project));
+    setStage("edit");
+    contentRef.current?.scrollTo({ top: 0 });
+  }
+  function stopEditing() {
+    setDraft(null);
+    setStage("edit");
+    requestAnimationFrame(() =>
+      document
+        .querySelector<HTMLElement>('[aria-label="Rediger prosjekt"]')
+        ?.focus({ preventScroll: true }),
+    );
+  }
+  /** Closing (✕, Esc) steps out of a review, then out of edit mode, first. */
+  function close() {
+    if (!draft) return onClose();
+    if (stage !== "edit") return setStage("edit");
+    if (dirty) setStage("discard");
+    else stopEditing();
+  }
+  async function saveEdits() {
+    if (!draft || !dirty || savingEdit) return;
+    setSavingEdit(true);
+    try {
+      await onUpdate({ ...project, ...changesToSave(draft, changed) });
+      stopEditing();
+      onNotify(
+        changed.length === 1
+          ? "Endringen er lagret"
+          : `${changed.length} endringer er lagret`,
+      );
+    } catch (error) {
+      onNotify(errorMessage(error, "Kunne ikke lagre endringene."));
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+  const updates = getProjectUpdates(project);
+  const referenceCounts = new Map<string, number>();
+  for (const comment of comments)
+    if (comment.updateId)
+      referenceCounts.set(
+        comment.updateId,
+        (referenceCounts.get(comment.updateId) ?? 0) + 1,
+      );
+  const tabs = [
+    {
+      id: "discussion",
+      label: "Diskusjon",
+      icon: MessageCircle,
+    },
+    {
+      id: "updates",
+      label: "Oppdateringer",
+      icon: Megaphone,
+    },
+  ];
+  useEffect(() => {
+    if (embedded)
+      document
+        .getElementById("project-card-title")
+        ?.focus({ preventScroll: true });
+    if (initialUpdateId)
+      requestAnimationFrame(() =>
+        document
+          .getElementById(`update-${initialUpdateId}`)
+          ?.scrollIntoView({ block: "start" }),
+      );
+  }, [embedded, project.id, initialUpdateId]);
+  /**
+   * Tabs share everything above them, so switching keeps the scroll position.
+   * Once scrolled past the tab bar, each tab returns to where it was left.
+   */
+  function selectTab(next: string) {
+    const root = contentRef.current;
+    const tabs = document.getElementById("project-sections");
+    if (!root || !tabs || next === tab) return setTab(next);
+    const pinAt =
+      tabs.getBoundingClientRect().top -
+      root.getBoundingClientRect().top +
+      root.scrollTop;
+    const pinned = root.scrollTop >= pinAt - 1;
+    tabScroll.current[tab] = root.scrollTop;
+    flushSync(() => setTab(next));
+    if (pinned)
+      root.scrollTop = Math.max(pinAt, tabScroll.current[next] ?? pinAt);
+  }
+  function readUpdate(id: string) {
+    setTab("updates");
+    setHighlightId(id);
+    requestAnimationFrame(() =>
+      document
+        .getElementById(`update-${id}`)
+        ?.scrollIntoView({ block: "start" }),
+    );
+  }
+  function toggleComments(id: string) {
+    setOpenComments((open) => ({ ...open, [id]: !open[id] }));
+  }
+  async function share() {
+    try {
+      await navigator.clipboard.writeText(
+        `${window.location.origin}${projectHref(project.id)}`,
+      );
+      setCopied(true);
+      onNotify("Lenke kopiert");
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      onNotify("Kopier prosjektets lenke fra adressefeltet i nettleseren.");
+    }
+  }
+  const actions = {
+    onEdit: canModerate ? startEditing : undefined,
+    copied,
+    saved,
+    onSave,
+    onShare: share,
+    onMap,
+  };
+  const content = (
+    <ProjectEditContext value={edit}>
+      <article
+        className="relative flex h-full min-h-0 flex-col bg-surface"
+        data-project-post=""
+      >
+        <ProjectPostHeader
+          project={project}
+          scrollRootRef={contentRef}
+          onClose={close}
+          actions={embedded && <ProjectActions {...actions} />}
+        />
+        <div
+          ref={contentRef}
+          className={cn(
+            "min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin",
+            embedded && "pb-[calc(24px+var(--drawer-keyboard-inset,0px))]",
+          )}
+          style={embedded ? undefined : { marginTop: -headerOverlap }}
+          data-project-scroll=""
+          data-drawer-scroll
+        >
+          {!embedded && (
+            <ProjectPostHeaderDetails project={project} {...actions} />
+          )}
+          {/* Wide screens: intro, tabs and panel on the left; facts start at the top on the right. */}
+          <div className="md:grid md:grid-cols-[minmax(0,1fr)_232px] md:grid-rows-[auto_auto_1fr] md:items-start md:gap-x-7 md:px-7 md:pb-10 lg:grid-cols-[minmax(0,1fr)_272px] lg:gap-x-10">
+            <section
+              className="px-4.5 pt-2 pb-3.5 md:col-start-1 md:max-w-180 md:px-0 md:pt-4 md:pb-4.5"
+              aria-label="Om prosjektet"
+            >
+              {draft ? (
+                // Fields follow the description, where the map has room.
+                <div className="pb-6" data-project-header-hero="">
+                  <EditDescription />
+                  <EditFacts />
+                </div>
+              ) : embedded ? (
+                <MobileIntro project={project} />
+              ) : (
+                <DesktopIntro project={project} />
+              )}
+            </section>
+            <nav
+              className="mx-4.5 border-b border-border md:col-start-1 md:mx-0 md:max-w-180"
+              hidden={Boolean(draft)}
+              id="project-sections"
+              aria-label="Prosjektinnhold"
+            >
+              <div className="flex gap-6">
+                {tabs.map(({ id, label, icon: Icon }) => (
+                  <button
+                    type="button"
+                    key={id}
+                    className={cn(
+                      "-mb-px flex min-h-11 items-center justify-center gap-1.75 border-b-2 border-transparent",
+                      "text-sm leading-normal font-medium whitespace-nowrap text-muted",
+                      "transition-colors duration-150 hover:text-ink motion-reduce:transition-none",
+                      "aria-pressed:border-ink aria-pressed:text-ink max-xs:[&>svg]:hidden",
+                    )}
+                    aria-pressed={tab === id}
+                    aria-controls={`project-panel-${id}`}
+                    onClick={() => selectTab(id)}
+                  >
+                    <Icon size={16} />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            </nav>
+            <div className="px-4.5 pt-4.5 pb-8 md:contents">
+              <div
+                className="max-w-180 min-w-0 md:col-start-1 md:pt-6"
+                hidden={Boolean(draft)}
+              >
+                <div
+                  id="project-panel-discussion"
+                  hidden={tab !== "discussion"}
+                >
+                  <ProjectDiscussion
+                    projectId={project.id}
+                    comments={comments}
+                    updates={updates}
+                    onReadUpdate={readUpdate}
+                    onNotify={onNotify}
+                  />
+                </div>
+                <section
+                  id="project-panel-updates"
+                  hidden={tab !== "updates"}
+                  aria-label="Prosjektoppdateringer"
+                >
+                  {canModerate && (
+                    <UpdateComposer
+                      project={project}
+                      onUpdate={onUpdate}
+                      onNotify={onNotify}
+                      onPublished={readUpdate}
+                    />
+                  )}
+                  {updates.length ? (
+                    <div className={styles.timeline}>
+                      {updates.map((update) => (
+                        <article
+                          id={`update-${update.id}`}
+                          key={update.id}
+                          className={styles.entry}
+                          data-highlighted={highlightId === update.id}
+                        >
+                          <RelativeTime
+                            date={update.date}
+                            mode="suffix"
+                            withYear
+                            className="text-xs leading-normal font-medium text-muted"
+                          />
+                          <h3 className="mt-1 mb-2.5 text-lg leading-normal font-[620] tracking-[-0.3px] max-sm:mt-0.5 max-sm:mb-2 max-sm:text-[17px]">
+                            {update.title}
+                          </h3>
+                          {update.body.split("\n\n").map((paragraph, index) => (
+                            <p
+                              key={index}
+                              className="mb-4 text-body leading-[1.75] whitespace-pre-wrap wrap-anywhere text-ink-soft max-md:text-sm max-sm:mb-3 max-sm:leading-[1.65]"
+                            >
+                              {paragraph}
+                            </p>
+                          ))}
+                          <UpdateGallery
+                            images={update.images || []}
+                            title={update.title}
+                          />
+                          <div className="mt-2.5 flex flex-wrap items-center gap-x-5">
+                            <button
+                              type="button"
+                              className={updateAction}
+                              data-comments-toggle=""
+                              aria-expanded={!!openComments[update.id]}
+                              aria-controls={`update-comments-${update.id}`}
+                              onClick={() => toggleComments(update.id)}
+                            >
+                              <MessagesSquare size={15} aria-hidden="true" />
+                              <span>
+                                {openComments[update.id]
+                                  ? "Skjul kommentarer"
+                                  : "Se kommentarer"}
+                              </span>
+                              <small className="text-ui font-medium text-muted tabular-nums">
+                                {referenceCounts.get(update.id) ?? 0}
+                              </small>
+                            </button>
+                            {update.sourceUrl && (
+                              <a
+                                className={updateAction}
+                                href={update.sourceUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                <span>Les kilden</span>
+                                <ArrowUpRight size={14} aria-hidden="true" />
+                              </a>
+                            )}
+                          </div>
+                          {/* An update's own comment section, unfolding below its actions. */}
+                          <div
+                            id={`update-comments-${update.id}`}
+                            className={cn(
+                              "grid grid-rows-[0fr] opacity-0 transition-[grid-template-rows,opacity] duration-280 ease-out-soft motion-reduce:transition-none",
+                              "data-[open=true]:grid-rows-[1fr] data-[open=true]:opacity-100",
+                            )}
+                            data-update-comments=""
+                            data-open={!!openComments[update.id]}
+                            inert={!openComments[update.id]}
+                          >
+                            {/* Clip, not hidden: the mobile dock inside must stay sticky.
+                                The margin leaves room for focus outlines. */}
+                            <div className="-mx-1.5 min-h-0 overflow-clip px-1.5">
+                              {update.id in openComments && (
+                                <ProjectDiscussion
+                                  projectId={project.id}
+                                  comments={comments}
+                                  updates={updates}
+                                  updateId={update.id}
+                                  onReadUpdate={readUpdate}
+                                  onNotify={onNotify}
+                                />
+                              )}
+                              {update.id in openComments && (
+                                <CommentsDock
+                                  id={update.id}
+                                  open={!!openComments[update.id]}
+                                  onClose={() => toggleComments(update.id)}
+                                />
+                              )}
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={<Megaphone size={24} />}
+                      title="Ingen oppdateringer ennå"
+                    />
+                  )}
+                </section>
+              </div>
+              <aside
+                className="hidden md:col-start-2 md:row-span-3 md:row-start-1 md:block md:pt-5"
+                aria-label="Prosjektfakta"
+              >
+                <div className={cover}>
+                  <Image
+                    src={project.image}
+                    alt={project.title}
+                    fill
+                    sizes="280px"
+                    className="object-cover"
+                  />
+                </div>
+                {project.imageCredit && (
+                  <span className={credit}>{project.imageCredit}</span>
+                )}
+                {!draft && <ProjectFacts project={project} />}
+                <p className={note}>
+                  Sist redigert {formatDateYear(project.updated)}
+                </p>
+              </aside>
+            </div>
+          </div>
+          {draft && (
+            <EditBar
+              stage={stage}
+              saving={savingEdit}
+              onStage={setStage}
+              onConfirm={() => void saveEdits()}
+              onDiscard={stopEditing}
+            />
+          )}
+        </div>
+      </article>
+      {feedback}
+    </ProjectEditContext>
+  );
+  return embedded ? (
+    content
+  ) : (
+    <Dialog
+      title={project.title}
+      className={cn(
+        "h-[calc(100dvh-64px)] max-h-230 w-[1120px] max-w-[calc(100vw-48px)] overflow-hidden rounded-2xl",
+        "backdrop:bg-ink/40 backdrop:backdrop-blur-[2px]",
+      )}
+      closeButton={false}
+      onClose={close}
+      initialFocusSelector="#project-card-title"
+      returnFocusSelector="#project-search"
+    >
+      {content}
+    </Dialog>
+  );
+}

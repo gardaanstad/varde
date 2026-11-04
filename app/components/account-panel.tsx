@@ -1,0 +1,284 @@
+"use client";
+
+import Link from "next/link";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Bookmark,
+  ChevronRight,
+  LoaderCircle,
+  LogOut,
+  Settings,
+  UserRound,
+  X,
+} from "lucide-react";
+import { useRef, useState } from "react";
+import { useAuth } from "./auth-provider";
+import GoogleSignIn from "./google-sign-in";
+import AccountSettings from "./account-settings";
+import ProfileEditor from "./profile-editor";
+import { ProfileContent } from "./profile-page";
+import { authClient } from "../lib/auth-client";
+import { navigateWithFreshSession } from "../lib/auth-navigation";
+import { welcomeHref } from "../lib/account-rules";
+import { accountProfile } from "../lib/profiles";
+import { cn } from "../lib/cn";
+import {
+  accountAction,
+  accountView,
+  iconButton,
+  primaryButton,
+  secondaryButton,
+  textButton,
+} from "../lib/ui";
+
+export default function AccountPanel({
+  onBack,
+  onSaved,
+  savedCount = 0,
+  next = "/",
+}: {
+  onBack?: () => void;
+  /** Opens the saved projects list, where the app has no other entry to it. */
+  onSaved?: () => void;
+  savedCount?: number;
+  next?: string;
+}) {
+  const { user, pending } = useAuth();
+  const [view, setView] = useState<"profile" | "edit" | "settings">("profile");
+  const [error, setError] = useState("");
+  const [signingOut, setSigningOut] = useState(false);
+  const settingsTrigger = useRef<HTMLButtonElement>(null);
+  const editTrigger = useRef<HTMLButtonElement>(null);
+  const backButton = useRef<HTMLButtonElement>(null);
+  // Without a username there is no profile yet, only sign-in.
+  const activeView = user?.username ? view : "signin";
+
+  function switchView(next: typeof view) {
+    const from = view;
+    setView(next);
+    requestAnimationFrame(() => {
+      const target =
+        next !== "profile"
+          ? backButton
+          : from === "settings"
+            ? settingsTrigger
+            : editTrigger;
+      target.current?.focus({ preventScroll: true });
+    });
+  }
+
+  async function signOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    setError("");
+    try {
+      const result = await authClient.signOut();
+      if (result.error) throw new Error();
+      navigateWithFreshSession(next);
+    } catch {
+      setError("Kunne ikke logge ut. Prøv igjen.");
+      setSigningOut(false);
+    }
+  }
+
+  const subView = activeView === "edit" || activeView === "settings";
+  const scroll =
+    "min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin";
+  // Top-level views read like any profile; the dialog or this button closes.
+  const top = cn(
+    scroll,
+    "px-7 pt-7 pb-8 max-sm:px-4.5 max-sm:pt-1",
+  );
+
+  return (
+    <div
+      data-account-panel
+      className="relative flex h-full min-h-0 flex-col bg-surface"
+    >
+      {subView ? (
+        <header
+          className={cn(
+            "flex h-19 shrink-0 items-center gap-3 border-b border-border px-6",
+            !onBack && "pr-18",
+          )}
+        >
+          <button
+            ref={backButton}
+            type="button"
+            className={cn(textButton, "-ml-2 shrink-0 text-muted")}
+            onClick={() => switchView("profile")}
+          >
+            <ArrowLeft size={16} aria-hidden="true" />
+            Tilbake
+          </button>
+          <h2 className="min-w-0 text-sm font-semibold">
+            {activeView === "settings"
+              ? "Kontoinnstillinger"
+              : "Rediger profil"}
+          </h2>
+        </header>
+      ) : (
+        onBack && (
+          <button
+            type="button"
+            className={cn(
+              iconButton,
+              "absolute top-0 right-1.5 z-10 rounded-lg",
+            )}
+            onClick={onBack}
+            aria-label="Lukk"
+          >
+            <X size={20} />
+          </button>
+        )
+      )}
+      <div
+        data-drawer-scroll
+        className={cn(
+          top,
+          "flex-col",
+          accountView,
+          activeView === "signin" ? "flex" : "hidden",
+        )}
+      >
+        {pending ? (
+          <p
+            role="status"
+            className="flex flex-1 items-center justify-center gap-2 text-sm text-muted"
+          >
+            <LoaderCircle
+              size={18}
+              className="animate-spin motion-reduce:animate-none"
+              aria-hidden="true"
+            />
+            Henter profilen din …
+          </p>
+        ) : (
+          <>
+            <div className="flex items-center gap-4 pr-10">
+              <span
+                aria-hidden="true"
+                className="grid size-14 shrink-0 place-items-center rounded-full bg-accent-soft text-accent"
+              >
+                <UserRound size={24} />
+              </span>
+              <h3 className="min-w-0 text-2xl leading-tight font-semibold tracking-tight">
+                {user ? "Velg brukernavn" : "Logg inn"}
+              </h3>
+            </div>
+            <div className="mt-6 space-y-3">
+              {user ? (
+                <Link
+                  href={welcomeHref(next)}
+                  className={cn(primaryButton, "w-full")}
+                >
+                  Fortsett
+                  <ArrowRight size={16} aria-hidden="true" />
+                </Link>
+              ) : (
+                <GoogleSignIn next={next} />
+              )}
+              <p className="text-xs leading-5 text-muted">
+                E-posten din vises aldri.
+              </p>
+            </div>
+            {user && (
+              <div className="mt-auto border-t border-border pt-2">
+                <button
+                  type="button"
+                  disabled={signingOut}
+                  onClick={() => void signOut()}
+                  className={cn(accountAction, "min-h-11 text-muted")}
+                >
+                  <LogOut size={18} aria-hidden="true" />
+                  {signingOut ? "Logger ut …" : "Logg ut"}
+                </button>
+                {error && (
+                  <p
+                    role="alert"
+                    className="px-3 pt-2 text-xs leading-6 text-danger"
+                  >
+                    {error}
+                  </p>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      {user?.username && (
+        <>
+          <div
+            data-drawer-scroll
+            className={cn(
+              top,
+              accountView,
+              activeView !== "profile" && "hidden",
+            )}
+          >
+            <ProfileContent
+              profile={accountProfile({ ...user, username: user.username })}
+              embedded
+              onEdit={() => switchView("edit")}
+              editRef={editTrigger}
+              actions={
+                <button
+                  ref={settingsTrigger}
+                  type="button"
+                  className={cn(secondaryButton, "size-11 px-0")}
+                  onClick={() => switchView("settings")}
+                  aria-label="Kontoinnstillinger"
+                  data-tooltip="Kontoinnstillinger"
+                >
+                  <Settings size={17} aria-hidden="true" />
+                </button>
+              }
+              links={
+                onSaved && (
+                  <button
+                    type="button"
+                    className={cn(
+                      accountAction,
+                      "mt-4 min-h-12 rounded-lg border-border",
+                    )}
+                    onClick={onSaved}
+                  >
+                    <Bookmark size={18} aria-hidden="true" />
+                    <span className="flex-1 text-sm">Lagrede prosjekter</span>
+                    {savedCount > 0 && (
+                      <span className="text-xs tabular-nums text-muted">
+                        {savedCount}
+                      </span>
+                    )}
+                    <ChevronRight size={16} aria-hidden="true" />
+                  </button>
+                )
+              }
+            />
+          </div>
+          <div
+            data-drawer-scroll
+            className={cn(
+              scroll,
+              "p-6",
+              accountView,
+              activeView !== "edit" && "hidden",
+            )}
+          >
+            <ProfileEditor key={user.id} user={user} />
+          </div>
+          <div
+            className={cn(
+              "min-h-0 flex-1 flex-col",
+              accountView,
+              activeView === "settings" ? "flex" : "hidden",
+            )}
+          >
+            <AccountSettings key={user.id} user={user} embedded />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

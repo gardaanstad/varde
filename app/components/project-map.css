@@ -1,0 +1,161 @@
+@reference "../globals.css";
+
+/*
+ * Leaflet renders these elements outside React, so the overrides are global
+ * (scoped to [data-project-map]) and unlayered, like leaflet.css itself.
+ * Application-owned map controls use Tailwind utilities.
+ */
+[data-project-map] .leaflet-container a {
+  color: var(--color-muted) !important;
+}
+
+/* plus-lighter + a pane filter makes tiles vanish on WebKit. */
+[data-project-map] .leaflet-container img.leaflet-tile {
+  mix-blend-mode: normal;
+}
+
+[data-project-map] .leaflet-control-attribution {
+  background: rgb(255 255 255 / 0.78) !important;
+  color: var(--color-muted);
+  font-family: inherit !important;
+  font-size: 8px !important;
+  padding: 2px 5px !important;
+}
+
+[data-project-map] .leaflet-control-scale {
+  margin-bottom: 20px !important;
+  margin-left: 22px !important;
+}
+
+[data-project-map][data-drawing="true"] .leaflet-control-scale {
+  margin-bottom: 10px !important;
+}
+
+[data-project-map] .leaflet-control-scale-line {
+  background: none !important;
+  border-color: var(--color-muted) !important;
+  color: var(--color-muted) !important;
+  font-size: 8px !important;
+  line-height: 1 !important;
+  padding-bottom: 3px !important;
+}
+
+[data-project-map][data-map-style="standard"] .leaflet-tile-pane {
+  filter: saturate(0.85);
+}
+
+[data-project-map][data-map-style="streets"] .leaflet-tile-pane {
+  filter: saturate(0.65) contrast(0.97);
+}
+
+[data-project-map] .leaflet-interactive {
+  transition:
+    stroke-width 160ms ease,
+    fill-opacity 160ms ease,
+    stroke-opacity 160ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-project-map] .leaflet-interactive:hover {
+    fill-opacity: 0.3;
+    stroke-opacity: 1;
+  }
+}
+
+[data-project-map] .leaflet-interactive[role="button"]:focus-visible {
+  fill-opacity: 0.4;
+  outline: none;
+  stroke: var(--color-accent-strong);
+  stroke-width: 5px;
+}
+
+[data-project-map] .project-tooltip {
+  border: 1px solid var(--color-border) !important;
+  border-radius: 8px !important;
+  box-shadow: var(--shadow-popover) !important;
+  color: var(--color-ink) !important;
+  font-family: inherit;
+  padding: 8px 12px !important;
+}
+
+@media (width < theme(--breakpoint-md)) {
+  [data-project-map] .leaflet-control-scale {
+    display: none;
+  }
+}
+
+@media (width < theme(--breakpoint-sm)) {
+  [data-project-map] .leaflet-control-attribution {
+    font-size: 6px !important;
+    max-width: 150px;
+    text-align: right;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-project-map] .leaflet-interactive {
+    transition: none;
+  }
+}
+
+/* Drawing handles: a dot inside a larger hit area. */
+.draw-vertex,
+.draw-midpoint {
+  cursor: grab;
+}
+
+/* Leaflet sets the icon to display: block, so the dot is centred absolutely. */
+.draw-vertex::after,
+.draw-midpoint::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  border-radius: 50%;
+  transition: transform 120ms ease;
+}
+
+.draw-vertex::after {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-accent);
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(20 28 24 / 0.25);
+}
+
+.draw-midpoint::after {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--color-accent);
+  background: rgb(255 255 255 / 0.75);
+  opacity: 0.75;
+}
+
+.draw-vertex:hover::after,
+.draw-midpoint:hover::after,
+.leaflet-dragging .draw-vertex::after {
+  transform: scale(1.3);
+}
+
+.draw-midpoint:hover::after {
+  opacity: 1;
+}
+
+.leaflet-dragging .draw-vertex,
+.leaflet-dragging .draw-midpoint {
+  cursor: grabbing;
+}
+
+@media (pointer: coarse) {
+  .draw-vertex::after {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .draw-vertex::after,
+  .draw-midpoint::after {
+    transition: none;
+  }
+}
