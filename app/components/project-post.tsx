@@ -23,11 +23,10 @@ import {
   type Category,
   formatDateYear,
   getProjectUpdates,
-  hasPhoto,
   presetPlaces,
   type Project,
-  type ProjectImage,
   projectHref,
+  projectPhotos,
   projectPlace,
   type Status,
   statuses,
@@ -69,6 +68,7 @@ import {
   useProjectEdit,
 } from "./project-edit";
 import EmptyState from "./empty-state";
+import ImageGallery from "./image-gallery";
 import styles from "./project-post.module.css";
 
 const ProjectMap = dynamic(() => import("./project-map"), { ssr: false });
@@ -81,15 +81,8 @@ const galleryChoices = [
   { src: "/images/regjeringskvartalet.jpg", label: "Kvartal" },
   { src: "/images/fornebubanen.jpg", label: "Anlegg" },
 ];
-const galleryLayout = {
-  1: "[&>*]:min-h-[220px] max-sm:[&>*]:min-h-[200px]",
-  2: "grid-cols-2 [&>*]:min-h-[180px] max-sm:[&>*]:min-h-[150px]",
-  3: "h-[260px] max-sm:h-[216px] grid-cols-[1.4fr_1fr] grid-rows-2 [&>*]:min-h-0 [&>*:first-child]:row-span-2",
-  4: "h-[260px] max-sm:h-[216px] grid-cols-2 grid-rows-2 [&>*]:min-h-0",
-} as const;
 const cover =
   "relative aspect-3/2 w-full overflow-hidden rounded-[10px] bg-surface-muted";
-const credit = "mt-1.5 block text-2xs leading-normal text-muted";
 const note = "mt-3 text-xs leading-[1.6] text-muted";
 /**
  * "Les mer" / "Skjul kommentarer": sticks to the bottom (when `sticky`) and
@@ -123,59 +116,6 @@ type Props = {
   comments: Comment[];
   onNotify: (message: string) => void;
 };
-function galleryCount(images: ProjectImage[]): 1 | 2 | 3 | 4 {
-  return Math.min(Math.max(images.length, 1), 4) as 1 | 2 | 3 | 4;
-}
-
-function UpdateGallery({
-  images,
-  title,
-}: {
-  images: ProjectImage[];
-  title: string;
-}) {
-  if (images.length === 0) return null;
-  const credits = [
-    ...new Set(images.map((image) => image.credit).filter(Boolean)),
-  ];
-  const count = galleryCount(images);
-  return (
-    <figure className="my-3.5 mb-0.5">
-      <div
-        className={cn(
-          "grid gap-1.25 overflow-hidden rounded-xl bg-surface-muted",
-          galleryLayout[count],
-        )}
-        data-count={count}
-        role="group"
-        aria-label={`Bilder til ${title}`}
-      >
-        {images.slice(0, 4).map((image, index) => (
-          <div className="relative min-h-42.5" key={`${image.src}-${index}`}>
-            <Image
-              src={image.src}
-              alt={image.alt || ""}
-              fill
-              sizes="(max-width: 640px) 100vw, 720px"
-              className="object-cover"
-            />
-            {index === 3 && images.length > 4 && (
-              <span className="absolute inset-0 grid place-items-center bg-ink/55 text-[22px] font-semibold text-white">
-                +{images.length - 4}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-      {credits.length > 0 && (
-        <figcaption className="mt-2 text-xs leading-relaxed text-muted">
-          {credits.join(" · ")}
-        </figcaption>
-      )}
-    </figure>
-  );
-}
-
 const factRow =
   "flex justify-between gap-4 border-b border-border py-2.25 text-ui leading-normal first:border-t";
 const factValue =
@@ -418,7 +358,8 @@ function MobileIntro({ project }: { project: Project }) {
   const [clamped, setClamped] = useState(true);
   const [stuck, setStuck] = useState(false);
   // Without a photo, three lines show and fade out instead of an ellipsis.
-  const photo = hasPhoto(project);
+  const photos = projectPhotos(project);
+  const photo = photos.length > 0;
   const [overflows, setOverflows] = useState(true);
   const body = useRef<HTMLDivElement>(null);
   const text = useRef<HTMLDivElement>(null);
@@ -505,22 +446,14 @@ function MobileIntro({ project }: { project: Project }) {
           ))}
         </div>
         {photo && (
-          <figure className="mt-3.5">
-            <div className={cover}>
-              <Image
-                src={project.image}
-                alt={project.title}
-                fill
-                sizes="100vw"
-                className="object-cover"
-              />
-            </div>
-            {project.imageCredit && (
-              <figcaption className={credit}>
-                {project.imageCredit}
-              </figcaption>
-            )}
-          </figure>
+          <div className="mt-3.5">
+            <ImageGallery
+              images={photos}
+              label={`Bilder av ${project.title}`}
+              sizes="100vw"
+              className={cover}
+            />
+          </div>
         )}
         {/* Spacing sits inside the clip, so the panel can close fully. */}
         <div
@@ -992,6 +925,7 @@ export default function ProjectPost({
     }
   }
   const updates = getProjectUpdates(project);
+  const photos = projectPhotos(project);
   const referenceCounts = new Map<string, number>();
   for (const comment of comments)
     if (comment.updateId)
@@ -1199,10 +1133,16 @@ export default function ProjectPost({
                               {paragraph}
                             </p>
                           ))}
-                          <UpdateGallery
-                            images={update.images || []}
-                            title={update.title}
-                          />
+                          {!!update.images?.length && (
+                            <div className="mt-3.5 mb-0.5">
+                              <ImageGallery
+                                images={update.images}
+                                label={`Bilder til ${update.title}`}
+                                sizes="(max-width: 640px) 100vw, 720px"
+                                className="aspect-2/1 max-sm:aspect-3/2"
+                              />
+                            </div>
+                          )}
                           <div className="mt-2.5 flex flex-wrap items-center gap-x-5">
                             <button
                               type="button"
@@ -1282,17 +1222,23 @@ export default function ProjectPost({
                 className="hidden md:col-start-2 md:row-span-3 md:row-start-1 md:block md:pt-5"
                 aria-label="Prosjektfakta"
               >
-                <div className={cover}>
-                  <Image
-                    src={project.image}
-                    alt={project.title}
-                    fill
+                {photos.length > 0 ? (
+                  <ImageGallery
+                    images={photos}
+                    label={`Bilder av ${project.title}`}
                     sizes="280px"
-                    className="object-cover"
+                    className={cover}
                   />
-                </div>
-                {project.imageCredit && (
-                  <span className={credit}>{project.imageCredit}</span>
+                ) : (
+                  <div className={cover}>
+                    <Image
+                      src={project.image}
+                      alt={project.title}
+                      fill
+                      sizes="280px"
+                      className="object-cover"
+                    />
+                  </div>
                 )}
                 {!draft && <ProjectFacts project={project} />}
                 <p className={note}>

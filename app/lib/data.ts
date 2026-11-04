@@ -75,6 +75,16 @@ export function getProjectUpdates(project: Project): ProjectUpdate[] {
     .filter((update) => !isOriginUpdate(update, project.id))
     .sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
 }
+/** The project's own photo first, then every distinct photo from its updates. */
+export function projectPhotos(project: Project): ProjectImage[] {
+  const photos: ProjectImage[] = hasPhoto(project)
+    ? [{ src: project.image, alt: project.title, credit: project.imageCredit }]
+    : [];
+  for (const update of getProjectUpdates(project))
+    for (const image of update.images ?? [])
+      if (!photos.some((photo) => photo.src === image.src)) photos.push(image);
+  return photos;
+}
 export function projectHref(id: string) {
   return `/prosjekt/${encodeURIComponent(id)}`;
 }

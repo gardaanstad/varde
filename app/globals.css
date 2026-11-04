@@ -66,6 +66,7 @@
   --animate-dialog-enter: dialog-enter 180ms ease-out;
   --animate-tooltip-in: tooltip-in 90ms ease-out;
   --animate-tooltip-in-below: tooltip-in-below 90ms ease-out;
+  --animate-lightbox-in: lightbox-in 160ms ease-out;
 
   @keyframes preview-in {
     from {
@@ -89,6 +90,11 @@
     from {
       opacity: 0;
       transform: translateY(2px);
+    }
+  }
+  @keyframes lightbox-in {
+    from {
+      opacity: 0;
     }
   }
   @keyframes tooltip-in-below {
