@@ -16,9 +16,19 @@
 
   .entry {
     position: relative;
-    margin-bottom: 24px;
-    padding-bottom: 24px;
+    margin-bottom: 16px;
+    padding-bottom: 16px;
     scroll-margin-top: 64px;
+    transition: padding-bottom 280ms var(--ease-out-soft);
+
+    /* Open comments already end the entry; less air before the next one. */
+    &:has([data-update-comments][data-open="true"]) {
+      padding-bottom: 8px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
 
     &::before {
       content: "";
@@ -40,8 +50,12 @@
     }
 
     @variant max-sm {
-      margin-bottom: 20px;
-      padding-bottom: 20px;
+      margin-bottom: 14px;
+      padding-bottom: 14px;
+
+      &:has([data-update-comments][data-open="true"]) {
+        padding-bottom: 8px;
+      }
 
       &::before {
         left: -22px;

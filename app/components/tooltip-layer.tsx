@@ -124,8 +124,8 @@ export default function TooltipLayer() {
       role="tooltip"
       aria-hidden="true"
       className={[
-        "pointer-events-none fixed inset-auto top-0 left-0 m-0 max-w-60 rounded-md border-0 bg-ink px-2 py-1.25",
-        "text-xs leading-[1.35] font-medium whitespace-nowrap text-white shadow-popover",
+        "pointer-events-none fixed inset-auto top-0 left-0 m-0 w-max max-w-60 rounded-md border-0 bg-ink px-2 py-1.25",
+        "text-xs leading-[1.35] font-medium text-white shadow-popover",
         "motion-safe:animate-tooltip-in motion-safe:data-[side=bottom]:animate-tooltip-in-below",
       ].join(" ")}
     />

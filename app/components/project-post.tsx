@@ -17,6 +17,7 @@ import {
   ChevronDown,
   MessageCircle,
   MessagesSquare,
+  Plus,
 } from "lucide-react";
 import {
   categories,
@@ -494,32 +495,48 @@ function MobileIntro({ project }: { project: Project }) {
 /** Desktop description: first paragraph, "Les mer" for the rest. */
 function DesktopIntro({ project }: { project: Project }) {
   const [expanded, setExpanded] = useState(false);
-  const paragraphs = project.description.split("\n\n");
-  const shown = expanded ? paragraphs : paragraphs.slice(0, 1);
+  const [first, ...rest] = project.description.split("\n\n");
+  const paragraph =
+    "text-body leading-[1.65] whitespace-pre-wrap wrap-anywhere text-ink-soft max-md:text-sm max-md:leading-[1.6]";
+  const edited = (
+    <p className={note}>Sist redigert {formatDateYear(project.updated)}</p>
+  );
   return (
     <>
-      {shown.map((paragraph, index) => (
-        <p
-          key={index}
-          className={cn(
-            "text-body leading-[1.65] whitespace-pre-wrap wrap-anywhere text-ink-soft max-md:text-sm max-md:leading-[1.6]",
-            index > 0 && "mt-3",
-          )}
-        >
-          {paragraph}
-        </p>
-      ))}
-      {paragraphs.length > 1 && (
-        <div className="mt-0.5 flex flex-wrap gap-x-4.5">
-          <button
-            type="button"
-            className="inline-flex min-h-9 items-center gap-1.5 text-left text-ui font-medium text-accent underline-offset-4 hover:underline max-md:min-h-11"
-            aria-expanded={expanded}
-            onClick={() => setExpanded(!expanded)}
+      <p className={paragraph}>{first}</p>
+      {rest.length > 0 ? (
+        <>
+          {/* The rest unfolds below the first paragraph. */}
+          <div
+            className={cn(
+              "grid grid-rows-[0fr] opacity-0 transition-[grid-template-rows,opacity] duration-320 ease-out-soft motion-reduce:transition-none",
+              "data-[expanded=true]:grid-rows-[1fr] data-[expanded=true]:opacity-100",
+            )}
+            data-expanded={expanded}
+            inert={!expanded}
           >
-            {expanded ? "Vis mindre" : "Les mer"}
-          </button>
-        </div>
+            <div className="min-h-0 overflow-hidden">
+              {rest.map((text, index) => (
+                <p key={index} className={cn(paragraph, "mt-3")}>
+                  {text}
+                </p>
+              ))}
+              {edited}
+            </div>
+          </div>
+          <div className="mt-0.5 flex flex-wrap gap-x-4.5">
+            <button
+              type="button"
+              className="inline-flex min-h-9 items-center gap-1.5 text-left text-ui font-medium text-accent underline-offset-4 hover:underline max-md:min-h-11"
+              aria-expanded={expanded}
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? "Vis mindre" : "Les mer"}
+            </button>
+          </div>
+        </>
+      ) : (
+        edited
       )}
     </>
   );
@@ -607,6 +624,8 @@ function UpdateComposer({
   onPublished: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // The pill's width, so the form can grow out of it.
+  const [pillWidth, setPillWidth] = useState(0);
   const [publishing, setPublishing] = useState(false);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -615,6 +634,9 @@ function UpdateComposer({
   const [images, setImages] = useState<string[]>([]);
   const [picking, setPicking] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
+  const pillRef = useRef<HTMLButtonElement>(null);
+  // Escape and Avbryt hand focus back to the pill; a blur leaves it be.
+  const refocusPill = useRef(false);
   const empty =
     !title.trim() && !body.trim() && !source.trim() && !images.length;
   function reset() {
@@ -625,6 +647,15 @@ function UpdateComposer({
     setSource("");
     setImages([]);
     setStatus(project.status);
+  }
+  useEffect(() => {
+    if (open) titleRef.current?.focus({ preventScroll: true });
+    else if (refocusPill.current) pillRef.current?.focus({ preventScroll: true });
+    refocusPill.current = false;
+  }, [open]);
+  function cancel() {
+    refocusPill.current = true;
+    reset();
   }
   function toggleImage(src: string) {
     setImages((current) =>
@@ -675,16 +706,37 @@ function UpdateComposer({
       <ArrowUp size={16} strokeWidth={2.25} />
     </button>
   );
+  if (!open)
+    return (
+      <button
+        ref={pillRef}
+        type="button"
+        className={cn(
+          "mb-6 inline-flex min-h-10 items-center gap-2 rounded-[22px] border border-border-strong bg-surface pr-4 pl-3.5 text-ui font-medium text-ink/80",
+          "transition-[color,border-color,background-color] duration-150 hover:border-ink/35 hover:text-ink motion-reduce:transition-none",
+          "[&>svg]:text-muted",
+        )}
+        onClick={(event) => {
+          setPillWidth(event.currentTarget.offsetWidth);
+          setOpen(true);
+        }}
+      >
+        <Plus size={16} aria-hidden="true" />
+        Skriv en oppdatering
+      </button>
+    );
   return (
     <form
       id="project-update-form"
       className={cn(
         composer,
-        "mb-6 flex-col items-stretch gap-0 data-open:rounded-2xl",
+        "mb-6 flex-col items-stretch gap-0 overflow-hidden rounded-2xl [interpolate-size:allow-keywords]",
+        // Grows out of the pill: wider first, then taller.
+        "h-auto w-full transition-[width,height,border-radius,border-color,box-shadow] duration-320 ease-out-soft motion-reduce:transition-none",
+        "starting:h-10.5 starting:w-(--pill-width) starting:rounded-[22px]",
       )}
-      data-open={open || undefined}
+      style={{ "--pill-width": `${pillWidth}px` } as React.CSSProperties}
       onSubmit={publish}
-      onFocus={() => setOpen(true)}
       onBlur={(event) => {
         // Closes when focus leaves an untouched composer.
         if (empty && !event.currentTarget.contains(event.relatedTarget))
@@ -695,27 +747,23 @@ function UpdateComposer({
           event.preventDefault();
           void publish();
         }
-        if (event.key === "Escape" && open) {
+        if (event.key === "Escape") {
           event.preventDefault();
           event.stopPropagation();
-          reset();
-          titleRef.current?.blur();
+          cancel();
         }
       }}
     >
-      <div className="flex items-center gap-1.5">
-        <input
-          ref={titleRef}
-          className={cn(composerField, open && "font-semibold")}
-          aria-label="Overskrift"
-          placeholder={open ? "Overskrift" : "Skriv en oppdatering"}
-          required
-          maxLength={120}
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-        />
-        {!open && send}
-      </div>
+      <input
+        ref={titleRef}
+        className={cn(composerField, "font-semibold")}
+        aria-label="Overskrift"
+        placeholder="Overskrift"
+        required
+        maxLength={120}
+        value={title}
+        onChange={(event) => setTitle(event.target.value)}
+      />
       {open && (
         <>
           <textarea
@@ -807,7 +855,7 @@ function UpdateComposer({
             <button
               type="button"
               className={cn(composerTool, "ml-auto")}
-              onClick={reset}
+              onClick={cancel}
             >
               Avbryt
             </button>
@@ -1017,7 +1065,8 @@ export default function ProjectPost({
           project={project}
           scrollRootRef={contentRef}
           onClose={close}
-          actions={embedded && <ProjectActions {...actions} />}
+          embedded={embedded}
+          actions={<ProjectActions {...actions} />}
         />
         <div
           ref={contentRef}
@@ -1030,7 +1079,7 @@ export default function ProjectPost({
           data-drawer-scroll
         >
           {!embedded && (
-            <ProjectPostHeaderDetails project={project} {...actions} />
+            <ProjectPostHeaderDetails project={project} />
           )}
           {/* Wide screens: intro, tabs and panel on the left; facts start at the top on the right. */}
           <div className="md:grid md:grid-cols-[minmax(0,1fr)_232px] md:grid-rows-[auto_auto_1fr] md:items-start md:gap-x-7 md:px-7 md:pb-10 lg:grid-cols-[minmax(0,1fr)_272px] lg:gap-x-10">
@@ -1158,9 +1207,11 @@ export default function ProjectPost({
                                   ? "Skjul kommentarer"
                                   : "Se kommentarer"}
                               </span>
-                              <small className="text-ui font-medium text-muted tabular-nums">
-                                {referenceCounts.get(update.id) ?? 0}
-                              </small>
+                              {!openComments[update.id] && (
+                                <small className="text-ui font-medium text-muted tabular-nums">
+                                  {referenceCounts.get(update.id) ?? 0}
+                                </small>
+                              )}
                             </button>
                             {update.sourceUrl && (
                               <a
@@ -1241,9 +1292,6 @@ export default function ProjectPost({
                   </div>
                 )}
                 {!draft && <ProjectFacts project={project} />}
-                <p className={note}>
-                  Sist redigert {formatDateYear(project.updated)}
-                </p>
               </aside>
             </div>
           </div>

@@ -32,7 +32,7 @@ import styles from "./project-discussion.module.css";
 const sortChoiceClasses = [
   "-mr-2 w-auto shrink-0",
   "[&_[data-slot=choice-trigger]]:min-h-9 [&_[data-slot=choice-trigger]]:gap-1.5 [&_[data-slot=choice-trigger]]:border-transparent [&_[data-slot=choice-trigger]]:bg-transparent! [&_[data-slot=choice-trigger]]:px-2 [&_[data-slot=choice-trigger]]:text-ui [&_[data-slot=choice-trigger]]:text-muted",
-  "[&_[data-slot=choice-trigger]]:hover:bg-ink/[0.05]! [&_[data-slot=choice-trigger]]:hover:text-accent",
+  "[&_[data-slot=choice-trigger]]:hover:bg-ink/[0.05]! [&_[data-slot=choice-trigger]]:hover:text-ink",
   "[&_[data-slot=choice-menu]]:right-0 [&_[data-slot=choice-menu]]:left-auto [&_[data-slot=choice-menu]]:min-w-[180px] [&_[data-slot=choice-menu][data-open=false]]:hidden",
 ].join(" ");
 const compactPrimaryAction = cn(
@@ -455,7 +455,7 @@ export default function ProjectDiscussion({
       aria-label={
         scoped ? "Kommentarer til oppdateringen" : "Prosjektdiskusjon"
       }
-      className={cn(scoped && "pt-3.5 pb-1.5 max-sm:pt-3 max-sm:pb-0")}
+      className={cn(scoped && "pt-3.5 -mb-2.5 max-sm:pt-3")}
       data-scoped={scoped || undefined}
     >
       {!user?.username && (

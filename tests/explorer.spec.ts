@@ -392,7 +392,17 @@ test("desktop status and category filters combine, and sorting works", async ({
     exact: true,
   });
   const active = page.getByRole("list", { name: "Aktive filtre" });
+  // The default place is a filter too, shown until widened to all of Norway.
+  await expect(
+    active.getByRole("button", { name: /^Fjern filter/ }),
+  ).toHaveCount(1);
+  await active
+    .getByRole("button", { name: "Fjern filter: Oslo", exact: true })
+    .click();
   await expect(active).toBeHidden();
+  await expect(
+    filters.getByRole("button", { name: "Sted: Hele Norge", exact: true }),
+  ).toBeVisible();
   await filters
     .getByRole("button", {
       name: "Status: Planlagt, Under bygging",

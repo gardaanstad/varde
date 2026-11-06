@@ -241,12 +241,6 @@ export default function ImageGallery({
           </div>
         )}
       </div>
-      <Caption
-        className="mt-1.5 text-2xs leading-normal text-muted"
-        texts={images.map((image) => image.credit)}
-        index={index}
-        as="figcaption"
-      />
       {open !== null && (
         <Lightbox
           images={images}
@@ -262,33 +256,21 @@ export default function ImageGallery({
   );
 }
 
-/**
- * One caption per image, stacked in one cell so the tallest sets the height:
- * moving between images never shifts what follows.
- */
-function Caption({
-  texts,
-  index,
-  className,
-  as: Tag = "p",
-}: {
-  texts: (string | undefined)[];
-  index: number;
-  className: string;
-  as?: "p" | "figcaption";
-}) {
-  if (!texts.some(Boolean)) return null;
+/** One line of text that truncates, showing the rest in a tooltip on hover. */
+function Truncated({ text, className }: { text: string; className: string }) {
   return (
-    <Tag className={cn("grid", className)}>
-      {texts.map((text, i) => (
-        <span
-          key={i}
-          className={cn("col-start-1 row-start-1", i !== index && "invisible")}
-        >
-          {text}
-        </span>
-      ))}
-    </Tag>
+    <span
+      className={cn("min-w-0 truncate", className)}
+      // React's enter fires before the shared tooltip layer looks for this.
+      onPointerEnter={(event) => {
+        const element = event.currentTarget;
+        if (element.scrollWidth > element.clientWidth)
+          element.dataset.tooltip = text;
+        else delete element.dataset.tooltip;
+      }}
+    >
+      {text}
+    </span>
   );
 }
 
@@ -463,14 +445,22 @@ function Lightbox({
               nextClassName="-right-16 max-md:right-2"
             />
           </div>
-          <div className="flex min-h-12 items-center justify-center px-4 py-2.5">
-            <Caption
-              className="text-center text-ui leading-normal text-white/85"
-              texts={images.map((image) =>
-                [image.alt, image.credit].filter(Boolean).join(" · "),
-              )}
-              index={index}
-            />
+          {/* Caption on the left, credit on the right; both keep to one line. */}
+          <div className="flex min-h-12 items-center gap-4 px-1 py-2.5 text-ui leading-normal">
+            {images[index]?.alt && (
+              <Truncated
+                key={`alt-${index}`}
+                text={images[index].alt}
+                className="text-white/90"
+              />
+            )}
+            {images[index]?.credit && (
+              <Truncated
+                key={`credit-${index}`}
+                text={images[index].credit}
+                className="ml-auto max-w-1/2 shrink-0 text-xs text-white/60"
+              />
+            )}
           </div>
         </div>
       </div>

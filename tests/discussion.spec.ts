@@ -277,6 +277,9 @@ test("moderators edit the reference page and publish sourced updates without new
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("button", { name: /^Oppdateringer/ }).click();
   await page
+    .getByRole("button", { name: "Skriv en oppdatering", exact: true })
+    .click();
+  await page
     .getByRole("textbox", { name: "Overskrift", exact: true })
     .fill("Planen er vedtatt");
   await page

@@ -67,6 +67,8 @@
   --animate-tooltip-in: tooltip-in 90ms ease-out;
   --animate-tooltip-in-below: tooltip-in-below 90ms ease-out;
   --animate-lightbox-in: lightbox-in 160ms ease-out;
+  --animate-sheet-in: sheet-in 320ms var(--ease-out-soft);
+  --animate-backdrop-in: lightbox-in 200ms ease-out;
 
   @keyframes preview-in {
     from {
@@ -95,6 +97,11 @@
   @keyframes lightbox-in {
     from {
       opacity: 0;
+    }
+  }
+  @keyframes sheet-in {
+    from {
+      transform: translateY(100%);
     }
   }
   @keyframes tooltip-in-below {

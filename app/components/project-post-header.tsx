@@ -29,8 +29,10 @@ const metaItem = "inline-flex items-center gap-1.5";
 
 type HeaderProps = {
   project: Project;
-  /** Shown beside the close button when there is no detail row (mobile). */
-  actions?: ReactNode;
+  /** In the mobile drawer, which has no detail row below the bar. */
+  embedded?: boolean;
+  /** Shown before the close button, hidden while editing. */
+  actions: ReactNode;
   scrollRootRef: RefObject<HTMLDivElement | null>;
   onClose: () => void;
 };
@@ -43,10 +45,6 @@ type ProjectActionsProps = {
   onSave: () => void;
   onShare: () => void;
   onMap: () => void;
-};
-
-type HeaderDetailsProps = ProjectActionsProps & {
-  project: Project;
 };
 
 export function ProjectActions({
@@ -105,12 +103,13 @@ export function ProjectActions({
 
 export default function ProjectPostHeader({
   project,
+  embedded = false,
   actions,
   scrollRootRef,
   onClose,
 }: HeaderProps) {
   const [compact, setCompact] = useState(false);
-  const overlap = actions ? 0 : headerOverlap;
+  const overlap = embedded ? 0 : headerOverlap;
   const edit = useProjectEdit();
   const editing = Boolean(edit);
 
@@ -146,7 +145,7 @@ export default function ProjectPostHeader({
         "z-20 flex shrink-0 items-start gap-4 border-b pt-[22px] pb-1 max-sm:gap-2 max-sm:pt-1",
         "transition-[border-color] duration-200 motion-reduce:transition-none",
         // In the drawer, the edges line up with the project body's.
-        actions
+        embedded
           ? "px-4.5"
           : "pr-[calc(28px+var(--scrollbar-width,0px))] pl-7 max-sm:px-4.5 max-xs:px-3.5",
         compact ? "border-border" : "border-transparent",
@@ -167,7 +166,7 @@ export default function ProjectPostHeader({
         <EditField
           id="title"
           inline
-          className={cn("min-w-0 flex-1 pb-1", actions && "pt-1.5")}
+          className={cn("min-w-0 flex-1 pb-1", embedded && "pt-1.5")}
         >
           {/* Same type as the heading, with the field's padding outside the text. */}
           <textarea
@@ -195,7 +194,7 @@ export default function ProjectPostHeader({
           tabIndex={-1}
           className={cn(
             "m-0 min-w-0 flex-1 overflow-hidden text-[30px] leading-[1.16] font-semibold tracking-[-1px] text-ink outline-none max-sm:text-[24px] max-sm:tracking-[-0.65px]",
-            actions
+            embedded
               ? "line-clamp-2 pt-1.5 wrap-break-word"
               : "text-ellipsis whitespace-nowrap",
           )}
@@ -203,39 +202,43 @@ export default function ProjectPostHeader({
           {project.title}
         </h1>
       )}
-      {actions && !edit && (
-        <div className="-mr-1 flex shrink-0 items-center [&>button]:size-10">
-          {actions}
-        </div>
-      )}
-      <button
-        type="button"
-        data-project-close=""
-        // Offsets put the icon itself on the content edges, not the hit area.
+      {/* Offsets put the icon glyphs, not the hit areas, on the content edges. */}
+      <div
         className={cn(
-          headerIconButton,
-          "-mt-2.5 -mr-[17px]",
-          // On mobile it continues the row of action icons.
-          actions && "max-sm:mt-0 max-sm:-ml-1 max-sm:size-10",
+          "flex shrink-0 items-center",
+          embedded
+            ? "-mr-[15px] [&>button]:size-10"
+            : "-mt-2.5 -mr-[17px] gap-0.5",
         )}
-        onClick={onClose}
-        aria-label="Lukk prosjekt"
       >
-        <X size={20} />
-      </button>
+        {!edit && (
+          <>
+            {actions}
+            <span
+              aria-hidden="true"
+              className="mx-1.5 h-5 w-px shrink-0 bg-border"
+            />
+          </>
+        )}
+        <button
+          type="button"
+          data-project-close=""
+          className={headerIconButton}
+          onClick={onClose}
+          aria-label="Lukk prosjekt"
+        >
+          <X size={20} />
+        </button>
+      </div>
     </header>
   );
 }
 
 export function ProjectPostHeaderDetails({
-  onEdit,
   project: current,
-  copied,
-  saved,
-  onSave,
-  onShare,
-  onMap,
-}: HeaderDetailsProps) {
+}: {
+  project: Project;
+}) {
   const edit = useProjectEdit();
   // While editing, the summary previews the draft.
   const project = edit ? finalize(edit.draft) : current;
@@ -244,7 +247,6 @@ export function ProjectPostHeaderDetails({
       data-project-header-hero=""
       className="border-b border-border bg-surface px-7 pb-2 max-sm:px-4.5 max-xs:px-3.5"
     >
-      {/* Holds its height while edit mode hides the actions. */}
       <div className="flex min-h-11 flex-wrap items-center gap-x-4 gap-y-1.5 text-ui leading-normal text-muted max-md:gap-x-3 max-md:gap-y-1 max-md:pb-1 max-md:text-xs">
         <span className={metaItem}>
           <CategoryIcon category={project.category} size={14} />
@@ -263,20 +265,6 @@ export function ProjectPostHeaderDetails({
           />
           {statuses[project.status].label}
         </span>
-        {/* Icon glyphs, not hit areas, line up with the close button above. */}
-        <div
-          className="-mr-4 ml-auto flex items-center gap-0.5 max-md:-ml-2.5 max-md:w-full max-md:gap-0 max-md:[&>button]:size-10"
-          hidden={Boolean(edit)}
-        >
-          <ProjectActions
-            onEdit={onEdit}
-            copied={copied}
-            saved={saved}
-            onSave={onSave}
-            onShare={onShare}
-            onMap={onMap}
-          />
-        </div>
       </div>
     </div>
   );

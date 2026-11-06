@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { Bookmark, Megaphone, MessageCircle } from "lucide-react";
+import { Megaphone, MessageCircle } from "lucide-react";
 import {
   formatDate,
   getProjectUpdates,
@@ -11,22 +11,18 @@ import { cn } from "../lib/cn";
 import { statusTone } from "../lib/ui";
 import CategoryIcon from "./category-icon";
 
-// Above the stretched card link, like the save button.
+// Above the stretched card link, for the stat tooltips.
 const cardStat = "relative z-1 inline-flex items-center gap-1.25 tabular-nums";
 
 /** One project in the results list; the whole card opens the project. */
 export default function ProjectCard({
   project,
   commentCount,
-  saved,
   onOpen,
-  onToggleSaved,
 }: {
   project: Project;
   commentCount: number;
-  saved: boolean;
   onOpen: () => void;
-  onToggleSaved: () => void;
 }) {
   const updates = getProjectUpdates(project);
   return (
@@ -65,10 +61,8 @@ export default function ProjectCard({
         </p>
         {/* Stats sit above the card link for their tooltips; forward clicks. */}
         <div
-          className="mt-2 flex min-h-8 cursor-pointer items-center gap-x-4 gap-y-1 text-xs leading-normal text-muted max-md:mt-2.25 max-md:min-h-4.5 max-md:gap-x-3 max-md:leading-4.5"
-          onClick={(event) => {
-            if (!(event.target as Element).closest("[data-card-save]")) onOpen();
-          }}
+          className="mt-3 flex min-h-4.5 cursor-pointer items-center gap-x-4 gap-y-1 text-xs leading-normal text-muted max-md:mt-2.25 max-md:gap-x-3 max-md:leading-4.5"
+          onClick={onOpen}
         >
           <span className="inline-flex items-center gap-1.5 font-medium whitespace-nowrap text-ink">
             <i
@@ -95,22 +89,6 @@ export default function ProjectCard({
               <span className="sr-only"> oppdateringer</span>
             </span>
           )}
-          <button
-            className={cn(
-              "relative z-1 mr-[-6px] ml-auto grid size-8 place-items-center rounded-lg text-muted",
-              "transition-colors duration-120 hover:bg-ink/7 hover:text-ink aria-pressed:text-accent",
-              // Saving lives in the project itself on mobile.
-              "max-md:hidden",
-            )}
-            data-card-save=""
-            type="button"
-            aria-label={`${saved ? "Fjern fra lagrede" : "Lagre"} ${project.title}`}
-            aria-pressed={saved}
-            data-tooltip={saved ? "Fjern fra lagrede" : "Lagre"}
-            onClick={onToggleSaved}
-          >
-            <Bookmark size={16} fill={saved ? "currentColor" : "none"} />
-          </button>
         </div>
       </div>
       {/* Mobile: a square thumbnail, top-aligned with the category line. */}

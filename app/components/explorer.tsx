@@ -112,7 +112,7 @@ const filterRow = cn(
 );
 const filterCount = "text-xs tabular-nums text-muted";
 const navRow = cn(
-  "flex min-h-10 w-full items-center gap-3 rounded-lg px-2.5 text-left text-ui font-medium text-ink/80",
+  "flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-ui font-medium text-ink/80",
   "transition-colors duration-150 hover:bg-ink/[0.045] hover:text-ink motion-reduce:transition-none",
   "[&>svg]:shrink-0 [&>svg]:text-muted",
 );
@@ -139,7 +139,7 @@ function statusSummary(values: string[]) {
 
 const sidebarChoiceClasses = [
   "has-[[data-slot=choice-trigger][aria-expanded=true]]:z-20",
-  "[&_[data-slot=choice-trigger]]:min-h-10 [&_[data-slot=choice-trigger]]:gap-2.5 [&_[data-slot=choice-trigger]]:rounded-lg [&_[data-slot=choice-trigger]]:border-border [&_[data-slot=choice-trigger]]:bg-surface! [&_[data-slot=choice-trigger]]:px-3 [&_[data-slot=choice-trigger]]:text-left [&_[data-slot=choice-trigger]]:text-ui [&_[data-slot=choice-trigger]]:font-normal",
+  "[&_[data-slot=choice-trigger]]:min-h-10 [&_[data-slot=choice-trigger]]:gap-2.5 [&_[data-slot=choice-trigger]]:rounded-lg [&_[data-slot=choice-trigger]]:border-border [&_[data-slot=choice-trigger]]:bg-surface! [&_[data-slot=choice-trigger]]:px-2.25 [&_[data-slot=choice-trigger]]:text-left [&_[data-slot=choice-trigger]]:text-ui [&_[data-slot=choice-trigger]]:font-normal",
   "[&_[data-slot=choice-trigger]]:hover:bg-surface! [&_[data-slot=choice-trigger]]:hover:border-border-strong",
   "[&_[data-slot=choice-menu][data-open=false]]:hidden",
 ].join(" ");
@@ -165,7 +165,7 @@ const statusChoiceClasses = cn(
 const sortChoiceClasses = [
   "w-auto",
   "[&_[data-slot=choice-trigger]]:min-h-10 [&_[data-slot=choice-trigger]]:gap-1.5 [&_[data-slot=choice-trigger]]:border-transparent [&_[data-slot=choice-trigger]]:bg-transparent! [&_[data-slot=choice-trigger]]:px-2 [&_[data-slot=choice-trigger]]:text-ui [&_[data-slot=choice-trigger]]:text-muted",
-  "[&_[data-slot=choice-trigger]]:hover:bg-ink/[0.05]! [&_[data-slot=choice-trigger]]:hover:text-ink [&_[data-slot=choice-trigger]]:hover:text-accent",
+  "[&_[data-slot=choice-trigger]]:hover:bg-ink/[0.05]! [&_[data-slot=choice-trigger]]:hover:text-ink",
   "[&_[data-slot=choice-menu]]:right-0 [&_[data-slot=choice-menu]]:left-auto [&_[data-slot=choice-menu]]:min-w-[205px] [&_[data-slot=choice-menu][data-open=false]]:hidden",
   "[&_[data-slot=choice-trigger]>svg:first-child]:max-md:hidden",
 ].join(" ");
@@ -962,8 +962,9 @@ export default function Explorer({
 
   const activeFilters = [
     // Mobile shows place and category inline, so only hidden filters get chips.
-    ...(!isMobile && city !== defaultPlace
-      ? [{ key: "city", label: city, clear: () => setCity(defaultPlace) }]
+    // The place always shows, default included; clearing it widens to all.
+    ...(!isMobile && city !== allPlaces
+      ? [{ key: "city", label: city, clear: () => setCity(allPlaces) }]
       : []),
     ...(isMobile && query.trim()
       ? [
@@ -1084,7 +1085,7 @@ export default function Explorer({
             >
               {savedOnly ? (
                 <p className="max-w-85 text-ui leading-[1.6]">
-                  Trykk på bokmerket på et prosjekt for å lagre det her.
+                  Lagre et prosjekt for å finne det her.
                 </p>
               ) : (
                 <button className={secondaryAction} onClick={resetFilters}>
@@ -1099,9 +1100,7 @@ export default function Explorer({
                   key={project.id}
                   project={project}
                   commentCount={commentsByProject.get(project.id)?.length ?? 0}
-                  saved={savedIds.has(project.id)}
                   onOpen={() => openPost(project.id)}
-                  onToggleSaved={() => void toggleSaved(project.id)}
                 />
               ))}
             </ol>
@@ -1321,11 +1320,11 @@ export default function Explorer({
           className="hidden min-h-0 w-[272px] shrink-0 flex-col gap-4 pt-1 pr-3 pl-5 md:flex max-lg:w-[244px] max-lg:pl-4"
           aria-label="Navigasjon og filtre"
         >
-          <div className="shrink-0 px-1.5">{brand}</div>
+          <div className="shrink-0 px-3.5">{brand}</div>
           <div className="shrink-0 px-1">{navigation}</div>
           {view !== "saved" ? sidebarFilters : <div className="flex-1" />}
           <nav
-            className="-mx-0.5 shrink-0 border-t border-border pt-2 [&>button+button]:mt-0.5"
+            className="shrink-0 border-t border-border px-1 pt-2 [&>button+button]:mt-0.5"
             aria-label="Konto"
           >
             <button
@@ -1337,7 +1336,7 @@ export default function Explorer({
               onClick={showSaved}
             >
               <Bookmark
-                size={17}
+                size={16}
                 fill={view === "saved" ? "currentColor" : "none"}
               />
               <span className="flex-1">Lagrede prosjekter</span>
@@ -1350,7 +1349,7 @@ export default function Explorer({
               hidden={!canModerate}
               onClick={() => setEditorOpen(true)}
             >
-              <Plus size={17} />
+              <Plus size={16} />
               Legg til prosjekt
             </button>
             <button
@@ -1362,10 +1361,10 @@ export default function Explorer({
               {user?.username ? (
                 <ProfileAvatar
                   name={user.username}
-                  className="-ml-0.5 size-6 text-2xs"
+                  className="-mx-0.5 size-5 text-2xs"
                 />
               ) : (
-                <User size={17} />
+                <User size={16} />
               )}
               <span className="min-w-0 truncate">
                 {authPending
