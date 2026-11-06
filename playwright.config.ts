@@ -31,7 +31,7 @@ export default defineConfig({
       GOOGLE_CLIENT_SECRET: "test-google-secret",
       NEXT_TEST_DIST_DIR: ".next-test",
       MODERATOR_EMAILS:
-        "moderator@example.test,discussion-moderator@example.test",
+        "moderator@example.test,discussion-moderator@example.test,upload-moderator@example.test,upload-api-moderator@example.test",
     },
   },
 });

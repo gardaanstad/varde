@@ -9,7 +9,15 @@ const point = z.tuple([
   z.number().min(-90).max(90),
   z.number().min(-180).max(180),
 ]);
-const image = z.string().regex(/^\/images\/[a-z0-9-]+\.(jpg|png|webp)$/);
+/** Bundled example photos, or images uploaded through /api/uploads. */
+const image = z
+  .string()
+  .regex(/^(\/images\/[a-z0-9-]+\.(jpg|png|webp)|\/api\/uploads\/[a-f0-9]{32})$/);
+const photo = z.object({
+  src: image,
+  alt: z.string().max(300).optional(),
+  credit: z.string().max(300).optional(),
+});
 export const projectSchema = z
   .object({
     id,
@@ -18,7 +26,8 @@ export const projectSchema = z
     city: z.string().trim().min(1).max(100),
     category: z.enum(categories),
     status: z.enum(["planned", "construction", "completed"]),
-    image,
+    image: z.union([image, z.literal("")]),
+    images: z.array(photo).max(20).optional(),
     imageCredit: z.string().max(300).optional(),
     imageSource: z
       .url()
@@ -43,16 +52,7 @@ export const projectSchema = z
           date: z.string().min(1).max(40),
           origin: z.boolean().optional(),
           sourceUrl: sourceUrl.optional(),
-          images: z
-            .array(
-              z.object({
-                src: image,
-                alt: z.string().max(300).optional(),
-                credit: z.string().max(300).optional(),
-              }),
-            )
-            .max(10)
-            .optional(),
+          images: z.array(photo).max(10).optional(),
         }),
       )
       .max(500),

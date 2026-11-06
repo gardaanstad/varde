@@ -1,4 +1,5 @@
 import {
+  blob,
   index,
   integer,
   primaryKey,
@@ -138,3 +139,11 @@ export const vote = sqliteTable(
     index("vote_comment_idx").on(t.commentId),
   ],
 );
+/** Images moderators upload; served from /api/uploads/[id]. */
+export const upload = sqliteTable("upload", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
+  data: blob("data", { mode: "buffer" }).notNull(),
+  userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+});

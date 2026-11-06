@@ -7,7 +7,6 @@ import {
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
-import Image from "next/image";
 import dynamic from "next/dynamic";
 import {
   ArrowUp,
@@ -70,18 +69,12 @@ import {
 } from "./project-edit";
 import EmptyState from "./empty-state";
 import ImageGallery from "./image-gallery";
+import ImagePicker from "./image-picker";
+import ProjectPlaceholder from "./project-placeholder";
 import styles from "./project-post.module.css";
 
 const ProjectMap = dynamic(() => import("./project-map"), { ssr: false });
 
-const galleryChoices = [
-  { src: "/images/bjorvika.jpg", label: "Havn" },
-  { src: "/images/architecture.jpg", label: "Bygg" },
-  { src: "/images/park.jpg", label: "Byrom" },
-  { src: "/images/railway.jpg", label: "Samferdsel" },
-  { src: "/images/regjeringskvartalet.jpg", label: "Kvartal" },
-  { src: "/images/fornebubanen.jpg", label: "Anlegg" },
-];
 const cover =
   "relative aspect-3/2 w-full overflow-hidden rounded-[10px] bg-surface-muted";
 const note = "mt-3 text-xs leading-[1.6] text-muted";
@@ -633,6 +626,7 @@ function UpdateComposer({
   const [status, setStatus] = useState<Status>(project.status);
   const [images, setImages] = useState<string[]>([]);
   const [picking, setPicking] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const pillRef = useRef<HTMLButtonElement>(null);
   // Escape and Avbryt hand focus back to the pill; a blur leaves it be.
@@ -657,16 +651,9 @@ function UpdateComposer({
     refocusPill.current = true;
     reset();
   }
-  function toggleImage(src: string) {
-    setImages((current) =>
-      current.includes(src)
-        ? current.filter((image) => image !== src)
-        : [...current, src],
-    );
-  }
   async function publish(event?: React.FormEvent) {
     event?.preventDefault();
-    if (publishing || !title.trim() || !body.trim()) return;
+    if (publishing || uploading || !title.trim() || !body.trim()) return;
     setPublishing(true);
     try {
       const date = new Date().toISOString();
@@ -700,7 +687,7 @@ function UpdateComposer({
     <button
       type="submit"
       className={composerSend}
-      disabled={publishing || !title.trim() || !body.trim()}
+      disabled={publishing || uploading || !title.trim() || !body.trim()}
       aria-label="Publiser oppdatering"
     >
       <ArrowUp size={16} strokeWidth={2.25} />
@@ -790,35 +777,13 @@ function UpdateComposer({
             onChange={(event) => setSource(event.target.value)}
           />
           {picking && (
-            <div
+            <ImagePicker
               id="update-composer-images"
-              className="grid grid-cols-3 gap-2 px-2 pt-1 pb-2"
-            >
-              {galleryChoices.map((choice) => (
-                <button
-                  key={choice.src}
-                  type="button"
-                  className={cn(
-                    "relative h-18 overflow-hidden rounded-lg border-2 border-transparent",
-                    "transition-[border-color,box-shadow] hover:border-accent/40",
-                    "aria-pressed:border-accent aria-pressed:ring-2 aria-pressed:ring-accent/15 motion-reduce:transition-none",
-                  )}
-                  aria-pressed={images.includes(choice.src)}
-                  onClick={() => toggleImage(choice.src)}
-                >
-                  <Image
-                    src={choice.src}
-                    alt=""
-                    fill
-                    sizes="(max-width: 640px) 30vw, 240px"
-                    className="object-cover"
-                  />
-                  <span className="absolute bottom-1.5 left-1.75 text-[10px] font-semibold text-white [text-shadow:0_1px_4px_#0008]">
-                    {choice.label}
-                  </span>
-                </button>
-              ))}
-            </div>
+              className="px-2 pt-1 pb-2"
+              value={images}
+              onChange={setImages}
+              onBusy={setUploading}
+            />
           )}
           <div className="mt-1 flex items-center gap-1 border-t border-border pt-1">
             <button
@@ -1282,13 +1247,7 @@ export default function ProjectPost({
                   />
                 ) : (
                   <div className={cover}>
-                    <Image
-                      src={project.image}
-                      alt={project.title}
-                      fill
-                      sizes="280px"
-                      className="object-cover"
-                    />
+                    <ProjectPlaceholder category={project.category} />
                   </div>
                 )}
                 {!draft && <ProjectFacts project={project} />}

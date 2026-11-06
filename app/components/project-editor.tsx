@@ -27,16 +27,10 @@ import { errorMessage } from "../lib/api-client";
 import { cn } from "../lib/cn";
 import { controlBase, fieldControl } from "../lib/ui";
 import Dialog from "./dialog";
+import ImagePicker from "./image-picker";
 
 const ProjectMap = dynamic(() => import("./project-map"), { ssr: false });
 
-const categoryImages: Partial<Record<Category, string>> = {
-  Samferdsel: "/images/railway.jpg",
-  Energi: "/images/kategori-energi.png",
-  "Vann og avløp": "/images/kategori-vann.png",
-  "Offentlige bygg": "/images/kategori-offentlige-bygg.png",
-  "Byrom og park": "/images/park.jpg",
-};
 const labelStyles = "block text-xs leading-normal font-semibold text-ink";
 const fieldStyles = cn(
   fieldControl,
@@ -96,13 +90,15 @@ export default function ProjectEditor({
   const [coordinate, setCoordinate] = useState("");
   const [coordinateError, setCoordinateError] = useState("");
   const [cancelConfirm, setCancelConfirm] = useState(false);
+  const [images, setImages] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
   const enoughPoints = points.length >= (geometryType === "area" ? 3 : 2);
   async function save() {
-    if (saving) return;
+    if (saving || uploading) return;
     if (!enoughPoints || !title.trim() || !description.trim()) return;
     const id = `prosjekt-${crypto.randomUUID().slice(0, 8)}`;
     const created = new Date().toISOString();
-    const image = categoryImages[category] ?? "/images/architecture.jpg";
+    const [cover = "", ...more] = images;
     setSaving(true);
     setSaveError("");
     try {
@@ -120,7 +116,10 @@ export default function ProjectEditor({
         center: centroid(points),
         geometry: points,
         geometryType,
-        image,
+        image: cover,
+        images: more.length
+          ? more.map((src) => ({ src, alt: title.trim() }))
+          : undefined,
         comments: 0,
         updated: created,
         updates: [],
@@ -132,7 +131,8 @@ export default function ProjectEditor({
     }
   }
   function close() {
-    if (title || description || points.length) setCancelConfirm(true);
+    if (title || description || points.length || images.length)
+      setCancelConfirm(true);
     else onClose();
   }
   function addCoordinate() {
@@ -279,6 +279,15 @@ export default function ProjectEditor({
               placeholder="https://…"
             />
           </label>
+          <div>
+            <span className={labelStyles}>Bilder</span>
+            <ImagePicker
+              className="mt-1.75"
+              value={images}
+              onChange={setImages}
+              onBusy={setUploading}
+            />
+          </div>
           <div className="grid grid-cols-2 gap-4.5 max-sm:gap-3.25">
             <label className={labelStyles}>
               Sted
@@ -522,7 +531,7 @@ export default function ProjectEditor({
                 primaryActionStyles,
                 "max-sm:px-3 max-sm:text-xs",
               )}
-              disabled={saving || !enoughPoints}
+              disabled={saving || uploading || !enoughPoints}
               onClick={() => void save()}
             >
               Legg til prosjekt

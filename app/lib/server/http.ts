@@ -40,13 +40,16 @@ export async function api(action: () => Promise<Response>) {
     );
   }
 }
-export async function readBody(request: Request) {
-  if (!request.headers.get("content-type")?.startsWith("application/json"))
-    throw new HttpError(415, "Ugyldig forespørsel.");
-  // All application mutations require the configured origin, including signed-in requests.
+/** All application mutations require the configured origin, including signed-in requests. */
+export function requireOrigin(request: Request) {
   const origin = request.headers.get("origin");
   if (origin !== new URL(siteURL()).origin)
     throw new HttpError(403, "Ugyldig forespørsel. Last siden på nytt.");
+}
+export async function readBody(request: Request) {
+  if (!request.headers.get("content-type")?.startsWith("application/json"))
+    throw new HttpError(415, "Ugyldig forespørsel.");
+  requireOrigin(request);
   const body = await request.text();
   if (body.length > 100_000)
     throw new HttpError(413, "Innholdet er for stort.");

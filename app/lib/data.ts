@@ -32,7 +32,10 @@ export type Project = {
   city: string;
   category: Category;
   status: Status;
+  /** Cover photo; empty when the project has none and shows a placeholder. */
   image: string;
+  /** Further photos added with the project, after the cover. */
+  images?: ProjectImage[];
   imageCredit?: string;
   imageSource?: string;
   description: string;
@@ -60,7 +63,7 @@ export type Comment = {
   votes: number;
   parentId?: string;
 };
-/** Category tiles stand in for projects without a photo of their own. */
+/** Empty, or an old category tile: the project has no photo of its own. */
 export function hasPhoto(project: Pick<Project, "image">) {
   return (
     Boolean(project.image) && !project.image.startsWith("/images/kategori-")
@@ -75,14 +78,17 @@ export function getProjectUpdates(project: Project): ProjectUpdate[] {
     .filter((update) => !isOriginUpdate(update, project.id))
     .sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
 }
-/** The project's own photo first, then every distinct photo from its updates. */
+/** The project's own photos first, then every distinct photo from its updates. */
 export function projectPhotos(project: Project): ProjectImage[] {
   const photos: ProjectImage[] = hasPhoto(project)
     ? [{ src: project.image, alt: project.title, credit: project.imageCredit }]
     : [];
-  for (const update of getProjectUpdates(project))
-    for (const image of update.images ?? [])
-      if (!photos.some((photo) => photo.src === image.src)) photos.push(image);
+  const more = [
+    ...(project.images ?? []),
+    ...getProjectUpdates(project).flatMap((update) => update.images ?? []),
+  ];
+  for (const image of more)
+    if (!photos.some((photo) => photo.src === image.src)) photos.push(image);
   return photos;
 }
 export function projectHref(id: string) {
@@ -327,7 +333,7 @@ export const seedProjects: Project[] = [
     city: "Oslo",
     category: "Vann og avløp",
     status: "construction",
-    image: "/images/kategori-vann.png",
+    image: "",
     description:
       "Ny drikkevannskilde fra Holsfjorden, med råvannstunnel og vannbehandlingsanlegg på Huseby. Gir Oslo reservevann og forsyningssikkerhet for framtiden.",
     center: [59.955, 10.5],
@@ -351,7 +357,7 @@ export const seedProjects: Project[] = [
     city: "Oslo",
     category: "Offentlige bygg",
     status: "construction",
-    image: "/images/kategori-offentlige-bygg.png",
+    image: "",
     description:
       "Nytt lokalsykehus og psykisk helsevern på Aker-tomten, som del av utbyggingen av Oslo universitetssykehus.",
     center: [59.9395, 10.7955],
@@ -369,7 +375,7 @@ export const seedProjects: Project[] = [
     city: "Stavanger",
     category: "Samferdsel",
     status: "construction",
-    image: "/images/kategori-veg.png",
+    image: "",
     description:
       "Ferjefri E39 mellom Stavanger og Haugesund gjennom verdens lengste og dypeste undersjøiske vegtunnel.",
     center: [59.12, 5.5],
@@ -394,7 +400,7 @@ export const seedProjects: Project[] = [
     city: "Bergen",
     category: "Samferdsel",
     status: "construction",
-    image: "/images/kategori-veg.png",
+    image: "",
     description:
       "Ny firefelts veg med bru over Langeleiravatnet og tunneler mellom Sotra og Bergen, med egne løsninger for kollektiv, gange og sykkel.",
     center: [60.367, 5.18],
@@ -418,7 +424,7 @@ export const seedProjects: Project[] = [
     city: "Bergen",
     category: "Energi",
     status: "completed",
-    image: "/images/kategori-energi.png",
+    image: "",
     description:
       "Mottaksanlegg for flytende CO₂ i Øygarden, med rørledning til lagring under havbunnen i Nordsjøen. Del av fangst- og lagringsprosjektet Langskip.",
     center: [60.553, 4.84],
@@ -437,7 +443,7 @@ export const seedProjects: Project[] = [
     city: "Narvik",
     category: "Samferdsel",
     status: "completed",
-    image: "/images/kategori-veg.png",
+    image: "",
     description:
       "Hengebru på E6 over Rombaksfjorden med 1145 meter hovedspenn. Brua kortet ned vegen rundt fjorden med rundt 18 kilometer.",
     center: [68.451, 17.525],

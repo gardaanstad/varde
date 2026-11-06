@@ -3,6 +3,7 @@ import { Megaphone, MessageCircle } from "lucide-react";
 import {
   formatDate,
   getProjectUpdates,
+  hasPhoto,
   type Project,
   projectPlace,
   statuses,
@@ -10,6 +11,7 @@ import {
 import { cn } from "../lib/cn";
 import { statusTone } from "../lib/ui";
 import CategoryIcon from "./category-icon";
+import ProjectPlaceholder from "./project-placeholder";
 
 // Above the stretched card link, for the stat tooltips.
 const cardStat = "relative z-1 inline-flex items-center gap-1.25 tabular-nums";
@@ -93,13 +95,21 @@ export default function ProjectCard({
       </div>
       {/* Mobile: a square thumbnail, top-aligned with the category line. */}
       <div className="relative mt-0.5 aspect-4/3 w-38 shrink-0 overflow-hidden rounded-lg bg-surface-muted max-md:mt-0 max-md:aspect-square max-md:w-19">
-        <Image
-          src={project.image}
-          alt=""
-          fill
-          sizes="(max-width: 768px) 96px, 168px"
-          className="object-cover"
-        />
+        {hasPhoto(project) ? (
+          <Image
+            src={project.image}
+            alt=""
+            fill
+            sizes="(max-width: 768px) 96px, 168px"
+            className="object-cover"
+          />
+        ) : (
+          <ProjectPlaceholder
+            category={project.category}
+            iconSize={16}
+            className="bg-size-[12px_12px]"
+          />
+        )}
       </div>
     </li>
   );

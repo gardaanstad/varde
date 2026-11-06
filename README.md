@@ -38,6 +38,7 @@ Deployment: see [Deploy to Vercel](docs/google-auth.md#deploy-to-vercel). Valida
 - Persistent sessions, optional profile bio/location, sign-out on other devices, and account deletion with recent authentication.
 - Comments use the verified account identity; votes and saved projects persist across devices.
 - Moderator access is configured with verified emails in `MODERATOR_EMAILS` and enforced on the server.
+- Moderators upload project and update photos; browsers downscale them to 2000px before upload and they are stored in the database (`upload` table) and served from `/api/uploads/[id]`. Projects without a photo show a category placeholder. The bundled `/images/*.jpg` photos are only used by example (seed/sample) projects.
 - Local SQLite for development, with hosted Turso support using `DATABASE_URL` and `DATABASE_AUTH_TOKEN`.
 
 `bun run setup` generates a local session secret, applies the committed Drizzle migrations, and seeds illustrative projects/comments. `bun run db:migrate` only applies migrations; `bun run db:seed` adds the illustrative content idempotently and refuses to run against a hosted database, so production starts empty. `bun run db:sample` adds fictional sample projects (areas, alignments, photos, updates and threaded comments) for local development; pass `--worktrees` to write them to every worktree's `local.db`. Use `bun run db:generate` after schema changes.
