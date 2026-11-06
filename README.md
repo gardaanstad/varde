@@ -40,7 +40,7 @@ Deployment: see [Deploy to Vercel](docs/google-auth.md#deploy-to-vercel). Valida
 - Moderator access is configured with verified emails in `MODERATOR_EMAILS` and enforced on the server.
 - Local SQLite for development, with hosted Turso support using `DATABASE_URL` and `DATABASE_AUTH_TOKEN`.
 
-`bun run setup` generates a local session secret, applies the committed Drizzle migrations, and seeds illustrative projects/comments. `bun run db:migrate` only applies migrations; `bun run db:seed` adds the illustrative content idempotently and refuses to run against a hosted database, so production starts empty. Use `bun run db:generate` after schema changes.
+`bun run setup` generates a local session secret, applies the committed Drizzle migrations, and seeds illustrative projects/comments. `bun run db:migrate` only applies migrations; `bun run db:seed` adds the illustrative content idempotently and refuses to run against a hosted database, so production starts empty. `bun run db:sample` adds fictional sample projects (areas, alignments, photos, updates and threaded comments) for local development; pass `--worktrees` to write them to every worktree's `local.db`. Use `bun run db:generate` after schema changes.
 
 The seeded development projects use illustrative statuses, dates, descriptions, and approximate geometries. They are not an authoritative live development register. Seed profiles are explicitly marked as examples and their usernames cannot be claimed. Old localStorage demo activity remains in the browser and is not imported into real accounts.
 

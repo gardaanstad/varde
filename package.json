@@ -7,10 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "setup": "bun scripts/setup.ts && bun run db:migrate && bun run db:seed",
+    "setup": "bun scripts/setup.ts && bun run db:migrate && bun run db:seed && bun run db:sample",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun scripts/migrate.ts",
     "db:seed": "bun scripts/seed.ts",
+    "db:sample": "bun scripts/sample.ts",
     "test": "playwright test",
     "typecheck": "next typegen && tsc --noEmit"
   },
