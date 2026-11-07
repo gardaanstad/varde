@@ -29,6 +29,13 @@
       "when": 1793981636716,
       "tag": "0003_project_uploads",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794072048003,
+      "tag": "0004_follow_feed",
+      "breakpoints": true
     }
   ]
 }

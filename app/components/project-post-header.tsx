@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode, type RefObject } from "react";
-import { Bookmark, Check, MapPin, Pencil, Share2, X } from "lucide-react";
+import { Bell, BellRing, Check, MapPin, Pencil, Share2, X } from "lucide-react";
 import { type Project, projectPlace, statuses } from "../lib/data";
 import { cn } from "../lib/cn";
 import { fieldControl, iconButton, statusTone } from "../lib/ui";
@@ -41,8 +41,8 @@ type ProjectActionsProps = {
   /** Enters edit mode; moderators only. */
   onEdit?: () => void;
   copied: boolean;
-  saved: boolean;
-  onSave: () => void;
+  following: boolean;
+  onFollow: () => void;
   onShare: () => void;
   onMap: () => void;
 };
@@ -50,8 +50,8 @@ type ProjectActionsProps = {
 export function ProjectActions({
   onEdit,
   copied,
-  saved,
-  onSave,
+  following,
+  onFollow,
   onShare,
   onMap,
 }: ProjectActionsProps) {
@@ -70,13 +70,26 @@ export function ProjectActions({
       )}
       <button
         type="button"
-        className={headerIconButton}
-        onClick={onSave}
-        aria-pressed={saved}
-        aria-label={saved ? "Fjern fra lagrede" : "Lagre prosjekt"}
-        data-tooltip={saved ? "Fjern fra lagrede" : "Lagre"}
+        className={cn(
+          "mr-1 inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold",
+          // The drawer header keeps the title's room: icon only.
+          "max-md:mr-0 max-md:size-10 max-md:justify-center max-md:border-transparent max-md:px-0 [&>svg]:max-md:size-4.5",
+          "transition-[color,background-color,border-color] duration-150 motion-reduce:transition-none",
+          following
+            ? "border-transparent bg-accent-soft text-accent-strong hover:bg-accent/16"
+            : "border-border-strong text-ink hover:bg-surface-muted max-md:text-muted",
+        )}
+        onClick={onFollow}
+        data-follow=""
+        aria-pressed={following}
+        data-tooltip={following ? "Slutt å følge" : undefined}
       >
-        <Bookmark size={18} fill={saved ? "currentColor" : "none"} />
+        {following ? (
+          <BellRing size={14} aria-hidden="true" />
+        ) : (
+          <Bell size={14} aria-hidden="true" />
+        )}
+        <span className="max-md:sr-only">{following ? "Følger" : "Følg"}</span>
       </button>
       <button
         type="button"
@@ -207,7 +220,7 @@ export default function ProjectPostHeader({
         className={cn(
           "flex shrink-0 items-center",
           embedded
-            ? "-mr-[15px] [&>button]:size-10"
+            ? "-mr-[15px] [&>button:not([data-follow])]:size-10"
             : "-mt-2.5 -mr-[17px] gap-0.5",
         )}
       >

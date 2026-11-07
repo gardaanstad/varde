@@ -4,7 +4,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   ArrowRight,
-  Bookmark,
+  Bell,
   ChevronRight,
   LoaderCircle,
   LogOut,
@@ -34,14 +34,14 @@ import {
 
 export default function AccountPanel({
   onBack,
-  onSaved,
-  savedCount = 0,
+  onFollowing,
+  followingCount = 0,
   next = "/",
 }: {
   onBack?: () => void;
-  /** Opens the saved projects list, where the app has no other entry to it. */
-  onSaved?: () => void;
-  savedCount?: number;
+  /** Opens the followed projects, where the app has no other entry to them. */
+  onFollowing?: () => void;
+  followingCount?: number;
   next?: string;
 }) {
   const { user, pending } = useAuth();
@@ -235,20 +235,20 @@ export default function AccountPanel({
                 </button>
               }
               links={
-                onSaved && (
+                onFollowing && (
                   <button
                     type="button"
                     className={cn(
                       accountAction,
                       "mt-4 min-h-12 rounded-lg border-border",
                     )}
-                    onClick={onSaved}
+                    onClick={onFollowing}
                   >
-                    <Bookmark size={18} aria-hidden="true" />
-                    <span className="flex-1 text-sm">Lagrede prosjekter</span>
-                    {savedCount > 0 && (
+                    <Bell size={18} aria-hidden="true" />
+                    <span className="flex-1 text-sm">Følger</span>
+                    {followingCount > 0 && (
                       <span className="text-xs tabular-nums text-muted">
-                        {savedCount}
+                        {followingCount}
                       </span>
                     )}
                     <ChevronRight size={16} aria-hidden="true" />

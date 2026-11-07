@@ -69,6 +69,7 @@
   --animate-lightbox-in: lightbox-in 160ms ease-out;
   --animate-sheet-in: sheet-in 320ms var(--ease-out-soft);
   --animate-backdrop-in: lightbox-in 200ms ease-out;
+  --animate-highlight: highlight 2.4s ease-out;
 
   @keyframes preview-in {
     from {
@@ -102,6 +103,14 @@
   @keyframes sheet-in {
     from {
       transform: translateY(100%);
+    }
+  }
+  /* A linked comment's background, fading back to none; the shadow pads it. */
+  @keyframes highlight {
+    0%,
+    40% {
+      background-color: var(--color-accent-soft);
+      box-shadow: 0 0 0 8px var(--color-accent-soft);
     }
   }
   @keyframes tooltip-in-below {

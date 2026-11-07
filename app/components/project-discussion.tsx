@@ -1,5 +1,5 @@
 "use client";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowDownUp,
@@ -62,12 +62,15 @@ export default function ProjectDiscussion({
   comments,
   updates,
   updateId,
+  initialCommentId,
   onReadUpdate,
   onNotify,
 }: {
   projectId: string;
   comments: Comment[];
   updates: ProjectUpdate[];
+  /** A comment linked from the activity feed: scrolled to and marked. */
+  initialCommentId?: string;
   /**
    * Scopes the section to one update: it lists threads that reference the
    * update, and new comments written here reference it.
@@ -89,6 +92,15 @@ export default function ProjectDiscussion({
   const idPrefix = useId();
   const [sort, setSort] = useState<DiscussionSort>("relevant");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    if (!initialCommentId) return;
+    const frame = requestAnimationFrame(() =>
+      document
+        .querySelector(`[data-comment-id="${CSS.escape(initialCommentId)}"]`)
+        ?.scrollIntoView({ block: "center" }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [initialCommentId]);
   const repliesOf = new Map<string, Comment[]>();
   for (const comment of comments) {
     if (!comment.parentId) continue;
@@ -196,7 +208,15 @@ export default function ProjectDiscussion({
         key={comment.id}
         data-comment-id={comment.id}
       >
-        <div className={cn(styles.self, "relative min-w-0")}>
+        <div
+          className={cn(
+            styles.self,
+            "relative min-w-0",
+            comment.id === initialCommentId &&
+              "rounded-sm animate-highlight motion-reduce:animate-none",
+          )}
+          data-highlighted={comment.id === initialCommentId || undefined}
+        >
           <UserIdentity username={comment.author}>
             <RelativeTime
               date={comment.date}

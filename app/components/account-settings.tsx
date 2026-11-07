@@ -182,7 +182,7 @@ export default function AccountSettings({
               )}
             >
               <p className="text-xs leading-6">
-                Kontoen, profilen, kommentarene, stemmene og lagrede prosjekter
+                Kontoen, profilen, kommentarene, stemmene og fulgte prosjekter
                 slettes permanent. Svar fra andre beholdes.
               </p>
               <label

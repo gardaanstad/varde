@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   blob,
   index,
@@ -21,6 +22,8 @@ export const user = sqliteTable("user", {
   username: text("username").unique(),
   bio: text("bio").notNull().default(""),
   location: text("location").notNull().default(""),
+  /** When the user last opened their activity feed; null until the first time. */
+  feedSeenAt: integer("feed_seen_at", { mode: "timestamp_ms" }),
 });
 export const session = sqliteTable(
   "session",
@@ -109,9 +112,14 @@ export const comment = sqliteTable(
   (t) => [
     index("comment_project_idx").on(t.projectId),
     index("comment_user_idx").on(t.userId),
+    index("comment_parent_idx").on(t.parentId),
   ],
 );
-export const bookmark = sqliteTable(
+/**
+ * Projects a user follows. The table keeps its original name from when
+ * following was called saving, so existing rows carry over unchanged.
+ */
+export const follow = sqliteTable(
   "bookmark",
   {
     userId: text("user_id")
@@ -120,8 +128,19 @@ export const bookmark = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => project.id, { onDelete: "cascade" }),
+    /**
+     * Activity before this time never counts as unread. Set on insert; the
+     * database default only exists so the column could be added to old rows.
+     */
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`0`)
+      .$defaultFn(() => new Date()),
   },
-  (t) => [primaryKey({ columns: [t.userId, t.projectId] })],
+  (t) => [
+    primaryKey({ columns: [t.userId, t.projectId] }),
+    index("bookmark_project_idx").on(t.projectId),
+  ],
 );
 export const vote = sqliteTable(
   "vote",

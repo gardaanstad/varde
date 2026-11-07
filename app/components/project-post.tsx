@@ -101,11 +101,13 @@ const composerTool = cn(
 type Props = {
   project: Project;
   initialUpdateId?: string;
+  /** Opens the discussion at this comment. */
+  initialCommentId?: string;
   embedded?: boolean;
   onClose: () => void;
   feedback?: ReactNode;
-  saved: boolean;
-  onSave: () => void;
+  following: boolean;
+  onFollow: () => void;
   onMap: () => void;
   comments: Comment[];
   onNotify: (message: string) => void;
@@ -835,11 +837,12 @@ function UpdateComposer({
 export default function ProjectPost({
   project,
   initialUpdateId,
+  initialCommentId,
   embedded = false,
   onClose,
   feedback,
-  saved,
-  onSave,
+  following,
+  onFollow,
   onMap,
   comments,
   onNotify,
@@ -1015,8 +1018,8 @@ export default function ProjectPost({
   const actions = {
     onEdit: canModerate ? startEditing : undefined,
     copied,
-    saved,
-    onSave,
+    following,
+    onFollow,
     onShare: share,
     onMap,
   };
@@ -1104,6 +1107,7 @@ export default function ProjectPost({
                     projectId={project.id}
                     comments={comments}
                     updates={updates}
+                    initialCommentId={initialCommentId}
                     onReadUpdate={readUpdate}
                     onNotify={onNotify}
                   />

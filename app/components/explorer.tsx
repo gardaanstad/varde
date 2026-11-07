@@ -15,7 +15,7 @@ import Link from "next/link";
 import {
   ArrowDownUp,
   ArrowLeft,
-  Bookmark,
+  Bell,
   ChevronDown,
   RotateCcw,
   List,
@@ -52,6 +52,13 @@ import ProjectEditor from "./project-editor";
 import ProjectPost from "./project-post";
 import ProjectCard from "./project-card";
 import RecentActivity from "./recent-activity";
+import {
+  FollowingActivity,
+  PersonalActivity,
+  type FeedTarget,
+  UnreadBadge,
+} from "./activity-feed";
+import { useFeed } from "./feed-provider";
 import EmptyState from "./empty-state";
 import Toast, { type ToastMessage } from "./toast";
 import {
@@ -239,8 +246,10 @@ export default function Explorer({
   const drawerHandleRef = useRef<HTMLButtonElement>(null);
   const projectTriggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const { user, pending: authPending, canModerate, requireAccount } = useAuth();
-  const { projects, saved, comments, mutate } = useCommunity();
-  const pendingBookmarks = useRef(new Set<string>());
+  const { projects, following, comments, mutate } = useCommunity();
+  const { feed, markSeen } = useFeed();
+  const unread = feed?.unread ?? 0;
+  const pendingFollows = useRef(new Set<string>());
   const [query, setQuery] = useState("");
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [city, setCity] = useState(defaultPlace);
@@ -248,9 +257,15 @@ export default function Explorer({
   const [category, setCategory] = useState<string[]>([]);
   const [allCategories, setAllCategories] = useState(false);
   const [sort, setSort] = useState("current");
-  const [view, setView] = useState<"map" | "list" | "saved">("list");
+  const [view, setView] = useState<"map" | "list" | "following">("list");
+  const [followingTab, setFollowingTab] = useState<"activity" | "projects">(
+    "activity",
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [postUpdateId, setPostUpdateId] = useState<string | undefined>();
+  // Where in the project to open: an update, or a comment in the discussion.
+  const [postTarget, setPostTarget] = useState<
+    Omit<FeedTarget, "projectId">
+  >({});
   const [postId, setPostId] = useState<string | null>(initialProjectId || null);
   const [profileName, setProfileName] = useState<string | null>(
     initialProfile || null,
@@ -266,12 +281,14 @@ export default function Explorer({
   )
     setShown({ postId, profileName });
   const previousExplorerView = useRef<"map" | "list">("list");
+  // Mobile: where the following view was opened from, to return there.
+  const followingFrom = useRef<"profile" | "explorer">("explorer");
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const notify = (message: string) => setToast({ message });
   const searchRef = useRef<HTMLInputElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const openSearch = useCallback(() => {
-    if (postId || profileName || modal || view === "saved") return;
+    if (postId || profileName || modal || view === "following") return;
     // Focus during the tap so mobile browsers also open the keyboard.
     if (isMobile) flushSync(() => setMobileSearchOpen(true));
     // Search lives above the list, so leave the map for it.
@@ -357,7 +374,7 @@ export default function Explorer({
     }
     return groups;
   }, [comments]);
-  const savedIds = useMemo(() => new Set(saved), [saved]);
+  const followingIds = useMemo(() => new Set(following), [following]);
 
   // Place narrows the pool; status and category counts are read from it.
   const pool = useMemo(
@@ -390,15 +407,15 @@ export default function Explorer({
         )
       : filtered;
   }, [filtered, query]);
-  const savedProjects = useMemo(
+  const followedProjects = useMemo(
     () =>
       projects
-        .filter((project) => savedIds.has(project.id))
+        .filter((project) => followingIds.has(project.id))
         .sort(compareProjects),
-    [compareProjects, projects, savedIds],
+    [compareProjects, projects, followingIds],
   );
-  const savedOnly = view === "saved";
-  const listedProjects = savedOnly ? savedProjects : searched;
+  const followingView = view === "following";
+  const listedProjects = followingView ? followedProjects : searched;
 
   // Mobile shows the project its drawer holds, also while that drawer closes.
   const post = projects.find(
@@ -454,7 +471,7 @@ export default function Explorer({
       "",
       projectHref(id),
     );
-    setPostUpdateId(undefined);
+    setPostTarget({});
     setPostId(id);
     setSelectedId(id);
   }
@@ -501,8 +518,8 @@ export default function Explorer({
     };
   }, [isMobile]);
 
-  function openPost(id: string, updateId?: string) {
-    setPostUpdateId(updateId);
+  function openPost(id: string, target: Omit<FeedTarget, "projectId"> = {}) {
+    setPostTarget(target);
     projectTriggerRef.current =
       document.activeElement instanceof HTMLElement ||
       document.activeElement instanceof SVGElement
@@ -530,27 +547,27 @@ export default function Explorer({
     else window.history.replaceState({}, "", "/");
   }
 
-  async function toggleSaved(id: string) {
-    if (pendingBookmarks.current.has(id)) return;
+  async function toggleFollow(id: string) {
+    if (pendingFollows.current.has(id)) return;
     if (!user?.username) {
       try {
-        sessionStorage.setItem("varde-save-after-login", id);
+        sessionStorage.setItem("varde-follow-after-login", id);
       } catch {
         /* Sign-in still works without browser storage. */
       }
       requireAccount();
       return;
     }
-    const exists = savedIds.has(id);
-    pendingBookmarks.current.add(id);
+    const exists = followingIds.has(id);
+    pendingFollows.current.add(id);
     try {
-      await mutate({ action: "bookmark", projectId: id, saved: !exists });
+      await mutate({ action: "follow", projectId: id, following: !exists });
       const title =
         projects.find((project) => project.id === id)?.title || "Prosjektet";
       setToast({
-        message: exists ? `${title} fjernet` : `${title} lagret`,
+        message: exists ? `Følger ikke ${title}` : `Følger ${title}`,
         undo: () => {
-          void mutate({ action: "bookmark", projectId: id, saved: exists })
+          void mutate({ action: "follow", projectId: id, following: exists })
             .then(() => setToast(null))
             .catch((error) =>
               notify(errorMessage(error, "Kunne ikke angre endringen.")),
@@ -558,9 +575,9 @@ export default function Explorer({
         },
       });
     } catch (error) {
-      notify(errorMessage(error, "Kunne ikke lagre prosjektet."));
+      notify(errorMessage(error, "Kunne ikke følge prosjektet."));
     } finally {
-      pendingBookmarks.current.delete(id);
+      pendingFollows.current.delete(id);
     }
   }
 
@@ -568,16 +585,16 @@ export default function Explorer({
     if (!user?.username) return;
     let id: string | null = null;
     try {
-      id = sessionStorage.getItem("varde-save-after-login");
-      sessionStorage.removeItem("varde-save-after-login");
+      id = sessionStorage.getItem("varde-follow-after-login");
+      sessionStorage.removeItem("varde-follow-after-login");
     } catch {
       return;
     }
     if (!id) return;
-    void mutate({ action: "bookmark", projectId: id, saved: true }).catch(
-      (error) => notify(errorMessage(error, "Kunne ikke lagre prosjektet.")),
+    void mutate({ action: "follow", projectId: id, following: true }).catch(
+      (error) => notify(errorMessage(error, "Kunne ikke følge prosjektet.")),
     );
-    // A saved-project intent is consumed once when the account is ready.
+    // A follow intent is consumed once when the account is ready.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?.username]);
 
@@ -602,26 +619,21 @@ export default function Explorer({
     setSnapPoint(1);
   }
 
-  function showSaved() {
+  /** Desktop: the sidebar entry toggles the following view. */
+  function showFollowing(tab?: "activity" | "projects") {
     if (!requireAccount()) return;
-    if (postId) {
-      closePost();
-      if (view !== "saved") {
-        previousExplorerView.current = view === "list" ? "list" : "map";
-        setView("saved");
-      }
-      setModal(null);
-      setSnapPoint(1);
-      return;
-    }
-    if (view === "saved") {
+    followingFrom.current = "explorer";
+    if (tab) setFollowingTab(tab);
+    if (postId) closePost();
+    else if (view === "following" && !tab) {
       if (previousExplorerView.current === "map") showMap();
       else showList();
       return;
     }
-    previousExplorerView.current = view === "list" ? "list" : "map";
+    if (view !== "following")
+      previousExplorerView.current = view === "list" ? "list" : "map";
     setModal(null);
-    setView("saved");
+    setView("following");
     setSnapPoint(1);
   }
 
@@ -953,8 +965,8 @@ export default function Explorer({
     >
       <AccountPanel
         onBack={isMobile ? backToExplorer : undefined}
-        onSaved={isMobile ? openSavedFromProfile : undefined}
-        savedCount={saved.length}
+        onFollowing={isMobile ? openFollowingFromProfile : undefined}
+        followingCount={following.length}
         next={postId ? projectHref(postId) : "/"}
       />
     </div>
@@ -990,132 +1002,191 @@ export default function Explorer({
       clear: () => setCategory(toggle(category, value)),
     })),
   ];
+  const projectList =
+    listedProjects.length === 0 ? (
+      followingView ? (
+        <EmptyState
+          level={2}
+          icon={<Bell size={22} />}
+          title="Følger ingen prosjekter"
+        />
+      ) : (
+        <EmptyState level={2} icon={<Search size={22} />} title="Ingen treff">
+          <button className={secondaryAction} onClick={resetFilters}>
+            Nullstill filtre
+          </button>
+        </EmptyState>
+      )
+    ) : (
+      <ol>
+        {listedProjects.map((project) => (
+          <ProjectCard
+            key={project.id}
+            project={project}
+            commentCount={commentsByProject.get(project.id)?.length ?? 0}
+            onOpen={() => openPost(project.id)}
+          />
+        ))}
+      </ol>
+    );
+  const followingTabs = (
+    <div
+      className="grid shrink-0 grid-cols-2 gap-1 rounded-lg bg-ink/[0.055] p-1"
+      role="group"
+      aria-label="Følger"
+    >
+      <button
+        className={segment(followingTab === "activity")}
+        aria-pressed={followingTab === "activity"}
+        onClick={() => setFollowingTab("activity")}
+      >
+        <span>Aktivitet</span>
+        {unread > 0 && <UnreadBadge count={unread} />}
+      </button>
+      <button
+        className={segment(followingTab === "projects")}
+        aria-pressed={followingTab === "projects"}
+        onClick={() => setFollowingTab("projects")}
+      >
+        <span>Prosjekter</span>
+        <span className={filterCount}>{following.length}</span>
+      </button>
+    </div>
+  );
+  const followingContent = (
+    <>
+      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-border bg-surface py-1.5 max-md:min-h-12 max-md:bg-transparent">
+        <div className="flex min-w-0 items-center gap-x-3">
+          {isMobile && (
+            <button
+              type="button"
+              className={cn(compactIconAction, "-ml-3 -mr-2 text-muted")}
+              aria-label="Tilbake"
+              onClick={leaveFollowing}
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
+          <h1 className="text-xl leading-normal font-[650] tracking-[-0.4px] max-md:text-lg">
+            Følger
+          </h1>
+        </div>
+        {followingTabs}
+      </div>
+      {followingTab === "projects" ? (
+        projectList
+      ) : feed ? (
+        <FollowingActivity
+          feed={feed}
+          projects={projects}
+          markSeen={markSeen}
+          onOpen={openTarget}
+        />
+      ) : null}
+    </>
+  );
+  // Signed-in users see their own activity beside the list once they follow
+  // something or someone has replied to them; everyone else the latest overall.
+  const personalAside = feed && (feed.items.length > 0 || following.length > 0);
   const projectResults = (
     <section
       data-drawer-scroll
       className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain bg-surface scrollbar-thin max-md:bg-transparent"
-      aria-label="Prosjektliste"
+      aria-label={followingView ? "Følger" : "Prosjektliste"}
     >
-      <div className="m-auto grid max-w-310 grid-cols-[minmax(0,1fr)_248px] gap-10 px-8 pt-5 pb-10 max-xl:grid-cols-1 max-xl:px-7 max-xl:pt-3 max-xl:pb-8 max-md:block max-md:px-4.5 max-md:pt-0 max-md:pb-6">
+      <div
+        className={cn(
+          "m-auto grid max-w-310 grid-cols-[minmax(0,1fr)_248px] gap-10 px-8 pt-5 pb-10 max-xl:grid-cols-1 max-xl:px-7 max-xl:pt-3 max-xl:pb-8 max-md:block max-md:px-4.5 max-md:pt-0 max-md:pb-6",
+          followingView && "max-w-200 grid-cols-1",
+        )}
+      >
         <div className="min-w-0">
-          {!savedOnly &&
-            (isMobile ? (
-              mobileFilters
-            ) : (
-              <div className="mb-1">{search}</div>
-            ))}
-          <div className="flex min-h-14 items-center justify-between gap-3 border-b border-border bg-surface py-1.5 max-md:min-h-12 max-md:bg-transparent">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-              {savedOnly && isMobile && (
-                <button
-                  type="button"
-                  className={cn(compactIconAction, "-ml-3 -mr-2 text-muted")}
-                  aria-label="Tilbake til profilen"
-                  onClick={backToProfile}
-                >
-                  <ArrowLeft size={20} />
-                </button>
-              )}
-              <h1
-                className={cn(
-                  "text-xl leading-normal font-[650] tracking-[-0.4px] max-md:text-lg",
-                  !savedOnly && "sr-only",
-                )}
-              >
-                {savedOnly ? "Lagrede prosjekter" : "Prosjekter"}
-              </h1>
-              <span
-                className="text-ui whitespace-nowrap text-muted tabular-nums"
-                role="status"
-                aria-label={`${listedProjects.length} prosjekter`}
-              >
-                {listedProjects.length}{" "}
-                {listedProjects.length === 1 ? "prosjekt" : "prosjekter"}
-              </span>
-              {!savedOnly && activeFilters.length > 0 && (
-                <ul
-                  className="flex flex-wrap items-center gap-1.5"
-                  aria-label="Aktive filtre"
-                >
-                  {activeFilters.map((filter) => (
-                    <li key={filter.key}>
-                      <button
-                        type="button"
-                        className="inline-flex min-h-7 items-center gap-1 rounded-full bg-accent-soft pr-1.75 pl-2.5 text-xs font-[550] text-accent-strong hover:bg-accent/16"
-                        aria-label={`Fjern filter: ${filter.label}`}
-                        onClick={filter.clear}
-                      >
-                        {filter.label}
-                        <X size={13} aria-hidden="true" />
-                      </button>
-                    </li>
-                  ))}
-                  {activeFilters.length > 1 && (
-                    <li>
-                      <button
-                        type="button"
-                        className="min-h-7 px-1.5 text-xs text-muted underline-offset-3 hover:text-ink hover:underline"
-                        onClick={resetFilters}
-                      >
-                        Nullstill filtre
-                      </button>
-                    </li>
-                  )}
-                </ul>
-              )}
-            </div>
-            <ChoiceSelect
-              label="Sorter prosjekter"
-              value={sort}
-              className={sortChoiceClasses}
-              icon={<ArrowDownUp size={14} />}
-              onChange={setSort}
-              options={[
-                { value: "current", label: "Aktuelt" },
-                { value: "added", label: "Nyeste" },
-                { value: "title", label: "Alfabetisk" },
-              ]}
-            />
-          </div>
-          {listedProjects.length === 0 ? (
-            <EmptyState
-              level={2}
-              icon={savedOnly ? <Bookmark size={22} /> : <Search size={22} />}
-              title={savedOnly ? "Ingen lagrede prosjekter" : "Ingen treff"}
-            >
-              {savedOnly ? (
-                <p className="max-w-85 text-ui leading-[1.6]">
-                  Lagre et prosjekt for å finne det her.
-                </p>
-              ) : (
-                <button className={secondaryAction} onClick={resetFilters}>
-                  Nullstill filtre
-                </button>
-              )}
-            </EmptyState>
+          {followingView ? (
+            followingContent
           ) : (
-            <ol>
-              {listedProjects.map((project) => (
-                <ProjectCard
-                  key={project.id}
-                  project={project}
-                  commentCount={commentsByProject.get(project.id)?.length ?? 0}
-                  onOpen={() => openPost(project.id)}
+            <>
+              {isMobile ? mobileFilters : <div className="mb-1">{search}</div>}
+              <div className="flex min-h-14 items-center justify-between gap-3 border-b border-border bg-surface py-1.5 max-md:min-h-12 max-md:bg-transparent">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+                  <h1 className="sr-only">Prosjekter</h1>
+                  <span
+                    className="text-ui whitespace-nowrap text-muted tabular-nums"
+                    role="status"
+                    aria-label={`${listedProjects.length} prosjekter`}
+                  >
+                    {listedProjects.length}{" "}
+                    {listedProjects.length === 1 ? "prosjekt" : "prosjekter"}
+                  </span>
+                  {activeFilters.length > 0 && (
+                    <ul
+                      className="flex flex-wrap items-center gap-1.5"
+                      aria-label="Aktive filtre"
+                    >
+                      {activeFilters.map((filter) => (
+                        <li key={filter.key}>
+                          <button
+                            type="button"
+                            className="inline-flex min-h-7 items-center gap-1 rounded-full bg-accent-soft pr-1.75 pl-2.5 text-xs font-[550] text-accent-strong hover:bg-accent/16"
+                            aria-label={`Fjern filter: ${filter.label}`}
+                            onClick={filter.clear}
+                          >
+                            {filter.label}
+                            <X size={13} aria-hidden="true" />
+                          </button>
+                        </li>
+                      ))}
+                      {activeFilters.length > 1 && (
+                        <li>
+                          <button
+                            type="button"
+                            className="min-h-7 px-1.5 text-xs text-muted underline-offset-3 hover:text-ink hover:underline"
+                            onClick={resetFilters}
+                          >
+                            Nullstill filtre
+                          </button>
+                        </li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+                <ChoiceSelect
+                  label="Sorter prosjekter"
+                  value={sort}
+                  className={sortChoiceClasses}
+                  icon={<ArrowDownUp size={14} />}
+                  onChange={setSort}
+                  options={[
+                    { value: "current", label: "Aktuelt" },
+                    { value: "added", label: "Nyeste" },
+                    { value: "title", label: "Alfabetisk" },
+                  ]}
                 />
-              ))}
-            </ol>
+              </div>
+              {projectList}
+            </>
           )}
         </div>
-        <aside
-          className="min-w-0 pt-5 max-xl:hidden"
-          aria-labelledby="recent-activity"
-        >
-          <RecentActivity
-            projects={listedProjects}
-            comments={comments}
-            onOpen={openPost}
-          />
-        </aside>
+        {!followingView && (
+          <aside
+            className="min-w-0 pt-5 max-xl:hidden"
+            aria-labelledby="recent-activity"
+          >
+            {personalAside ? (
+              <PersonalActivity
+                feed={feed}
+                projects={projects}
+                onOpen={openTarget}
+                onShowAll={() => showFollowing("activity")}
+              />
+            ) : (
+              <RecentActivity
+                projects={listedProjects}
+                comments={comments}
+                onOpen={(id, updateId) => openPost(id, { updateId })}
+              />
+            )}
+          </aside>
+        )}
       </div>
     </section>
   );
@@ -1125,11 +1196,12 @@ export default function Explorer({
       embedded={isMobile}
       key={post.id}
       project={post}
-      initialUpdateId={postUpdateId}
+      initialUpdateId={postTarget.updateId}
+      initialCommentId={postTarget.commentId}
       onClose={() => closePost()}
       feedback={feedback}
-      saved={savedIds.has(post.id)}
-      onSave={() => toggleSaved(post.id)}
+      following={followingIds.has(post.id)}
+      onFollow={() => toggleFollow(post.id)}
       comments={commentsByProject.get(post.id) ?? noComments}
       onNotify={notify}
       onMap={() => {
@@ -1157,17 +1229,22 @@ export default function Explorer({
     setModal("profile");
     setSnapPoint(1);
   }
-  /** Mobile reaches saved projects through the profile, and returns there. */
-  function openSavedFromProfile() {
-    if (view !== "saved")
+  /** Mobile: the profile links to followed projects, and they lead back. */
+  function openFollowingFromProfile() {
+    followingFrom.current = "profile";
+    if (view !== "following")
       previousExplorerView.current = view === "list" ? "list" : "map";
+    setFollowingTab("projects");
     setModal(null);
-    setView("saved");
+    setView("following");
     setSnapPoint(1);
   }
-  function backToProfile() {
+  function leaveFollowing() {
     setView(previousExplorerView.current === "map" ? "map" : "list");
-    openProfile();
+    if (followingFrom.current === "profile") openProfile();
+  }
+  function openTarget({ projectId, ...target }: FeedTarget) {
+    openPost(projectId, target);
   }
   function backToExplorer() {
     if (postId) closePost();
@@ -1218,6 +1295,31 @@ export default function Explorer({
               >
                 <Plus size={21} />
               </button>
+              {user?.username && (
+                <button
+                  className={cn(
+                    compactIconAction,
+                    "relative text-muted",
+                    followingView && "text-accent",
+                  )}
+                  aria-label={unread > 0 ? `Følger, ${unread} nye` : "Følger"}
+                  aria-pressed={followingView}
+                  onClick={() =>
+                    followingView ? leaveFollowing() : showFollowing("activity")
+                  }
+                >
+                  <Bell
+                    size={20}
+                    fill={followingView ? "currentColor" : "none"}
+                  />
+                  {unread > 0 && (
+                    <UnreadBadge
+                      count={unread}
+                      className="pointer-events-none absolute top-1 right-0.5 ring-2 ring-surface"
+                    />
+                  )}
+                </button>
+              )}
               <button
                 className={cn(
                   "inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-transparent text-xs font-semibold text-muted",
@@ -1322,7 +1424,7 @@ export default function Explorer({
         >
           <div className="shrink-0 px-3.5">{brand}</div>
           <div className="shrink-0 px-1">{navigation}</div>
-          {view !== "saved" ? sidebarFilters : <div className="flex-1" />}
+          {!followingView ? sidebarFilters : <div className="flex-1" />}
           <nav
             className="shrink-0 border-t border-border px-1 pt-2 [&>button+button]:mt-0.5"
             aria-label="Konto"
@@ -1330,18 +1432,19 @@ export default function Explorer({
             <button
               className={cn(
                 navRow,
-                view === "saved" && "bg-accent-soft text-accent-strong",
+                followingView && "bg-accent-soft text-accent-strong",
               )}
-              aria-pressed={view === "saved"}
-              onClick={showSaved}
+              aria-pressed={followingView}
+              onClick={() => showFollowing()}
             >
-              <Bookmark
-                size={16}
-                fill={view === "saved" ? "currentColor" : "none"}
-              />
-              <span className="flex-1">Lagrede prosjekter</span>
-              {saved.length > 0 && (
-                <span className={filterCount}>{saved.length}</span>
+              <Bell size={16} fill={followingView ? "currentColor" : "none"} />
+              <span className="flex-1">Følger</span>
+              {unread > 0 ? (
+                <UnreadBadge count={unread} />
+              ) : (
+                following.length > 0 && (
+                  <span className={filterCount}>{following.length}</span>
+                )
               )}
             </button>
             <button
@@ -1411,7 +1514,7 @@ export default function Explorer({
               selectedId={selectedId}
               onSelect={(id) => (id ? openPost(id) : setSelectedId(null))}
             />
-            {filtered.length === 0 && view !== "saved" && (
+            {filtered.length === 0 && !followingView && (
               <div
                 className={cn(
                   "absolute top-1/2 left-1/2 z-[650] flex min-w-60 max-w-[calc(100%-32px)] -translate-1/2 flex-col items-center gap-3 rounded-2xl border border-border bg-surface/95 p-7 shadow-[0_10px_40px_rgb(20_28_24/0.12)]",
@@ -1473,7 +1576,9 @@ export default function Explorer({
             setSnapPoint(point);
             if (!modal) {
               if (point === 1)
-                setView((current) => (current === "saved" ? "saved" : "list"));
+                setView((current) =>
+                  current === "following" ? "following" : "list",
+                );
               else setView("map");
             }
           }}
@@ -1516,7 +1621,7 @@ export default function Explorer({
                 setSnapPoint(1);
                 if (!modal)
                   setView((current) =>
-                    current === "saved" ? "saved" : "list",
+                    current === "following" ? "following" : "list",
                   );
               }}
               handle={
@@ -1546,7 +1651,7 @@ export default function Explorer({
               </DrawerTitle>
               <DrawerDescription className="sr-only">
                 Dra eller trykk på håndtaket for å endre høyden. Utforsk kart,
-                prosjekter og lagrede prosjekter.
+                prosjekter og prosjektene du følger.
               </DrawerDescription>
               {drawerReady && drawerBody}
             </DrawerContent>
@@ -1628,7 +1733,7 @@ export default function Explorer({
             setQuery("");
             setStatus([]);
             setCategory([]);
-            setView((current) => (current === "saved" ? "list" : current));
+            setView((current) => (current === "following" ? "list" : current));
             setEditorOpen(false);
             setSelectedId(project.id);
             notify("Prosjektet er lagt til");

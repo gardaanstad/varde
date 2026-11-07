@@ -1,13 +1,13 @@
 import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
-import { bookmark, comment, project, rateLimit, user, vote } from "../db/schema";
+import { comment, follow, project, rateLimit, user, vote } from "../db/schema";
 import { getProjectUpdates, type Comment, type Project } from "../data";
 import { HttpError } from "./http";
 
 export async function readCommunity(userId?: string) {
   const db = getDb();
-  const [projects, rows, saved, votes] = await Promise.all([
+  const [projects, rows, followed, votes] = await Promise.all([
     db.select().from(project),
     db
       .select({
@@ -25,7 +25,12 @@ export async function readCommunity(userId?: string) {
       .leftJoin(vote, eq(vote.commentId, comment.id))
       .groupBy(comment.id)
       .orderBy(comment.date, comment.id),
-    userId ? db.select().from(bookmark).where(eq(bookmark.userId, userId)) : [],
+    userId
+      ? db
+          .select({ projectId: follow.projectId })
+          .from(follow)
+          .where(eq(follow.userId, userId))
+      : [],
     userId ? db.select().from(vote).where(eq(vote.userId, userId)) : [],
   ]);
   const ids = new Set(rows.map((row) => row.id));
@@ -45,7 +50,7 @@ export async function readCommunity(userId?: string) {
   return {
     projects: projects.map((row) => row.data),
     comments,
-    saved: saved.map((row) => row.projectId),
+    following: followed.map((row) => row.projectId),
     votes: Object.fromEntries(votes.map((row) => [row.commentId, row.value])),
   };
 }
@@ -131,24 +136,19 @@ export async function castVote(
       });
 }
 
-export async function setBookmark(
+export async function setFollow(
   userId: string,
   projectId: string,
-  saved: boolean,
+  following: boolean,
 ) {
   await findProject(projectId);
   const db = getDb();
-  if (saved)
-    await db
-      .insert(bookmark)
-      .values({ userId, projectId })
-      .onConflictDoNothing();
+  if (following)
+    await db.insert(follow).values({ userId, projectId }).onConflictDoNothing();
   else
     await db
-      .delete(bookmark)
-      .where(
-        and(eq(bookmark.userId, userId), eq(bookmark.projectId, projectId)),
-      );
+      .delete(follow)
+      .where(and(eq(follow.userId, userId), eq(follow.projectId, projectId)));
 }
 
 export async function addComment(
@@ -176,13 +176,21 @@ export async function addComment(
       throw new HttpError(400, "Svaret må tilhøre den samme samtalen.");
   }
   // Identity and timestamps always come from the verified session and server.
-  await db.insert(comment).values({
-    id: crypto.randomUUID(),
-    projectId: input.projectId,
-    updateId: input.updateId || "",
-    parentId: input.parentId,
-    text: input.text,
-    date: new Date().toISOString(),
-    userId,
-  });
+  // Taking part in a discussion follows the project, so replies and new
+  // comments show up in the feed; following stays if it was already set.
+  await db.batch([
+    db.insert(comment).values({
+      id: crypto.randomUUID(),
+      projectId: input.projectId,
+      updateId: input.updateId || "",
+      parentId: input.parentId,
+      text: input.text,
+      date: new Date().toISOString(),
+      userId,
+    }),
+    db
+      .insert(follow)
+      .values({ userId, projectId: input.projectId })
+      .onConflictDoNothing(),
+  ]);
 }

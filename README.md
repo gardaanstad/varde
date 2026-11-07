@@ -18,7 +18,7 @@ Deployment: see [Deploy to Vercel](docs/google-auth.md#deploy-to-vercel). Valida
 ## Included
 
 - Interactive map with clickable project polygons and road / railway alignments, status colors, zoom, and map layers. Below street zoom every project is also drawn as a dot, and places without a preset view are framed to fit their projects.
-- Map and list views with search, place, status, category, saved-only filtering, result counts, and sorting. On desktop, status and category are one-click toggle lists with live counts; active filters show as removable chips above the results.
+- Map and list views with search, place, status, category, result counts, and sorting. On desktop, status and category are one-click toggle lists with live counts; active filters show as removable chips above the results.
 - Categories: Samferdsel, Energi, Vann og avløp, Offentlige bygg, Byutvikling, Bolig, Næring, and Byrom og park, each with an icon (`app/components/category-icon.tsx`).
 - Project reference pages at `/prosjekt/[id]` with editable descriptions, project links, facts, a separate update timeline, and image credits. Discussion is the default section, and projects open at full reading height on mobile.
 - A project-first browse view with descriptions, discussion counts, latest updates, and sorting by recent activity; the interactive map remains available.
@@ -26,7 +26,8 @@ Deployment: see [Deploy to Vercel](docs/google-auth.md#deploy-to-vercel). Valida
 - A latest-update context card and a “since the latest update” filter that includes older conversations with recent replies. Updates never become comments or own separate comment sections.
 - Existing comments, votes, and replies are preserved; previous update associations become optional references. Historical “Om prosjektet” entries are read as project context.
 - HTTPS source links for project pages and updates; moderators can edit the reference description without publishing a timeline entry. Visible pages refresh every minute and when returning to the tab.
-- Saved projects with a dedicated collection view.
+- Following ("Følg"): signed-in users follow projects from the project header, and commenting follows a project automatically. The "Følger" view has two tabs: the followed projects, and a personal activity feed.
+- Activity feed: new project updates and comments on followed projects, and replies to your own comments on any project, grouped by project and linked to the update or comment. An unread badge sits on the "Følger" sidebar entry (desktop) and a bell in the drawer header (mobile); opening the feed marks it read. On wide screens the list's activity column shows the newest of your feed when signed in, and site-wide recent activity otherwise.
 - A privacy page at `/personvern`, linked from login.
 - Moderator tools: add project details, draw an area or alignment, undo points, enter coordinates, and publish project updates or status changes.
 - Responsive layouts, native modal focus management, keyboard dismissal, a search shortcut, and reduced-motion styling.
@@ -36,7 +37,7 @@ Deployment: see [Deploy to Vercel](docs/google-auth.md#deploy-to-vercel). Valida
 - One Google button for sign-up and login, followed by one-time username selection for new users.
 - Unique public usernames with immediate availability feedback, Norwegian characters, and database-enforced uniqueness.
 - Persistent sessions, optional profile bio/location, sign-out on other devices, and account deletion with recent authentication.
-- Comments use the verified account identity; votes and saved projects persist across devices.
+- Comments use the verified account identity; votes and followed projects persist across devices.
 - Moderator access is configured with verified emails in `MODERATOR_EMAILS` and enforced on the server.
 - Moderators upload project and update photos; browsers downscale them to 2000px before upload and they are stored in the database (`upload` table) and served from `/api/uploads/[id]`. Projects without a photo show a category placeholder. The bundled `/images/*.jpg` photos are only used by example (seed/sample) projects.
 - Local SQLite for development, with hosted Turso support using `DATABASE_URL` and `DATABASE_AUTH_TOKEN`.
@@ -49,7 +50,8 @@ Map tiles load from Esri's Light Gray Canvas service, with an OpenStreetMap stre
 
 ## Structure
 
-- `app/components/explorer.tsx`: navigation, filters, project results, and account entry points; `project-card.tsx`, `recent-activity.tsx`, and `toast.tsx` render its list, activity column, and confirmations.
+- `app/components/explorer.tsx`: navigation, filters, project results, the following view, and account entry points; `project-card.tsx`, `recent-activity.tsx`, `activity-feed.tsx`, and `toast.tsx` render its list, activity column, personal feed, and confirmations.
+- `app/lib/server/feed.ts`, `app/lib/feed.ts`, `app/api/feed/`, and `app/components/feed-provider.tsx`: the personal activity feed. `collectActivity` gathers a user's activity since a given time without read state, so a later e-mail digest can reuse it; `readFeed` adds unread state from `user.feed_seen_at` and each follow's `created_at`, and `POST /api/feed` marks a read as seen.
 - `app/components/project-map.tsx`: Leaflet map, project overlays, and geometry drawing.
 - `app/components/project-post.tsx`: project reference page and update timeline.
 - `app/components/project-discussion.tsx` and `app/lib/discussion.ts`: shared project discussion, optional references, and activity-aware filtering.
@@ -74,4 +76,4 @@ Map tiles load from Esri's Light Gray Canvas service, with an OpenStreetMap stre
 
 All comments belong to `projectId`. `updateId` is optional in the API and is only a reference, never a separate discussion boundary. An empty string in the existing database column represents no reference; reads normalize old overview references and missing update references to an omitted `updateId`. This preserves existing rows and votes without rebuilding tables. Replies must stay within the same project but can cite a different update.
 
-Run `bun run db:migrate` for existing installations. Migration `0002_infrastructure_categories` moves the government quarter to Offentlige bygg, and the development seed adds national infrastructure examples (Follobanen, Fornebubanen, E39 Rogfast, Sotrasambandet, Hålogalandsbrua, Ny vannforsyning Oslo, Nye Aker sykehus, Northern Lights). Migration `0001_project_sources` adds verified project links and sample-data labels to the seeded projects without replacing their content or existing links. The links lead to project owners, municipalities, or project designers; the illustrative statuses and updates are still not a live register.
+Run `bun run db:migrate` for existing installations. Migration `0004_follow_feed` keeps the `bookmark` table (exported as `follow` in the schema) so existing saved projects become followed projects, adds when each follow started and when each user last opened the feed, and sets both to the migration time so nothing old shows as unread. Migration `0002_infrastructure_categories` moves the government quarter to Offentlige bygg, and the development seed adds national infrastructure examples (Follobanen, Fornebubanen, E39 Rogfast, Sotrasambandet, Hålogalandsbrua, Ny vannforsyning Oslo, Nye Aker sykehus, Northern Lights). Migration `0001_project_sources` adds verified project links and sample-data labels to the seeded projects without replacing their content or existing links. The links lead to project owners, municipalities, or project designers; the illustrative statuses and updates are still not a live register.
