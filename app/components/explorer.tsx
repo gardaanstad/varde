@@ -16,9 +16,7 @@ import {
   ArrowDownUp,
   ArrowLeft,
   Bookmark,
-  ChevronDown,
   RotateCcw,
-  List,
   Map as MapIcon,
   ListFilter,
   MapPin,
@@ -26,19 +24,29 @@ import {
   Search,
   User,
   X,
+  ZoomOut,
 } from "lucide-react";
 import {
-  allPlaces,
   categories,
-  type Category,
+  type Bounds,
   type Comment,
-  cities,
+  type Point,
   type Project,
   projectAddedAt,
   projectHref,
+  projectInBounds,
   statuses,
   statusOrder,
 } from "../lib/data";
+import {
+  defaultStatus,
+  exploreSearch,
+  type MapView,
+  parseExploreState,
+  sameValues,
+  sortOptions,
+} from "../lib/explore-state";
+import type { MapApi, MapViewChange } from "./project-map";
 import { errorMessage } from "../lib/api-client";
 import { profileHref } from "../lib/profiles";
 import { useAuth } from "./auth-provider";
@@ -47,11 +55,9 @@ import AccountPanel from "./account-panel";
 import ProfileAvatar from "./profile-avatar";
 import Dialog from "./dialog";
 import ChoiceSelect from "./choice-select";
-import CategoryIcon from "./category-icon";
 import ProjectEditor from "./project-editor";
 import ProjectPost from "./project-post";
 import ProjectCard from "./project-card";
-import RecentActivity from "./recent-activity";
 import EmptyState from "./empty-state";
 import Toast, { type ToastMessage } from "./toast";
 import {
@@ -75,12 +81,35 @@ import {
 
 // Tailwind's `max-md`: the drawer layout below 768px.
 const mobileQuery = "(width < 48rem)";
-const defaultPlace = "Oslo";
 /** The decoded id after a route prefix such as "/prosjekt/", if on that route. */
 export function routeParam(pathname: string, prefix: string) {
   return pathname.startsWith(prefix)
     ? decodeURIComponent(pathname.slice(prefix.length).split("/")[0])
     : undefined;
+}
+/**
+ * Replaces the URL but keeps this entry's state. Next.js ignores states it
+ * wrote itself (and would later restore its own URL), so its marks go.
+ */
+function replaceUrl(url: string) {
+  const state = { ...window.history.state };
+  delete state.__NA;
+  delete state._N;
+  window.history.replaceState(state, "", url);
+}
+/**
+ * Runs once Next.js has written its state for the history entry stepped to,
+ * which it does when the step's navigation commits (or after two seconds).
+ */
+function whenNextSettled(run: () => void) {
+  const state = window.history.state;
+  const start = performance.now();
+  const check = () => {
+    if (window.history.state !== state || performance.now() - start > 2000)
+      run();
+    else requestAnimationFrame(check);
+  };
+  requestAnimationFrame(check);
 }
 function subscribeMobile(callback: () => void) {
   const media = window.matchMedia(mobileQuery);
@@ -91,6 +120,11 @@ const noComments: Comment[] = [];
 const middleSnapPoint = 0.58;
 // The compact drawer shows just the header and filters along the bottom edge.
 const compactSnapPoint = "136px";
+// The map ends this far above the screen's bottom edge, under the drawer.
+const mapBottomGap = 124;
+/** The map the middle-height drawer covers; the list holds what is above it. */
+const mobileMapInset = () =>
+  Math.max(0, Math.round(window.innerHeight * middleSnapPoint - mapBottomGap));
 const drawerSnapPoints: DrawerSnapPoint[] = [
   compactSnapPoint,
   middleSnapPoint,
@@ -103,30 +137,22 @@ const secondaryAction = cn(
 );
 const quietAction = cn(textButton, "min-h-11 text-xs");
 const compactIconAction = cn(iconButton, "rounded-lg");
-const filterHeading = "mb-1 block px-2.5 text-xs font-medium text-muted";
-const filterRow = cn(
-  "flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-ui text-ink/85",
-  "transition-colors duration-150 hover:bg-ink/[0.045] motion-reduce:transition-none",
-  "aria-pressed:bg-accent/[0.13] aria-pressed:font-semibold aria-pressed:text-accent-strong aria-pressed:hover:bg-accent/[0.17]",
-  "[&>svg]:shrink-0 [&>svg]:text-muted aria-pressed:[&>svg]:text-accent aria-pressed:[&>span:last-child]:text-accent-strong",
-);
-const filterCount = "text-xs tabular-nums text-muted";
-const navRow = cn(
-  "flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-ui font-medium text-ink/80",
-  "transition-colors duration-150 hover:bg-ink/[0.045] hover:text-ink motion-reduce:transition-none",
-  "[&>svg]:shrink-0 [&>svg]:text-muted",
-);
+const chip =
+  "inline-flex min-h-7 items-center gap-1 rounded-full bg-accent-soft pr-1.75 pl-2.5 text-xs font-[550] text-accent-strong hover:bg-accent/16";
 
-// Most people follow what is coming, so finished projects start hidden.
-const defaultStatus: string[] = ["planned", "construction"];
-// The sidebar leads with the common categories; the rest sit behind a toggle.
-const primaryCategories: Category[] = [
-  "Samferdsel",
-  "Byutvikling",
-  "Byrom og park",
-];
-const sameValues = (a: string[], b: string[]) =>
-  a.length === b.length && a.every((value) => b.includes(value));
+function categorySummary(values: string[]) {
+  return values.length === 0
+    ? "Alle kategorier"
+    : values.length === 1
+      ? values[0]
+      : `${values.length} kategorier`;
+}
+const searchText = (project: Project) =>
+  `${project.title} ${project.city} ${project.district} ${project.category} ${project.developer}`.toLocaleLowerCase(
+    "nb",
+  );
+const projectPoints = (project: Project): Point[] =>
+  project.geometry.length ? project.geometry : [project.center];
 function statusSummary(values: string[]) {
   const labels = statusOrder
     .filter((value) => values.includes(value))
@@ -137,12 +163,15 @@ function statusSummary(values: string[]) {
   return labels.join(", ");
 }
 
-const sidebarChoiceClasses = [
-  "has-[[data-slot=choice-trigger][aria-expanded=true]]:z-20",
-  "[&_[data-slot=choice-trigger]]:min-h-10 [&_[data-slot=choice-trigger]]:gap-2.5 [&_[data-slot=choice-trigger]]:rounded-lg [&_[data-slot=choice-trigger]]:border-border [&_[data-slot=choice-trigger]]:bg-surface! [&_[data-slot=choice-trigger]]:px-2.25 [&_[data-slot=choice-trigger]]:text-left [&_[data-slot=choice-trigger]]:text-ui [&_[data-slot=choice-trigger]]:font-normal",
-  "[&_[data-slot=choice-trigger]]:hover:bg-surface! [&_[data-slot=choice-trigger]]:hover:border-border-strong",
-  "[&_[data-slot=choice-menu][data-open=false]]:hidden",
+// Desktop filters: compact pills that turn green once they narrow the list.
+const panelChoiceClasses = [
+  "min-w-0 shrink",
+  "[&_[data-slot=choice-trigger]]:min-h-9 [&_[data-slot=choice-trigger]]:gap-1.5 [&_[data-slot=choice-trigger]]:rounded-full [&_[data-slot=choice-trigger]]:px-3 [&_[data-slot=choice-trigger]]:text-ui [&_[data-slot=choice-trigger]]:font-medium",
+  "[&_[data-slot=choice-trigger]>svg]:shrink-0 [&_[data-slot=choice-trigger]>svg]:text-muted [&_[data-slot=choice-trigger]>svg:last-child]:ml-0",
+  "[&_[data-slot=choice-trigger]>span:nth-of-type(2)]:hidden [&_[data-slot=choice-menu][data-open=false]]:hidden",
 ].join(" ");
+const panelChoiceActive =
+  "[&_[data-slot=choice-trigger]]:border-accent/30 [&_[data-slot=choice-trigger]]:bg-accent-soft/60 [&_[data-slot=choice-trigger]]:text-accent-strong [&_[data-slot=choice-trigger]>svg]:text-accent";
 
 // Mobile filters read as inline text; the menus carry the structure.
 const inlineChoiceClasses = [
@@ -210,10 +239,13 @@ const ProjectMap = dynamic(() => import("./project-map"), {
 export default function Explorer({
   initialProjectId,
   initialProfile,
+  initialSearch = "",
   mobileHint = false,
 }: {
   initialProjectId?: string;
   initialProfile?: string;
+  /** The query string the page was opened with: filters and map position. */
+  initialSearch?: string;
   /** From the request's user agent, so phones render mobile on the server. */
   mobileHint?: boolean;
 }) {
@@ -241,15 +273,18 @@ export default function Explorer({
   const { user, pending: authPending, canModerate, requireAccount } = useAuth();
   const { projects, saved, comments, mutate } = useCommunity();
   const pendingBookmarks = useRef(new Set<string>());
-  const [query, setQuery] = useState("");
+  const [initial] = useState(() =>
+    parseExploreState(new URLSearchParams(initialSearch)),
+  );
+  const [query, setQuery] = useState(initial.query);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const [city, setCity] = useState(defaultPlace);
-  const [status, setStatus] = useState<string[]>(defaultStatus);
-  const [category, setCategory] = useState<string[]>([]);
-  const [allCategories, setAllCategories] = useState(false);
-  const [sort, setSort] = useState("current");
-  const [view, setView] = useState<"map" | "list" | "saved">("list");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [status, setStatus] = useState<string[]>(initial.status);
+  const [category, setCategory] = useState<string[]>(initial.category);
+  const [sort, setSort] = useState(initial.sort);
+  const [savedOnly, setSavedOnly] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialProjectId || null,
+  );
   const [postUpdateId, setPostUpdateId] = useState<string | undefined>();
   const [postId, setPostId] = useState<string | null>(initialProjectId || null);
   const [profileName, setProfileName] = useState<string | null>(
@@ -265,19 +300,42 @@ export default function Explorer({
     (shown.postId !== postId || shown.profileName !== profileName)
   )
     setShown({ postId, profileName });
-  const previousExplorerView = useRef<"map" | "list">("list");
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const notify = (message: string) => setToast({ message });
   const searchRef = useRef<HTMLInputElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLElement>(null);
+
+  // The map is the place filter: the list holds what its view covers.
+  const mapApi = useRef<MapApi | null>(null);
+  const [mapView, setMapView] = useState<MapViewChange | null>(null);
+  const mapViewRef = useRef<MapViewChange | null>(null);
+  // Desktop: framing an open project moves the map, but the list behind the
+  // panel keeps the area it was opened from, so it returns unchanged.
+  const [frozenBounds, setFrozenBounds] = useState<Bounds | null>(null);
+  const postView = useRef<{ id: string; before: MapView | null } | null>(
+    null,
+  );
+  // Map moves after closing a project wait until history has stepped back:
+  // replacing the URL mid-step makes Next.js reload the page.
+  const afterPop = useRef<(() => void) | null>(null);
+  const steppingBack = useRef(false);
+  function stepBack() {
+    steppingBack.current = true;
+    window.history.back();
+  }
+  // A hovered card lights up its shape; a hovered shape lights up its card.
+  const [hover, setHover] = useState<{
+    id: string;
+    from: "list" | "map";
+  } | null>(null);
+
   const openSearch = useCallback(() => {
-    if (postId || profileName || modal || view === "saved") return;
+    if (postId || profileName || modal || savedOnly) return;
     // Focus during the tap so mobile browsers also open the keyboard.
     if (isMobile) flushSync(() => setMobileSearchOpen(true));
-    // Search lives above the list, so leave the map for it.
-    else if (view === "map") flushSync(() => setView("list"));
     searchRef.current?.focus({ preventScroll: true });
-  }, [isMobile, modal, postId, profileName, view, setView]);
+  }, [isMobile, modal, postId, profileName, savedOnly]);
 
   function closeMobileSearch() {
     flushSync(() => {
@@ -287,6 +345,80 @@ export default function Explorer({
     searchTriggerRef.current?.focus({ preventScroll: true });
   }
 
+  // Filters and the map position live in the query string, for sharing and
+  // reloads. Each change replaces the entry, so history only holds pages.
+  const urlSearch = exploreSearch({
+    query,
+    status,
+    category,
+    sort,
+    view: mapView ?? initial.view,
+  });
+  const searchString = useRef(urlSearch);
+  useEffect(() => {
+    searchString.current = urlSearch;
+    // Mid-step the entry is changing; the step syncs the URL when it lands.
+    if (!steppingBack.current && window.location.search !== urlSearch)
+      replaceUrl(window.location.pathname + urlSearch);
+  }, [urlSearch]);
+  /** A path in the explorer, keeping the current filters and map position. */
+  const withSearch = (path: string) => path + searchString.current;
+
+  function enterPostView(id: string, frame = true) {
+    if (isMobile) return;
+    if (!postView.current && mapViewRef.current)
+      setFrozenBounds(mapViewRef.current.bounds);
+    postView.current = {
+      id,
+      before: postView.current ? postView.current.before : mapViewRef.current,
+    };
+    const project = projects.find((item) => item.id === id);
+    if (frame && project) mapApi.current?.fit(projectPoints(project));
+  }
+  function leavePostView() {
+    const view = postView.current;
+    if (!view) return;
+    postView.current = null;
+    // Back to where the project was opened from; the list follows when the
+    // map settles. Opened by link, the list takes the area around it.
+    if (view.before) mapApi.current?.show(view.before);
+    else setFrozenBounds(null);
+    requestAnimationFrame(() =>
+      listRef.current
+        ?.querySelector(`[data-card-id="${CSS.escape(view.id)}"]`)
+        ?.scrollIntoView({ block: "nearest" }),
+    );
+  }
+
+  const onPopState = useEffectEvent(() => {
+    // Entries keep the query string they had; the current filters win once
+    // Next.js has handled the step, which can take a fetch after a reload.
+    // Until then the URL stays put: replacing it mid-step makes Next.js
+    // reload the page.
+    steppingBack.current = true;
+    const after = afterPop.current;
+    afterPop.current = null;
+    whenNextSettled(() => {
+      steppingBack.current = false;
+      if (window.location.search !== searchString.current)
+        replaceUrl(window.location.pathname + searchString.current);
+      after?.();
+    });
+    const path = window.location.pathname;
+    const profile = routeParam(path, "/profil/");
+    if (profile) {
+      // Moving forward into a profile keeps whatever it was opened over.
+      setProfileName(profile);
+      setPostId(window.history.state?.profileOver ?? null);
+      return;
+    }
+    const next = routeParam(path, "/prosjekt/") ?? null;
+    setProfileName(null);
+    setPostId(next);
+    setSelectedId(next);
+    if (next && next !== postId) enterPostView(next);
+    else if (!next) leavePostView();
+  });
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {
       if (
@@ -299,24 +431,11 @@ export default function Explorer({
         openSearch();
       }
     };
-    const pop = () => {
-      const path = window.location.pathname;
-      const profile = routeParam(path, "/profil/");
-      if (profile) {
-        // Moving forward into a profile keeps whatever it was opened over.
-        setProfileName(profile);
-        setPostId(window.history.state?.profileOver ?? null);
-        return;
-      }
-      setProfileName(null);
-      setPostId(routeParam(path, "/prosjekt/") ?? null);
-    };
-
     window.addEventListener("keydown", keys);
-    window.addEventListener("popstate", pop);
+    window.addEventListener("popstate", onPopState);
     return () => {
       window.removeEventListener("keydown", keys);
-      window.removeEventListener("popstate", pop);
+      window.removeEventListener("popstate", onPopState);
     };
   }, [openSearch]);
 
@@ -359,37 +478,55 @@ export default function Explorer({
   }, [comments]);
   const savedIds = useMemo(() => new Set(saved), [saved]);
 
-  // Place narrows the pool; status and category counts are read from it.
-  const pool = useMemo(
+  // Before the map reports its view (and on the server) the list covers Norway.
+  const listBounds = frozenBounds ?? mapView?.bounds ?? null;
+  const inView = useMemo(
     () =>
-      projects.filter((project) => city === allPlaces || project.city === city),
-    [city, projects],
+      listBounds
+        ? projects.filter((project) => projectInBounds(project, listBounds))
+        : projects,
+    [listBounds, projects],
   );
-  // The map gets the unsorted matches, so re-ranking never redraws it.
+  const statusMatch = useCallback(
+    (project: Project) =>
+      status.length === 0 || status.includes(project.status),
+    [status],
+  );
+  const categoryMatch = useCallback(
+    (project: Project) =>
+      category.length === 0 || category.includes(project.category),
+    [category],
+  );
+  // The map gets every match in Norway, unsorted, so re-ranking never redraws it.
   const matching = useMemo(
     () =>
-      pool.filter(
-        (project) =>
-          (status.length === 0 || status.includes(project.status)) &&
-          (category.length === 0 || category.includes(project.category)),
+      projects.filter(
+        (project) => statusMatch(project) && categoryMatch(project),
       ),
-    [category, pool, status],
+    [categoryMatch, projects, statusMatch],
   );
-  const filtered = useMemo(
-    () => [...matching].sort(compareProjects),
-    [compareProjects, matching],
+  // An open project stays on the map even when the filters leave it out.
+  const mapProjects = useMemo(() => {
+    const open = projects.find((project) => project.id === selectedId);
+    return open && !matching.includes(open) ? [...matching, open] : matching;
+  }, [matching, projects, selectedId]);
+  const needle = query.trim().toLocaleLowerCase("nb");
+  // Search narrows the list, not the map; it can find places outside the view.
+  const searchHits = useMemo(
+    () =>
+      needle
+        ? matching.filter((project) => searchText(project).includes(needle))
+        : matching,
+    [matching, needle],
   );
-  // Search only narrows the list; the map keeps showing every filtered project.
-  const searched = useMemo(() => {
-    const needle = query.trim().toLocaleLowerCase("nb");
-    return needle
-      ? filtered.filter((project) =>
-          `${project.title} ${project.city} ${project.district} ${project.category} ${project.developer}`
-            .toLocaleLowerCase("nb")
-            .includes(needle),
-        )
-      : filtered;
-  }, [filtered, query]);
+  const searched = useMemo(
+    () =>
+      searchHits
+        .filter((project) => !listBounds || projectInBounds(project, listBounds))
+        .sort(compareProjects),
+    [compareProjects, listBounds, searchHits],
+  );
+  const outsideHits = needle ? searchHits.length - searched.length : 0;
   const savedProjects = useMemo(
     () =>
       projects
@@ -397,33 +534,51 @@ export default function Explorer({
         .sort(compareProjects),
     [compareProjects, projects, savedIds],
   );
-  const savedOnly = view === "saved";
   const listedProjects = savedOnly ? savedProjects : searched;
 
   // Mobile shows the project its drawer holds, also while that drawer closes.
   const post = projects.find(
     (project) => project.id === (isMobile ? shown.postId : postId),
   );
-  const cityOptions = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const place of Object.keys(cities)) counts.set(place, 0);
-    for (const project of projects)
-      counts.set(project.city, (counts.get(project.city) ?? 0) + 1);
-    counts.delete(allPlaces);
-    return [
-      { value: allPlaces, label: allPlaces, count: projects.length },
-      ...[...counts]
-        .sort(([a], [b]) => a.localeCompare(b, "nb"))
-        .map(([place, count]) => ({ value: place, label: place, count })),
-    ];
-  }, [projects]);
+
+  // A shape hovered on the map brings its card into view beside it.
+  useEffect(() => {
+    if (hover?.from !== "map") return;
+    listRef.current
+      ?.querySelector(`[data-card-id="${CSS.escape(hover.id)}"]`)
+      ?.scrollIntoView({
+        block: "nearest",
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+      });
+  }, [hover]);
+
+  function onMapView(view: MapViewChange) {
+    mapViewRef.current = view;
+    setMapView(view);
+    if (!postView.current) setFrozenBounds(null);
+  }
+  function onMapReady(api: MapApi) {
+    mapApi.current = api;
+    // A project link frames its project, unless the URL already places the map.
+    if (initialProjectId) enterPostView(initialProjectId, !initial.view);
+  }
+  /** Frames projects on the part of the map the mobile drawer leaves open. */
+  function fitProjects(list: Project[], bottom?: number) {
+    mapApi.current?.fit(list.flatMap(projectPoints), { bottom, maxZoom: 14 });
+  }
+  function showSearchHits() {
+    fitProjects(searchHits);
+    if (isMobile) setSnapPoint(middleSnapPoint);
+  }
 
   function showProfile(username: string) {
     if (username === profileName) return;
     window.history[profileName ? "replaceState" : "pushState"](
       { profileOverlay: true, profileOver: postId },
       "",
-      profileHref(username),
+      withSearch(profileHref(username)),
     );
     setModal(null);
     setProfileName(username);
@@ -439,24 +594,29 @@ export default function Explorer({
   /** Returns to the project or list the profile was opened over. */
   function closeProfile() {
     setProfileName(null);
-    if (window.history.state?.profileOverlay) window.history.back();
+    if (window.history.state?.profileOverlay) stepBack();
     else
-      window.history.replaceState({}, "", postId ? projectHref(postId) : "/");
+      window.history.replaceState(
+        {},
+        "",
+        withSearch(postId ? projectHref(postId) : "/"),
+      );
   }
 
   /** A profile's contribution opens in the profile's place in history. */
   function openFromProfile(id: string) {
     const overlay = Boolean(window.history.state?.profileOverlay);
     setProfileName(null);
-    if (id === postId && overlay) return window.history.back();
+    if (id === postId && overlay) return stepBack();
     window.history.replaceState(
       { projectOverlay: overlay },
       "",
-      projectHref(id),
+      withSearch(projectHref(id)),
     );
     setPostUpdateId(undefined);
     setPostId(id);
     setSelectedId(id);
+    enterPostView(id);
   }
 
   // Mobile: track the drawer's on-screen height so map controls can follow it
@@ -511,12 +671,22 @@ export default function Explorer({
     setModal(null);
     setPostId(id);
     setSelectedId(id);
-    window.history.pushState({ projectOverlay: true }, "", projectHref(id));
+    setHover(null);
+    enterPostView(id);
+    window.history.pushState(
+      { projectOverlay: true },
+      "",
+      withSearch(projectHref(id)),
+    );
   }
 
-  /** The compact drawer hides the list, so focus returns to its handle. */
+  /**
+   * The compact drawer hides the list, so focus returns to its handle.
+   * `after` runs once the URL is back on the list.
+   */
   function closePost(
     focusTrigger = !isMobile || snapPoint !== compactSnapPoint,
+    after?: () => void,
   ) {
     setPostId(null);
     setSelectedId(null);
@@ -524,10 +694,27 @@ export default function Explorer({
       const trigger = projectTriggerRef.current;
       if (trigger?.isConnected && focusTrigger)
         trigger.focus({ preventScroll: true });
-      else drawerHandleRef.current?.focus({ preventScroll: true });
+      else if (isMobile) drawerHandleRef.current?.focus({ preventScroll: true });
+      else searchRef.current?.focus({ preventScroll: true });
     });
-    if (window.history.state?.projectOverlay) window.history.back();
-    else window.history.replaceState({}, "", "/");
+    if (window.history.state?.projectOverlay) {
+      // The history step leaves the map view as well (see onPopState).
+      afterPop.current = after ?? null;
+      stepBack();
+    } else {
+      window.history.replaceState({}, "", withSearch("/"));
+      leavePostView();
+      after?.();
+    }
+  }
+
+  /** Mobile: the project drawer covers the map, so step down to show it. */
+  function showPostOnMap(project: Project) {
+    // Framed above the middle drawer height, so the list can show it too.
+    closePost(false, () => mapApi.current?.fit(projectPoints(project)));
+    setModal(null);
+    setSnapPoint(compactSnapPoint);
+    setSelectedId(project.id);
   }
 
   async function toggleSaved(id: string) {
@@ -581,48 +768,31 @@ export default function Explorer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?.username]);
 
+  const statusChanged = !sameValues(status, defaultStatus);
+  const filtersChanged = statusChanged || category.length > 0 || !!needle;
   function resetFilters() {
     setQuery("");
     setMobileSearchOpen(false);
     setStatus(defaultStatus);
     setCategory([]);
-    setCity(defaultPlace);
-  }
-
-  function showMap() {
-    if (postId) closePost(false);
-    setModal(null);
-    setView("map");
-    setSnapPoint(compactSnapPoint);
   }
 
   function showList() {
     setModal(null);
-    setView("list");
+    setSavedOnly(false);
     setSnapPoint(1);
   }
 
+  /** Desktop: the saved collection replaces the results, and toggles back. */
   function showSaved() {
     if (!requireAccount()) return;
+    setModal(null);
     if (postId) {
       closePost();
-      if (view !== "saved") {
-        previousExplorerView.current = view === "list" ? "list" : "map";
-        setView("saved");
-      }
-      setModal(null);
-      setSnapPoint(1);
+      setSavedOnly(true);
       return;
     }
-    if (view === "saved") {
-      if (previousExplorerView.current === "map") showMap();
-      else showList();
-      return;
-    }
-    previousExplorerView.current = view === "list" ? "list" : "map";
-    setModal(null);
-    setView("saved");
-    setSnapPoint(1);
+    setSavedOnly(!savedOnly);
   }
 
   const feedback = toast && (
@@ -643,7 +813,9 @@ export default function Explorer({
       onClick={(event) => {
         event.preventDefault();
         resetFilters();
-        if (postId) closePost();
+        const norway = () => mapApi.current?.showNorway();
+        if (postId) closePost(undefined, norway);
+        else norway();
         showList();
       }}
     >
@@ -724,43 +896,25 @@ export default function Explorer({
     </div>
   );
 
-  const segment = (active: boolean) =>
-    cn(
-      "flex min-h-9 items-center justify-center gap-2 rounded-md px-2 text-ui font-medium text-muted",
-      "transition-[color,background-color,box-shadow] duration-150 hover:text-ink motion-reduce:transition-none",
-      active &&
-        "bg-surface text-ink shadow-[0_1px_2px_rgb(28_36_32/0.08),0_0_0_1px_rgb(28_36_32/0.04)]",
-    );
-  const navigation = (
-    <div
-      className="grid shrink-0 grid-cols-2 gap-1 rounded-lg bg-ink/[0.055] p-1"
-      role="group"
-      aria-label="Visning"
-    >
-      <button
-        className={segment(view === "list")}
-        aria-pressed={view === "list"}
-        onClick={showList}
-      >
-        <List size={16} />
-        <span>Prosjekter</span>
-      </button>
-      <button
-        className={segment(view === "map")}
-        aria-pressed={view === "map"}
-        onClick={showMap}
-      >
-        <MapIcon size={16} />
-        <span>Kart</span>
-      </button>
-    </div>
-  );
-
-  const statusChanged = !sameValues(status, defaultStatus);
+  // Counts follow the map: each filter counts what the other leaves in view.
   const statusOptions = statusOrder.map((value) => ({
     value,
     label: statuses[value].label,
     dot: statusTone[value].dot,
+    ...(!isMobile && {
+      count: inView.filter(
+        (project) => project.status === value && categoryMatch(project),
+      ).length,
+    }),
+  }));
+  const categoryOptions = categories.map((value) => ({
+    value,
+    label: value,
+    ...(!isMobile && {
+      count: inView.filter(
+        (project) => project.category === value && statusMatch(project),
+      ).length,
+    }),
   }));
   const statusFilter = (
     <ChoiceSelect
@@ -792,35 +946,18 @@ export default function Explorer({
         aria-hidden={mobileSearchOpen || undefined}
       >
         <ChoiceSelect
-          label="Sted"
-          value={city}
-          className={cn(inlineChoiceClasses, "shrink-0")}
-          icon={<MapPin size={17} aria-hidden="true" />}
-          options={cityOptions}
-          onChange={(value) => {
-            setCity(value);
-            setSelectedId(null);
-          }}
-        />
-        <ChoiceSelect
           label="Kategori"
           multiple
           value={category}
           onChange={setCategory}
-          triggerLabel={
-            category.length === 0
-              ? "Alle kategorier"
-              : category.length === 1
-                ? category[0]
-                : `${category.length} kategorier`
-          }
+          triggerLabel={categorySummary(category)}
           className={cn(
             inlineChoiceClasses,
             "[&_[data-slot=choice-trigger]>span:nth-of-type(2)]:hidden",
             category.length === 0 &&
               "[&_[data-slot=choice-trigger]]:font-medium [&_[data-slot=choice-trigger]]:text-muted",
           )}
-          options={categories.map((value) => ({ value, label: value }))}
+          options={categoryOptions}
         />
         <div className="ml-auto flex shrink-0 items-center">
           <button
@@ -853,96 +990,51 @@ export default function Explorer({
     </section>
   );
 
+  const sortFilter = (
+    <ChoiceSelect
+      label="Sorter prosjekter"
+      value={sort}
+      className={sortChoiceClasses}
+      icon={<ArrowDownUp size={14} />}
+      onChange={setSort}
+      options={sortOptions}
+    />
+  );
+  const desktopFilters = (
+    <section className="pb-1" aria-label="Filtrer prosjekter">
+      {search}
+      <div className="mt-2 flex min-w-0 items-center gap-1.5">
+        <ChoiceSelect
+          label="Status"
+          multiple
+          value={status}
+          onChange={setStatus}
+          triggerLabel={statusSummary(status)}
+          className={cn(panelChoiceClasses, statusChanged && panelChoiceActive)}
+          icon={<ListFilter size={15} aria-hidden="true" />}
+          options={statusOptions}
+        />
+        <ChoiceSelect
+          label="Kategori"
+          multiple
+          value={category}
+          onChange={setCategory}
+          triggerLabel={categorySummary(category)}
+          className={cn(
+            panelChoiceClasses,
+            category.length > 0 && panelChoiceActive,
+          )}
+          options={categoryOptions}
+        />
+        <div className="-mr-2 ml-auto shrink-0">{sortFilter}</div>
+      </div>
+    </section>
+  );
+
   const toggle = (values: string[], value: string) =>
     values.includes(value)
       ? values.filter((item) => item !== value)
       : [...values, value];
-  const categoryRow = (value: Category) => {
-    const empty = !pool.some(
-      (project) =>
-        project.category === value &&
-        (status.length === 0 || status.includes(project.status)),
-    );
-    return (
-      <button
-        type="button"
-        key={value}
-        className={cn(filterRow, empty && "text-muted/70")}
-        aria-pressed={category.includes(value)}
-        onClick={() => setCategory(toggle(category, value))}
-      >
-        <CategoryIcon category={value} size={16} />
-        <span className="flex-1">{value}</span>
-      </button>
-    );
-  };
-  const sidebarFilters = (
-    <section
-      className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1 pb-2 scrollbar-thin [&>*]:shrink-0"
-      aria-label="Filtrer prosjekter"
-    >
-      <ChoiceSelect
-        label="Sted"
-        value={city}
-        onChange={(value) => {
-          setCity(value);
-          setSelectedId(null);
-        }}
-        className={sidebarChoiceClasses}
-        icon={<MapPin size={16} />}
-        options={cityOptions}
-      />
-      <ChoiceSelect
-        label="Status"
-        multiple
-        value={status}
-        onChange={setStatus}
-        triggerLabel={statusSummary(status)}
-        className={cn(
-          sidebarChoiceClasses,
-          "[&_[data-slot=choice-trigger]>span:nth-of-type(2)]:hidden",
-        )}
-        icon={<ListFilter size={16} />}
-        options={statusOptions}
-      />
-      <div role="group" aria-label="Kategori" className="mt-4">
-        <span className={filterHeading}>Kategori</span>
-        {primaryCategories.map(categoryRow)}
-        <div
-          id="more-categories"
-          className={cn(
-            "grid transition-[grid-template-rows] duration-320 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
-            allCategories ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-          )}
-          inert={!allCategories}
-        >
-          <div className="min-h-0 overflow-hidden">
-            {categories
-              .filter((value) => !primaryCategories.includes(value))
-              .map(categoryRow)}
-          </div>
-        </div>
-        <button
-          type="button"
-          className={cn(filterRow, "text-muted")}
-          aria-expanded={allCategories}
-          aria-controls="more-categories"
-          onClick={() => setAllCategories(!allCategories)}
-        >
-          <ChevronDown
-            size={16}
-            className={cn(
-              "transition-transform duration-240 ease-out motion-reduce:transition-none",
-              allCategories && "rotate-180",
-            )}
-          />
-          <span className="flex-1">
-            {allCategories ? "Vis færre" : "Vis alle"}
-          </span>
-        </button>
-      </div>
-    </section>
-  );
 
   const profileContent = (
     <div
@@ -961,12 +1053,8 @@ export default function Explorer({
   );
 
   const activeFilters = [
-    // Mobile shows place and category inline, so only hidden filters get chips.
-    // The place always shows, default included; clearing it widens to all.
-    ...(!isMobile && city !== allPlaces
-      ? [{ key: "city", label: city, clear: () => setCity(allPlaces) }]
-      : []),
-    ...(isMobile && query.trim()
+    // Mobile shows category inline, so only hidden filters get chips there.
+    ...(isMobile && needle
       ? [
           {
             key: "query",
@@ -990,154 +1078,168 @@ export default function Explorer({
       clear: () => setCategory(toggle(category, value)),
     })),
   ];
+  const showOutside = !savedOnly && outsideHits > 0 && (
+    <button
+      type="button"
+      className={cn(chip, "gap-1.25 pr-2.5 pl-2")}
+      aria-label={`Vis ${outsideHits} treff utenfor kartet`}
+      onClick={showSearchHits}
+    >
+      <ZoomOut size={13} aria-hidden="true" />
+      {`+${outsideHits} utenfor kartet`}
+    </button>
+  );
+  const emptyActions = savedOnly ? (
+    <p className="max-w-85 text-ui leading-[1.6]">
+      Lagre et prosjekt for å finne det her.
+    </p>
+  ) : (
+    <div className="flex flex-wrap justify-center gap-2">
+      {outsideHits > 0 ? (
+        <button className={secondaryAction} onClick={showSearchHits}>
+          <ZoomOut size={15} aria-hidden="true" />
+          Vis {outsideHits} treff
+        </button>
+      ) : (
+        matching.length > 0 &&
+        !needle && (
+          <button
+            className={secondaryAction}
+            onClick={() => mapApi.current?.showNorway()}
+          >
+            <ZoomOut size={15} aria-hidden="true" />
+            Hele Norge
+          </button>
+        )
+      )}
+      {filtersChanged && (
+        <button className={secondaryAction} onClick={resetFilters}>
+          Nullstill filtre
+        </button>
+      )}
+    </div>
+  );
   const projectResults = (
     <section
+      ref={listRef}
       data-drawer-scroll
       className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain bg-surface scrollbar-thin max-md:bg-transparent"
       aria-label="Prosjektliste"
     >
-      <div className="m-auto grid max-w-310 grid-cols-[minmax(0,1fr)_248px] gap-10 px-8 pt-5 pb-10 max-xl:grid-cols-1 max-xl:px-7 max-xl:pt-3 max-xl:pb-8 max-md:block max-md:px-4.5 max-md:pt-0 max-md:pb-6">
-        <div className="min-w-0">
-          {!savedOnly &&
-            (isMobile ? (
-              mobileFilters
-            ) : (
-              <div className="mb-1">{search}</div>
-            ))}
-          <div className="flex min-h-14 items-center justify-between gap-3 border-b border-border bg-surface py-1.5 max-md:min-h-12 max-md:bg-transparent">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-              {savedOnly && isMobile && (
-                <button
-                  type="button"
-                  className={cn(compactIconAction, "-ml-3 -mr-2 text-muted")}
-                  aria-label="Tilbake til profilen"
-                  onClick={backToProfile}
-                >
-                  <ArrowLeft size={20} />
-                </button>
-              )}
-              <h1
-                className={cn(
-                  "text-xl leading-normal font-[650] tracking-[-0.4px] max-md:text-lg",
-                  !savedOnly && "sr-only",
-                )}
+      <div className="px-5 pb-8 max-md:px-4.5 max-md:pt-0 max-md:pb-6">
+        {!savedOnly && (isMobile ? mobileFilters : desktopFilters)}
+        <div className="sticky top-0 z-10 flex min-h-12 items-center justify-between gap-3 border-b border-border bg-surface py-1.5 max-md:static max-md:bg-transparent">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+            {savedOnly && (
+              <button
+                type="button"
+                className={cn(compactIconAction, "-ml-3 -mr-2 text-muted")}
+                aria-label={isMobile ? "Tilbake til profilen" : "Tilbake"}
+                onClick={isMobile ? backToProfile : showSaved}
               >
-                {savedOnly ? "Lagrede prosjekter" : "Prosjekter"}
-              </h1>
-              <span
-                className="text-ui whitespace-nowrap text-muted tabular-nums"
-                role="status"
-                aria-label={`${listedProjects.length} prosjekter`}
-              >
-                {listedProjects.length}{" "}
-                {listedProjects.length === 1 ? "prosjekt" : "prosjekter"}
-              </span>
-              {!savedOnly && activeFilters.length > 0 && (
-                <ul
-                  className="flex flex-wrap items-center gap-1.5"
-                  aria-label="Aktive filtre"
-                >
-                  {activeFilters.map((filter) => (
-                    <li key={filter.key}>
-                      <button
-                        type="button"
-                        className="inline-flex min-h-7 items-center gap-1 rounded-full bg-accent-soft pr-1.75 pl-2.5 text-xs font-[550] text-accent-strong hover:bg-accent/16"
-                        aria-label={`Fjern filter: ${filter.label}`}
-                        onClick={filter.clear}
-                      >
-                        {filter.label}
-                        <X size={13} aria-hidden="true" />
-                      </button>
-                    </li>
-                  ))}
-                  {activeFilters.length > 1 && (
-                    <li>
-                      <button
-                        type="button"
-                        className="min-h-7 px-1.5 text-xs text-muted underline-offset-3 hover:text-ink hover:underline"
-                        onClick={resetFilters}
-                      >
-                        Nullstill filtre
-                      </button>
-                    </li>
-                  )}
-                </ul>
+                <ArrowLeft size={20} />
+              </button>
+            )}
+            <h1
+              className={cn(
+                "text-lg leading-normal font-[650] tracking-[-0.4px]",
+                !savedOnly && "sr-only",
               )}
-            </div>
-            <ChoiceSelect
-              label="Sorter prosjekter"
-              value={sort}
-              className={sortChoiceClasses}
-              icon={<ArrowDownUp size={14} />}
-              onChange={setSort}
-              options={[
-                { value: "current", label: "Aktuelt" },
-                { value: "added", label: "Nyeste" },
-                { value: "title", label: "Alfabetisk" },
-              ]}
-            />
-          </div>
-          {listedProjects.length === 0 ? (
-            <EmptyState
-              level={2}
-              icon={savedOnly ? <Bookmark size={22} /> : <Search size={22} />}
-              title={savedOnly ? "Ingen lagrede prosjekter" : "Ingen treff"}
             >
-              {savedOnly ? (
-                <p className="max-w-85 text-ui leading-[1.6]">
-                  Lagre et prosjekt for å finne det her.
-                </p>
-              ) : (
-                <button className={secondaryAction} onClick={resetFilters}>
-                  Nullstill filtre
-                </button>
-              )}
-            </EmptyState>
-          ) : (
-            <ol>
-              {listedProjects.map((project) => (
-                <ProjectCard
-                  key={project.id}
-                  project={project}
-                  commentCount={commentsByProject.get(project.id)?.length ?? 0}
-                  onOpen={() => openPost(project.id)}
-                />
-              ))}
-            </ol>
-          )}
+              {savedOnly ? "Lagrede prosjekter" : "Prosjekter"}
+            </h1>
+            <span
+              className="text-ui whitespace-nowrap text-muted tabular-nums"
+              role="status"
+              aria-label={`${listedProjects.length} prosjekter`}
+            >
+              {listedProjects.length}{" "}
+              {listedProjects.length === 1 ? "prosjekt" : "prosjekter"}
+            </span>
+            {!savedOnly && (activeFilters.length > 0 || showOutside) && (
+              <ul
+                className="flex flex-wrap items-center gap-1.5"
+                aria-label="Aktive filtre"
+              >
+                {activeFilters.map((filter) => (
+                  <li key={filter.key}>
+                    <button
+                      type="button"
+                      className={chip}
+                      aria-label={`Fjern filter: ${filter.label}`}
+                      onClick={filter.clear}
+                    >
+                      {filter.label}
+                      <X size={13} aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+                {activeFilters.length > 1 && (
+                  <li>
+                    <button
+                      type="button"
+                      className="min-h-7 px-1.5 text-xs text-muted underline-offset-3 hover:text-ink hover:underline"
+                      onClick={resetFilters}
+                    >
+                      Nullstill filtre
+                    </button>
+                  </li>
+                )}
+                {showOutside && <li>{showOutside}</li>}
+              </ul>
+            )}
+          </div>
+          {(isMobile || savedOnly) && sortFilter}
         </div>
-        <aside
-          className="min-w-0 pt-5 max-xl:hidden"
-          aria-labelledby="recent-activity"
-        >
-          <RecentActivity
-            projects={listedProjects}
-            comments={comments}
-            onOpen={openPost}
-          />
-        </aside>
+        {listedProjects.length === 0 ? (
+          <EmptyState
+            level={2}
+            icon={savedOnly ? <Bookmark size={22} /> : <Search size={22} />}
+            title={savedOnly ? "Ingen lagrede prosjekter" : "Ingen treff"}
+          >
+            {emptyActions}
+          </EmptyState>
+        ) : (
+          <ol>
+            {listedProjects.map((project) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                commentCount={commentsByProject.get(project.id)?.length ?? 0}
+                highlighted={
+                  hover?.from === "map" && hover.id === project.id
+                }
+                onOpen={() => openPost(project.id)}
+                onHover={(hovering) =>
+                  setHover((current) =>
+                    hovering
+                      ? { id: project.id, from: "list" }
+                      : current?.id === project.id
+                        ? null
+                        : current,
+                  )
+                }
+              />
+            ))}
+          </ol>
+        )}
       </div>
     </section>
   );
 
   const projectPost = post && (
     <ProjectPost
-      embedded={isMobile}
       key={post.id}
       project={post}
       initialUpdateId={postUpdateId}
+      closeOnEscape={!isMobile}
       onClose={() => closePost()}
-      feedback={feedback}
+      feedback={isMobile ? feedback : undefined}
       saved={savedIds.has(post.id)}
       onSave={() => toggleSaved(post.id)}
       comments={commentsByProject.get(post.id) ?? noComments}
       onNotify={notify}
-      onMap={() => {
-        resetFilters();
-        setCity(post.city);
-        showMap();
-        setSelectedId(post.id);
-      }}
+      onMap={isMobile ? () => showPostOnMap(post) : undefined}
     />
   );
 
@@ -1159,14 +1261,12 @@ export default function Explorer({
   }
   /** Mobile reaches saved projects through the profile, and returns there. */
   function openSavedFromProfile() {
-    if (view !== "saved")
-      previousExplorerView.current = view === "list" ? "list" : "map";
     setModal(null);
-    setView("saved");
+    setSavedOnly(true);
     setSnapPoint(1);
   }
   function backToProfile() {
-    setView(previousExplorerView.current === "map" ? "map" : "list");
+    setSavedOnly(false);
     openProfile();
   }
   function backToExplorer() {
@@ -1182,13 +1282,39 @@ export default function Explorer({
     if (postId) closePost(false);
     setModal(null);
     setSnapPoint(compactSnapPoint);
-    setView("map");
   }
 
   const drawerPopupRef = (node: HTMLDivElement | null) => {
     drawerContentRef.current = node;
     if (node) setDrawerReady(true);
   };
+  const profileButton = (
+    <button
+      className={cn(
+        "inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-transparent text-xs font-semibold text-muted",
+        "hover:bg-ink/[0.06] hover:text-ink active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100",
+      )}
+      aria-label={user ? "Din profil" : "Logg inn"}
+      aria-haspopup="dialog"
+      aria-expanded={modal === "profile"}
+      data-tooltip={
+        isMobile || authPending
+          ? undefined
+          : user?.username
+            ? `@${user.username}`
+            : user
+              ? "Velg brukernavn"
+              : "Logg inn"
+      }
+      onClick={openProfile}
+    >
+      {user?.username ? (
+        <ProfileAvatar name={user.username} className="size-9 text-sm" />
+      ) : (
+        <User size={18} />
+      )}
+    </button>
+  );
   const drawerBody = (
     <>
       {modal === "profile" && (
@@ -1218,23 +1344,7 @@ export default function Explorer({
               >
                 <Plus size={21} />
               </button>
-              <button
-                className={cn(
-                  "inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-transparent text-xs font-semibold text-muted",
-                  "hover:bg-ink/[0.06] hover:text-ink active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100",
-                )}
-                aria-label={user ? "Din profil" : "Logg inn"}
-                onClick={openProfile}
-              >
-                {user?.username ? (
-                  <ProfileAvatar
-                    name={user.username}
-                    className="size-9 text-sm"
-                  />
-                ) : (
-                  <User size={18} />
-                )}
-              </button>
+              {profileButton}
             </div>
           </div>
         </div>
@@ -1312,125 +1422,119 @@ export default function Explorer({
     <div
       className={cn(
         "flex h-dvh min-h-0 overflow-hidden bg-canvas motion-reduce:[&_*]:transition-none motion-reduce:[&_*]:animate-none",
-        isMobile ? "flex-col gap-0 p-0" : "flex-row gap-4 pt-6 pr-6 pb-6 pl-0",
+        isMobile ? "flex-col" : "flex-row",
       )}
     >
       {!isMobile && (
         <aside
-          className="hidden min-h-0 w-[272px] shrink-0 flex-col gap-4 pt-1 pr-3 pl-5 md:flex max-lg:w-[244px] max-lg:pl-4"
-          aria-label="Navigasjon og filtre"
+          className="relative z-10 flex h-full w-[clamp(380px,36vw,540px)] shrink-0 flex-col border-r border-border bg-surface shadow-[1px_0_12px_rgb(20_28_24/0.05)]"
+          aria-label="Prosjekter"
         >
-          <div className="shrink-0 px-3.5">{brand}</div>
-          <div className="shrink-0 px-1">{navigation}</div>
-          {view !== "saved" ? sidebarFilters : <div className="flex-1" />}
-          <nav
-            className="shrink-0 border-t border-border px-1 pt-2 [&>button+button]:mt-0.5"
-            aria-label="Konto"
-          >
-            <button
-              className={cn(
-                navRow,
-                view === "saved" && "bg-accent-soft text-accent-strong",
-              )}
-              aria-pressed={view === "saved"}
-              onClick={showSaved}
-            >
-              <Bookmark
-                size={16}
-                fill={view === "saved" ? "currentColor" : "none"}
-              />
-              <span className="flex-1">Lagrede prosjekter</span>
-              {saved.length > 0 && (
-                <span className={filterCount}>{saved.length}</span>
-              )}
-            </button>
-            <button
-              className={navRow}
-              hidden={!canModerate}
-              onClick={() => setEditorOpen(true)}
-            >
-              <Plus size={16} />
-              Legg til prosjekt
-            </button>
-            <button
-              className={navRow}
-              onClick={openProfile}
-              aria-haspopup="dialog"
-              aria-expanded={modal === "profile"}
-            >
-              {user?.username ? (
-                <ProfileAvatar
-                  name={user.username}
-                  className="-mx-0.5 size-5 text-2xs"
+          <header className="flex h-16 shrink-0 items-center justify-between gap-2 pr-3 pl-5">
+            {brand}
+            <nav className="flex items-center gap-0.5" aria-label="Konto">
+              <button
+                className={cn(
+                  compactIconAction,
+                  "w-auto min-w-11 gap-1.5 px-2.5 text-ui font-medium tabular-nums",
+                  savedOnly && "bg-accent-soft text-accent-strong",
+                )}
+                aria-label="Lagrede prosjekter"
+                aria-pressed={savedOnly}
+                data-tooltip="Lagrede prosjekter"
+                onClick={showSaved}
+              >
+                <Bookmark
+                  size={18}
+                  fill={savedOnly ? "currentColor" : "none"}
                 />
-              ) : (
-                <User size={16} />
+                {saved.length > 0 && saved.length}
+              </button>
+              <button
+                className={cn(compactIconAction, "text-muted")}
+                aria-label="Legg til prosjekt"
+                data-tooltip="Legg til prosjekt"
+                hidden={!canModerate}
+                onClick={() => setEditorOpen(true)}
+              >
+                <Plus size={20} />
+              </button>
+              {profileButton}
+            </nav>
+          </header>
+          <div className="relative min-h-0 flex-1">
+            {/* Hidden, not unmounted, behind a project: it keeps its scroll. */}
+            <div
+              className={cn(
+                "absolute inset-0 flex flex-col",
+                postId && "invisible",
               )}
-              <span className="min-w-0 truncate">
-                {authPending
-                  ? "Henter konto …"
-                  : user?.username
-                    ? `@${user.username}`
-                    : user
-                      ? "Velg brukernavn"
-                      : "Logg inn"}
-              </span>
-            </button>
-          </nav>
+              inert={Boolean(postId)}
+            >
+              {projectResults}
+            </div>
+            {postId && (
+              <div className="absolute inset-0 flex flex-col border-t border-border bg-surface motion-safe:animate-preview-in">
+                {projectPost || missingProject}
+              </div>
+            )}
+          </div>
         </aside>
       )}
 
       <main
-        className={cn(
-          "relative isolate flex min-h-0 min-w-0 flex-1 overflow-hidden bg-surface",
-          isMobile
-            ? "border-0"
-            : "rounded-xl border border-border shadow-[0_1px_3px_rgb(20_28_24/0.04)]",
-        )}
+        className="relative isolate flex min-h-0 min-w-0 flex-1 overflow-hidden bg-surface"
         aria-label="Utforsk prosjekter"
       >
-        {isMobile || view === "map" ? (
-          <section
-            className={cn(
-              "relative isolate min-h-0 min-w-0 h-full w-full flex-1",
-              "max-md:h-[calc(100%-124px)] max-md:flex-none",
-              isMobile
-                ? cn(
-                    "[&_.leaflet-control-attribution]:text-[8px]!",
-                    // Ride on the drawer from minimized to middle, then stay.
-                    "[&_[data-map-controls]]:bottom-[calc(clamp(136px,var(--drawer-visible,136px),58dvh)-124px+14px)]!",
-                  )
-                : "border-0",
-            )}
-            aria-label="Prosjektkart"
-            ref={mapSectionRef}
-          >
-            <ProjectMap
-              projects={matching}
-              city={city}
-              selectedId={selectedId}
-              onSelect={(id) => (id ? openPost(id) : setSelectedId(null))}
-            />
-            {filtered.length === 0 && view !== "saved" && (
-              <div
-                className={cn(
-                  "absolute top-1/2 left-1/2 z-[650] flex min-w-60 max-w-[calc(100%-32px)] -translate-1/2 flex-col items-center gap-3 rounded-2xl border border-border bg-surface/95 p-7 shadow-[0_10px_40px_rgb(20_28_24/0.12)]",
-                  "[&>svg]:text-muted [&>strong]:text-center [&>strong]:text-base",
-                  isMobile && "top-[45%] max-w-[calc(100%-90px)]",
-                )}
-              >
-                <Search size={22} />
-                <strong>Ingen treff</strong>
-                <button className={quietAction} onClick={resetFilters}>
-                  Nullstill filtre
-                  <RotateCcw size={14} />
-                </button>
-              </div>
-            )}
-          </section>
-        ) : (
-          projectResults
-        )}
+        <section
+          className={cn(
+            "relative isolate h-full min-h-0 w-full min-w-0 flex-1",
+            "max-md:h-[calc(100%-124px)] max-md:flex-none",
+            isMobile &&
+              cn(
+                "[&_.leaflet-control-attribution]:text-[8px]!",
+                // Ride on the drawer from minimized to middle, then stay.
+                "[&_[data-map-controls]]:bottom-[calc(clamp(136px,var(--drawer-visible,136px),58dvh)-124px+14px)]!",
+              ),
+          )}
+          aria-label="Prosjektkart"
+          ref={mapSectionRef}
+        >
+          <ProjectMap
+            projects={mapProjects}
+            initialView={initial.view}
+            onViewChange={onMapView}
+            onReady={onMapReady}
+            bottomInset={isMobile ? mobileMapInset : undefined}
+            selectedId={selectedId}
+            highlightedId={hover?.from === "list" ? hover.id : null}
+            onSelect={(id) => (id ? openPost(id) : setSelectedId(postId))}
+            onHover={(id) =>
+              setHover((current) =>
+                id
+                  ? { id, from: "map" }
+                  : current?.from === "map"
+                    ? null
+                    : current,
+              )
+            }
+          />
+          {isMobile && matching.length === 0 && !savedOnly && (
+            <div
+              className={cn(
+                "absolute top-[45%] left-1/2 z-[650] flex min-w-60 max-w-[calc(100%-90px)] -translate-1/2 flex-col items-center gap-3 rounded-2xl border border-border bg-surface/95 p-7 shadow-[0_10px_40px_rgb(20_28_24/0.12)]",
+                "[&>svg]:text-muted [&>strong]:text-center [&>strong]:text-base",
+              )}
+            >
+              <Search size={22} />
+              <strong>Ingen treff</strong>
+              <button className={quietAction} onClick={resetFilters}>
+                Nullstill filtre
+                <RotateCcw size={14} />
+              </button>
+            </div>
+          )}
+        </section>
       </main>
 
       {drawerShell}
@@ -1466,16 +1570,10 @@ export default function Explorer({
               // Give the middle stop a little more reach than the default halfway threshold.
               if (distanceToMiddle > 0 && movement >= distanceToMiddle * 0.44) {
                 setSnapPoint(middleSnapPoint);
-                if (!modal) setView("map");
                 return;
               }
             }
             setSnapPoint(point);
-            if (!modal) {
-              if (point === 1)
-                setView((current) => (current === "saved" ? "saved" : "list"));
-              else setView("map");
-            }
           }}
           onOpenChange={(open, details) => {
             if (open) return;
@@ -1514,10 +1612,6 @@ export default function Explorer({
                 }
 
                 setSnapPoint(1);
-                if (!modal)
-                  setView((current) =>
-                    current === "saved" ? "saved" : "list",
-                  );
               }}
               handle={
                 <button
@@ -1532,10 +1626,9 @@ export default function Explorer({
                       ? "Vis mer av kartet"
                       : "Utvid prosjektlisten"
                   }
-                  onClick={() => {
-                    setSnapPoint(snapPoint === 1 ? middleSnapPoint : 1);
-                    if (!modal) setView(snapPoint === 1 ? "map" : "list");
-                  }}
+                  onClick={() =>
+                    setSnapPoint(snapPoint === 1 ? middleSnapPoint : 1)
+                  }
                 >
                   {drawerGrip}
                 </button>
@@ -1599,7 +1692,6 @@ export default function Explorer({
         </Drawer>
       )}
       {projectDrawerShell}
-      {!isMobile && projectPost}
       {!isMobile && profileName && (
         <Dialog
           key={profileName}
@@ -1614,25 +1706,20 @@ export default function Explorer({
           />
         </Dialog>
       )}
-      {!isMobile && postId && !post && (
-        <Dialog title="Prosjektet finnes ikke" onClose={() => closePost()}>
-          {missingProject}
-        </Dialog>
-      )}
       {editorOpen && canModerate && (
         <ProjectEditor
           onClose={() => setEditorOpen(false)}
           onSave={async (project) => {
             await mutate({ action: "project", project, create: true });
-            setCity(project.city);
             setQuery("");
             setStatus([]);
             setCategory([]);
-            setView((current) => (current === "saved" ? "list" : current));
+            setSavedOnly(false);
             setEditorOpen(false);
-            setSelectedId(project.id);
             notify("Prosjektet er lagt til");
             openPost(project.id);
+            // Not in this render's project list yet, so frame it directly.
+            if (!isMobile) fitProjects([project]);
           }}
         />
       )}
@@ -1646,7 +1733,7 @@ export default function Explorer({
           {profileContent}
         </Dialog>
       )}
-      {!post && feedback}
+      {(!isMobile || !post) && feedback}
     </div>
   );
 }

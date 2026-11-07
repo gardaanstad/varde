@@ -16,12 +16,18 @@ import {
   Undo2,
 } from "lucide-react";
 import {
-  allPlaces,
+  type Bounds,
   cities,
+  norwayBounds,
   type Point,
   type Project,
   statuses,
 } from "../lib/data";
+import {
+  type MapView,
+  storedMapView,
+  storeMapView,
+} from "../lib/explore-state";
 import { cn } from "../lib/cn";
 import { iconButton } from "../lib/ui";
 
@@ -131,9 +137,16 @@ const midpointIcon = L.divIcon({
   iconSize: [22, 22],
 });
 
-// The explorer map unmounts behind the list view; reopen it where it was left.
-let explorerView: { city: string; center: L.LatLng; zoom: number } | null =
-  null;
+/** Moves the explorer map from outside, e.g. to frame an opened project. */
+export type MapApi = {
+  /** Frames the points; `bottom` keeps room for a sheet over the map. */
+  fit: (points: Point[], options?: { bottom?: number; maxZoom?: number }) => void;
+  show: (view: MapView) => void;
+  showNorway: () => void;
+};
+export type MapViewChange = MapView & { bounds: Bounds };
+const reducedMotion = () =>
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 // Stable defaults, so drawing maps don't rebuild their layers on each render.
 const noProjects: Project[] = [];
 const noPoints: Point[] = [];
@@ -141,9 +154,22 @@ const noSelect = () => {};
 
 type Props = {
   projects?: Project[];
-  city: string;
+  /** Drawing maps open on this place's preset view. */
+  city?: string;
+  /** Explorer: where to open; otherwise the last view here, or all of Norway. */
+  initialView?: MapView | null;
+  onViewChange?: (view: MapViewChange) => void;
+  onReady?: (api: MapApi) => void;
+  /**
+   * Pixels along the bottom that a sheet covers, such as the mobile drawer.
+   * Reported bounds leave them out, and framing keeps clear of them.
+   */
+  bottomInset?: () => number;
   selectedId?: string | null;
+  /** Drawn like the selected project, e.g. while its list card is hovered. */
+  highlightedId?: string | null;
   onSelect?: (id: string | null) => void;
+  onHover?: (id: string | null) => void;
   draw?: boolean;
   /** Small inline drawing map: no hint bar or layer menu. */
   compact?: boolean;
@@ -156,8 +182,14 @@ type Props = {
 export default function ProjectMap({
   projects = noProjects,
   city,
+  initialView = null,
+  onViewChange,
+  onReady,
+  bottomInset,
   selectedId = null,
+  highlightedId = null,
   onSelect = noSelect,
+  onHover,
   draw = false,
   compact = false,
   points = noPoints,
@@ -176,12 +208,18 @@ export default function ProjectMap({
   const projectsRef = useRef(projects);
   // Editing an existing shape opens framed on it.
   const initialPoints = useRef(points);
+  const startView = useRef(initialView);
   const selectedRef = useRef(selectedId);
+  const highlightedRef = useRef(highlightedId);
   const handlers = useRef<{
     onSelect: (id: string | null) => void;
+    onHover?: (id: string | null) => void;
+    onViewChange?: (view: MapViewChange) => void;
+    onReady?: (api: MapApi) => void;
+    bottomInset?: () => number;
     draw: boolean;
     commit: (next: Point[]) => void;
-  }>({ onSelect, draw, commit: () => {} });
+  }>({ onSelect, onHover, onViewChange, onReady, draw, commit: () => {} });
   // Drawing edits can be undone one by one, moves and removals included.
   const [history, setHistory] = useState<Point[][]>([]);
   const [ready, setReady] = useState(false);
@@ -190,7 +228,6 @@ export default function ProjectMap({
   const [mapMessage, setMapMessage] = useState("");
   const layerMenu = useRef<HTMLDivElement>(null);
   const layerButton = useRef<HTMLButtonElement>(null);
-  const selected = projects.find((p) => p.id === selectedId);
   useEffect(() => {
     if (!layersOpen) return;
     layerMenu.current
@@ -221,13 +258,26 @@ export default function ProjectMap({
   useEffect(() => {
     handlers.current = {
       onSelect,
+      onHover,
+      onViewChange,
+      onReady,
+      bottomInset,
       draw,
       commit(next) {
         setHistory((past) => [...past.slice(-49), points]);
         onPointsChange?.(next);
       },
     };
-  }, [onSelect, draw, points, onPointsChange]);
+  }, [
+    onSelect,
+    onHover,
+    onViewChange,
+    onReady,
+    bottomInset,
+    draw,
+    points,
+    onPointsChange,
+  ]);
   function undo() {
     const previous = history.at(-1);
     if (!previous) return;
@@ -239,7 +289,10 @@ export default function ProjectMap({
     const map = L.map(container.current, {
       zoomControl: false,
       attributionControl: false,
-      minZoom: 4,
+      // Explorer: half steps, so all of Norway fits snugly above the mobile
+      // drawer as well as beside the desktop list.
+      minZoom: draw ? 4 : 3,
+      zoomSnap: draw ? 1 : 0.5,
       maxZoom: 19,
       doubleClickZoom: !draw,
     }).setView(cities.Oslo.center, 13);
@@ -301,45 +354,96 @@ export default function ProjectMap({
   useEffect(() => {
     projectsRef.current = projects;
   }, [projects]);
+  // Drawing maps frame the shape being edited, or the place's preset view.
   useEffect(() => {
     const map = mapRef.current;
-    if (!ready || !map) return;
-    const place = city === allPlaces ? undefined : cities[city];
-    const shown = projectsRef.current.flatMap((project) => project.geometry);
-    if (!draw && explorerView?.city === city)
-      map.setView(explorerView.center, explorerView.zoom, { animate: false });
-    else if (draw && initialPoints.current.length)
+    if (!ready || !map || !draw) return;
+    const place = city ? cities[city] : undefined;
+    if (initialPoints.current.length)
       map.fitBounds(L.latLngBounds(initialPoints.current), {
         padding: [40, 40],
         maxZoom: 17,
       });
-    // Frame whatever is listed when the place has no preset view.
-    else if (!place && shown.length)
-      map.fitBounds(L.latLngBounds(shown), { padding: [56, 56], maxZoom: 13 });
-    else {
-      const fallback = place || cities[allPlaces];
-      map.setView(fallback.center, fallback.zoom);
-    }
-    if (draw) return;
-    const remember = () => {
-      explorerView = { city, center: map.getCenter(), zoom: map.getZoom() };
-    };
-    remember();
-    map.on("moveend", remember);
-    return () => {
-      map.off("moveend", remember);
-    };
+    else if (place) map.setView(place.center, place.zoom);
+    else map.fitBounds(norwayBounds);
   }, [city, ready, draw]);
+  // The explorer reports every view, which filters the list and fills the URL.
   useEffect(() => {
-    selectedRef.current = selectedId;
     const map = mapRef.current;
-    if (!selected || !ready || !map || draw) return;
-    map.panInside(selected.center, {
-      paddingTopLeft: [48, 48],
-      paddingBottomRight: [76, 48],
-      animate: false,
+    if (!ready || !map || draw) return;
+    const inset = () => handlers.current.bottomInset?.() ?? 0;
+    const showNorway = (animate: boolean) =>
+      map.fitBounds(norwayBounds, {
+        paddingTopLeft: [16, 16],
+        paddingBottomRight: [16, 16 + inset()],
+        animate,
+      });
+    const start = startView.current ?? storedMapView();
+    if (start) map.setView(start.center, start.zoom, { animate: false });
+    else showNorway(false);
+    const report = () => {
+      const center = map.getCenter();
+      const size = map.getSize();
+      const bounds = L.latLngBounds(
+        map.containerPointToLatLng([0, 0]),
+        map.containerPointToLatLng([
+          size.x,
+          Math.max(1, size.y - inset()),
+        ]),
+      );
+      const view: MapView = {
+        center: [center.lat, center.lng],
+        zoom: map.getZoom(),
+      };
+      storeMapView(view);
+      handlers.current.onViewChange?.({
+        ...view,
+        bounds: {
+          south: bounds.getSouth(),
+          west: bounds.getWest(),
+          north: bounds.getNorth(),
+          east: bounds.getEast(),
+        },
+      });
+    };
+    report();
+    map.on("moveend", report);
+    // Leaflet drops new views while a zoom animates, so they wait for its end.
+    const settled = (move: () => void) => {
+      map.off("zoomend", pending);
+      pending = () => {
+        map.off("zoomend", pending);
+        move();
+      };
+      if ((map as unknown as { _animatingZoom?: boolean })._animatingZoom)
+        map.on("zoomend", pending);
+      else pending();
+    };
+    let pending = () => {};
+    handlers.current.onReady?.({
+      fit(points, { bottom = inset(), maxZoom = 15 } = {}) {
+        if (!points.length) return;
+        settled(() =>
+          map.fitBounds(L.latLngBounds(points), {
+            paddingTopLeft: [64, 64],
+            paddingBottomRight: [80, 64 + bottom],
+            maxZoom,
+            animate: !reducedMotion(),
+          }),
+        );
+      },
+      show(view) {
+        settled(() =>
+          map.setView(view.center, view.zoom, { animate: !reducedMotion() }),
+        );
+      },
+      showNorway: () => settled(() => showNorway(!reducedMotion())),
     });
-  }, [selectedId, city, ready, draw, selected]);
+    return () => {
+      map.off("moveend", report);
+      map.off("zoomend", pending);
+    };
+  }, [ready, draw]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -408,8 +512,14 @@ export default function ProjectMap({
             L.DomEvent.stopPropagation(event);
             select(project, shape);
           })
-          .on("mouseover", () => element.classList.add("is-hovered"))
-          .on("mouseout", () => element.classList.remove("is-hovered"))
+          .on("mouseover", () => {
+            element.classList.add("is-hovered");
+            handlers.current.onHover?.(project.id);
+          })
+          .on("mouseout", () => {
+            element.classList.remove("is-hovered");
+            handlers.current.onHover?.(null);
+          })
           .bindTooltip(projectTooltip(project), tooltipOptions);
         hitsRef.current.set(project.id, hit);
       }
@@ -420,7 +530,6 @@ export default function ProjectMap({
           "aria-label",
           `${project.title}, ${statuses[project.status].label}`,
         );
-        element.setAttribute("aria-haspopup", "dialog");
         element.setAttribute("data-project-id", project.id);
         element.addEventListener("keydown", (event) => {
           if (!(event instanceof KeyboardEvent)) return;
@@ -431,7 +540,11 @@ export default function ProjectMap({
           }
         });
       }
-      if (!line) shape.bindTooltip(projectTooltip(project), tooltipOptions);
+      if (!line)
+        shape
+          .bindTooltip(projectTooltip(project), tooltipOptions)
+          .on("mouseover", () => handlers.current.onHover?.(project.id))
+          .on("mouseout", () => handlers.current.onHover?.(null));
       // Areas are only a few pixels wide at regional zoom; alignments stay visible.
       if (line) continue;
       const dot = L.circleMarker(project.center, {
@@ -446,6 +559,8 @@ export default function ProjectMap({
           L.DomEvent.stopPropagation(event);
           handlers.current.onSelect(project.id);
         })
+        .on("mouseover", () => handlers.current.onHover?.(project.id))
+        .on("mouseout", () => handlers.current.onHover?.(null))
         .bindTooltip(projectTooltip(project), tooltipOptions);
       dotsRef.current.set(project.id, dot);
     }
@@ -465,7 +580,11 @@ export default function ProjectMap({
       const grouped = new Set<string>();
       if (zoom < clusterZoom) {
         const candidates = projects.flatMap((project) => {
-          if (project.id === selectedRef.current) return [];
+          if (
+            project.id === selectedRef.current ||
+            project.id === highlightedRef.current
+          )
+            return [];
           const bounds = lineBounds.get(project.id);
           if (
             bounds &&
@@ -549,9 +668,12 @@ export default function ProjectMap({
     };
   }, [projects, ready, draw]);
   useEffect(() => {
+    selectedRef.current = selectedId;
+    highlightedRef.current = highlightedId;
     clusterRef.current();
     for (const project of projects) {
-      const selected = project.id === selectedId;
+      const selected =
+        project.id === selectedId || project.id === highlightedId;
       const shape = shapesRef.current.get(project.id);
       shape?.setStyle(shapeStyle(project.geometryType === "line", selected));
       casingsRef.current
@@ -569,7 +691,7 @@ export default function ProjectMap({
         shape?.closeTooltip();
       }
     }
-  }, [selectedId, projects, ready]);
+  }, [selectedId, highlightedId, projects, ready]);
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map || !draw) return;

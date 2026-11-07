@@ -1,10 +1,19 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import {
+  devices,
+  expect,
+  test,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { seedProjects } from "../app/lib/data";
 import { member, mutation, signIn } from "./support";
 
 const project = seedProjects[0];
 const projectPath = `/prosjekt/${project.id}`;
+// Explorer URLs carry the filters and map position as a query string.
+const atProject = new RegExp(`${projectPath}(\\?|$)`);
+const atList = /:\d+\/(\?|$)/;
 
 async function expectDrawerHeight(
   page: Page,
@@ -102,7 +111,13 @@ for (const viewport of [
   { width: 320, height: 568 },
 ]) {
   test.describe(`mobile explorer at ${viewport.width}px`, () => {
-    test.use({ viewport, isMobile: true, hasTouch: true });
+    // A phone's user agent, so the server renders the mobile layout first.
+    test.use({
+      viewport,
+      isMobile: true,
+      hasTouch: true,
+      userAgent: devices["Pixel 7"].userAgent,
+    });
 
     test("projects open in their own full-height drawer and preserve map, history, and reading space", async ({
       page,
@@ -119,13 +134,13 @@ for (const viewport of [
         .first();
       const projectDrawer = page.locator("[data-project-drawer]");
       await result.click();
-      await expect(page).toHaveURL(projectPath);
+      await expect(page).toHaveURL(atProject);
       await expectDrawerHeight(page, 1, "project");
       await expect(projectDrawer.locator("[data-project-post]")).toBeVisible();
       await page
         .getByRole("button", { name: "Lukk prosjekt", exact: true })
         .click();
-      await expect(page).toHaveURL("/");
+      await expect(page).toHaveURL(atList);
       await expect(projectDrawer).toBeHidden();
       await expectDrawerHeight(page, 0.58);
       await expect(result).toBeFocused();
@@ -143,11 +158,11 @@ for (const viewport of [
       await expect(projectDrawer).toBeHidden();
       await expectDrawerHeight(page, 136 / viewport.height);
       await page.locator(`[data-project-id="${project.id}"]`).press("Enter");
-      await expect(page).toHaveURL(projectPath);
+      await expect(page).toHaveURL(atProject);
       await expectDrawerHeight(page, 1, "project");
       // Swiping the project away returns to the map just as it was left.
       await swipeDown(page, projectDrawer.locator("[aria-hidden]").first());
-      await expect(page).toHaveURL("/");
+      await expect(page).toHaveURL(atList);
       await expect(projectDrawer).toBeHidden();
       await expectDrawerHeight(page, 136 / viewport.height);
       await expect
@@ -246,15 +261,6 @@ for (const viewport of [
       );
       await expectDrawerHeight(page, 136 / viewport.height);
       await filters
-        .getByRole("button", { name: "Sted: Oslo", exact: true })
-        .click();
-      const city = page.getByRole("listbox", { name: "Sted", exact: true });
-      await expectMenuFits(city);
-      await city.getByRole("option", { name: /^Hele Norge/ }).click();
-      await expect(
-        filters.getByRole("button", { name: "Sted: Hele Norge", exact: true }),
-      ).toBeVisible();
-      await filters
         .getByRole("button", { name: "Åpne søk", exact: true })
         .click();
       const search = page.getByRole("textbox", {
@@ -270,7 +276,7 @@ for (const viewport of [
       ).toBeVisible();
       await search.fill(project.title);
       await search.press("Enter");
-      await expect(page).toHaveURL(projectPath);
+      await expect(page).toHaveURL(atProject);
       await expectDrawerHeight(page, 1, "project");
       await page
         .getByRole("button", { name: "Lukk prosjekt", exact: true })
@@ -360,6 +366,8 @@ test("saved projects keep their collection and full reading height", async ({
     ).ok(),
   ).toBe(true);
   await page.goto("/");
+  // Desktop markup comes first here, then the mobile drawer replaces it.
+  await expect(page.locator("[data-explorer-drawer]")).toBeVisible();
   await page.getByRole("button", { name: "Din profil", exact: true }).click();
   await page.getByRole("button", { name: /^Lagrede prosjekter/ }).click();
   await expectDrawerHeight(page, 1);
@@ -382,87 +390,199 @@ test("saved projects keep their collection and full reading height", async ({
   await expect(page.locator("[data-account-panel]")).toBeVisible();
 });
 
-test("desktop status and category filters combine, and sorting works", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
-  const filters = page.getByRole("region", {
-    name: "Filtrer prosjekter",
-    exact: true,
-  });
-  const active = page.getByRole("list", { name: "Aktive filtre" });
-  // The default place is a filter too, shown until widened to all of Norway.
-  await expect(
-    active.getByRole("button", { name: /^Fjern filter/ }),
-  ).toHaveCount(1);
-  await active
-    .getByRole("button", { name: "Fjern filter: Oslo", exact: true })
-    .click();
-  await expect(active).toBeHidden();
-  await expect(
-    filters.getByRole("button", { name: "Sted: Hele Norge", exact: true }),
-  ).toBeVisible();
-  await filters
-    .getByRole("button", {
-      name: "Status: Planlagt, Under bygging",
+test.describe("desktop explorer", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+  const oslo = "/?kart=59.9100,10.7500,13";
+  const listRegion = (page: Page) =>
+    page.getByRole("region", { name: "Prosjektliste", exact: true });
+  const card = (page: Page, title: string) =>
+    listRegion(page).getByRole("button", { name: new RegExp(`^${title} · `) });
+  const mapParam = (page: Page) => new URL(page.url()).searchParams.get("kart");
+
+  test("status and category filters combine, sort, and survive a reload", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const filters = page.getByRole("region", {
+      name: "Filtrer prosjekter",
       exact: true,
-    })
-    .click();
-  const status = page.getByRole("listbox", { name: "Status", exact: true });
-  await status.getByRole("option", { name: "Planlagt", exact: true }).click();
-  await page.keyboard.press("Escape");
-  await expect(
-    active.getByRole("button", {
-      name: "Fjern filter: Under bygging",
-      exact: true,
-    }),
-  ).toBeVisible();
-  await filters
-    .getByRole("group", { name: "Kategori", exact: true })
-    .getByRole("button", { name: new RegExp(`^${project.category}`) })
-    .click();
-  await expect(
-    active.getByRole("button", { name: /^Fjern filter/ }),
-  ).toHaveCount(2);
-  const results = page.getByRole("region", {
-    name: "Prosjektliste",
-    exact: true,
-  });
-  for (const card of await results
-    .getByRole("heading", { level: 2 })
-    .getByRole("button")
-    .all())
-    await expect(card).toHaveAttribute(
-      "aria-label",
-      new RegExp(` · ${project.category} · `),
+    });
+    const active = page.getByRole("list", { name: "Aktive filtre" });
+    // No place filter: the map is the place.
+    await expect(active).toBeHidden();
+    await filters
+      .getByRole("button", {
+        name: "Status: Planlagt, Under bygging",
+        exact: true,
+      })
+      .click();
+    const status = page.getByRole("listbox", { name: "Status", exact: true });
+    await status.getByRole("option", { name: /^Planlagt/ }).click();
+    await page.keyboard.press("Escape");
+    await expect(
+      active.getByRole("button", {
+        name: "Fjern filter: Under bygging",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await filters.getByRole("button", { name: "Kategori", exact: true }).click();
+    await page
+      .getByRole("listbox", { name: "Kategori", exact: true })
+      .getByRole("option", { name: new RegExp(`^${project.category}`) })
+      .click();
+    await page.keyboard.press("Escape");
+    await expect(
+      active.getByRole("button", { name: /^Fjern filter/ }),
+    ).toHaveCount(2);
+    await expect(page).toHaveURL(
+      new RegExp(`status=construction&kategori=${project.category}`),
     );
-  await active
-    .getByRole("button", { name: `Fjern filter: ${project.category}` })
-    .click();
-  await expect(
-    active.getByRole("button", { name: /^Fjern filter/ }),
-  ).toHaveCount(1);
-  await page.getByRole("button", { name: "Prosjekter", exact: true }).click();
-  await page.getByRole("button", { name: /^Sorter prosjekter:/ }).click();
-  const sort = page.getByRole("listbox", {
-    name: "Sorter prosjekter",
-    exact: true,
-  });
-  await expectMenuFits(sort);
-  await sort.getByRole("option", { name: "Alfabetisk", exact: true }).click();
-  await expect(sort).toBeHidden();
-  await expect(
-    page.getByRole("button", {
-      name: "Sorter prosjekter: Alfabetisk",
+    const results = listRegion(page);
+    for (const button of await results
+      .getByRole("heading", { level: 2 })
+      .getByRole("button")
+      .all())
+      await expect(button).toHaveAttribute(
+        "aria-label",
+        new RegExp(` · ${project.category} · `),
+      );
+    await active
+      .getByRole("button", { name: `Fjern filter: ${project.category}` })
+      .click();
+    await expect(
+      active.getByRole("button", { name: /^Fjern filter/ }),
+    ).toHaveCount(1);
+    await page.getByRole("button", { name: /^Sorter prosjekter:/ }).click();
+    const sort = page.getByRole("listbox", {
+      name: "Sorter prosjekter",
       exact: true,
-    }),
-  ).toBeFocused();
-  await page
-    .getByRole("region", { name: "Prosjektliste", exact: true })
-    .getByRole("button", { name: new RegExp(project.title) })
-    .first()
-    .click();
-  await expect(page.locator("[data-project-post]")).toBeVisible();
-  await expect(page.locator('[data-slot="drawer-popup"]')).toHaveCount(0);
+    });
+    await expectMenuFits(sort);
+    await sort.getByRole("option", { name: "Alfabetisk", exact: true }).click();
+    await expect(sort).toBeHidden();
+    await expect(
+      page.getByRole("button", {
+        name: "Sorter prosjekter: Alfabetisk",
+        exact: true,
+      }),
+    ).toBeFocused();
+    await expect(page).toHaveURL(/sorter=title/);
+    await page.reload();
+    await expect(
+      filters.getByRole("button", { name: "Status: Under bygging", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: "Sorter prosjekter: Alfabetisk",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page).toHaveURL(/status=construction&sorter=title&kart=/);
+  });
+
+  test("the list follows the map, and search can frame matches outside it", async ({
+    page,
+  }) => {
+    // A first visit opens on all of Norway.
+    await page.goto("/");
+    await expect.poll(() => mapParam(page)).toMatch(/,[45](\.5)?$/);
+    await expect(card(page, "Nyhavna")).toBeVisible();
+    await expect(card(page, project.title)).toBeVisible();
+    // A shared view opens where it was shared, and narrows the list.
+    await page.goto(oslo);
+    await expect(card(page, project.title)).toBeVisible();
+    await expect(card(page, "Nyhavna")).toHaveCount(0);
+    await page.getByRole("button", { name: "Zoom ut", exact: true }).click();
+    await expect.poll(() => mapParam(page)).toMatch(/^59\.9\d*,10\.75\d*,12$/);
+    // Searching finds places outside the view and offers to frame them.
+    const search = page.getByRole("textbox", {
+      name: "Søk etter prosjekt eller sted",
+    });
+    await search.fill("Bergen");
+    await expect(
+      listRegion(page).getByRole("heading", { name: "Ingen treff", exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: /^Vis \d+ treff utenfor kartet$/ })
+      .click();
+    await expect(card(page, "Bybanen til Åsane")).toBeVisible();
+    await expect.poll(() => mapParam(page)).toMatch(/^60\./);
+    await expect(page).toHaveURL(/[?&]q=Bergen&/);
+    await page.reload();
+    await expect(search).toHaveValue("Bergen");
+    await expect(card(page, "Bybanen til Åsane")).toBeVisible();
+    // Without a view in the URL, the explorer reopens on the last one.
+    await page.goto(oslo);
+    await expect(card(page, "Nyhavna")).toHaveCount(0);
+    await page.goto("/");
+    await expect
+      .poll(() => mapParam(page))
+      .toMatch(/^59\.9\d+,10\.7[45]\d+,13$/);
+  });
+
+  test("cards and shapes highlight each other", async ({ page }) => {
+    await page.goto(oslo);
+    await card(page, project.title).hover();
+    await expect(
+      page.locator(`path[data-project-id="${project.id}"]`),
+    ).toHaveAttribute("stroke-width", "4");
+    await page.mouse.move(1000, 20);
+    await page.locator('path[data-project-id="regjeringskvartalet"]').hover();
+    await expect(
+      listRegion(page).locator('[data-card-id="regjeringskvartalet"]'),
+    ).toHaveAttribute("data-highlighted", "true");
+  });
+
+  test("projects open in a panel beside the map and return to the list", async ({
+    page,
+  }) => {
+    await page.goto(oslo);
+    const list = listRegion(page);
+    // Wait for the map to narrow the list to its view.
+    await expect(card(page, "Nyhavna")).toHaveCount(0);
+    const target = list.locator("[data-card-id]").last();
+    const id = await target.getAttribute("data-card-id");
+    await target.scrollIntoViewIfNeeded();
+    const scrolled = await list.evaluate((element) => element.scrollTop);
+    expect(scrolled).toBeGreaterThan(0);
+    const listView = mapParam(page);
+    await target.getByRole("button").first().click();
+    const panel = page.locator("[data-project-post]");
+    await expect(panel).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/prosjekt/${id}\\?kart=`));
+    await expect(list).toBeHidden();
+    await expect(
+      page.getByRole("region", { name: "Prosjektkart" }).first(),
+    ).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.locator('[data-slot="drawer-popup"]')).toHaveCount(0);
+    // The panel frames the project; the map shows where it is.
+    await expect(
+      page.getByRole("button", { name: "Vis i kartet", exact: true }),
+    ).toHaveCount(0);
+    await expect.poll(() => mapParam(page)).not.toBe(listView);
+    // Escape returns to the list as it was, map included.
+    await page.keyboard.press("Escape");
+    await expect(panel).toBeHidden();
+    await expect(list).toBeVisible();
+    await expect(page).toHaveURL(atList);
+    await expect.poll(() => mapParam(page)).toBe(listView);
+    await expect
+      .poll(() => list.evaluate((element) => element.scrollTop))
+      .toBe(scrolled);
+    await expect(target.getByRole("button").first()).toBeFocused();
+    // Browser history and reloads keep working on project URLs.
+    await target.getByRole("button").first().click();
+    await page.goBack();
+    await expect(panel).toBeHidden();
+    await page.goForward();
+    await expect(panel).toBeVisible();
+    await page.reload();
+    await expect(panel).toBeVisible();
+    await page
+      .getByRole("button", { name: "Lukk prosjekt", exact: true })
+      .click();
+    await expect(list).toBeVisible();
+    await expect(page).toHaveURL(/\/\?kart=/);
+  });
 });

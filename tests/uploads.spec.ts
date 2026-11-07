@@ -124,15 +124,15 @@ test("moderators add photos while creating a project; without one it shows the p
     await expect(page.getByText("Prosjektet er lagt til")).toBeVisible();
   }
 
-  const facts = page.getByRole("complementary", { name: "Prosjektfakta" });
+  const about = page.getByRole("region", { name: "Om prosjektet", exact: true });
   await create(`Med bilde ${randomUUID().slice(0, 6)}`, true);
-  await expect(facts.locator("img").first()).toHaveAttribute(
+  await expect(about.locator("img").first()).toHaveAttribute(
     "src",
     /api%2Fuploads%2F[a-f0-9]{32}/,
   );
 
   await page.goto("/");
   await create(`Uten bilde ${randomUUID().slice(0, 6)}`, false);
-  await expect(facts.locator("img")).toHaveCount(0);
-  await expect(facts.locator("svg.lucide-train-front").first()).toBeVisible();
+  await expect(about).toBeVisible();
+  await expect(about.locator("img")).toHaveCount(0);
 });

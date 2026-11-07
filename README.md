@@ -17,11 +17,14 @@ Deployment: see [Deploy to Vercel](docs/google-auth.md#deploy-to-vercel). Valida
 
 ## Included
 
-- Interactive map with clickable project polygons and road / railway alignments, status colors, zoom, and map layers. Below street zoom every project is also drawn as a dot, and places without a preset view are framed to fit their projects.
-- Map and list views with search, place, status, category, saved-only filtering, result counts, and sorting. On desktop, status and category are one-click toggle lists with live counts; active filters show as removable chips above the results.
+- Interactive map with clickable project polygons and road / railway alignments, status colors, zoom, and map layers. Below street zoom every project is also drawn as a dot, and nearby projects group into numbered clusters.
+- The map is the place filter: the list and its result count hold the projects inside the current map view (on mobile, the part above the half-height drawer). The first visit opens on all of Norway; later visits reopen on the last area viewed.
+- Desktop shows the results list and the map side by side. Hovering a card highlights its shape on the map; hovering a shape highlights its card and scrolls it into view.
+- Search, status, category, saved-only filtering and sorting. Search also matches place names; when it matches projects outside the view, a chip frames the map on them. Status and category menus count what is in view, and active filters show as removable chips above the results.
+- Filters, sorting and the map position live in the query string (`q`, `status`, `kategori`, `sorter`, `kart=lat,lng,zoom`), updated with `replaceState`, so a view can be shared and survives a reload. Project URLs keep the same query string.
 - Categories: Samferdsel, Energi, Vann og avløp, Offentlige bygg, Byutvikling, Bolig, Næring, and Byrom og park, each with an icon (`app/components/category-icon.tsx`).
-- Project reference pages at `/prosjekt/[id]` with editable descriptions, project links, facts, a separate update timeline, and image credits. Discussion is the default section, and projects open at full reading height on mobile.
-- A project-first browse view with descriptions, discussion counts, latest updates, and sorting by recent activity; the interactive map remains available.
+- Project reference pages at `/prosjekt/[id]` with editable descriptions, project links, facts, a separate update timeline, and image credits. Discussion is the default section. On desktop a project opens in the left panel in place of the list, with its shape selected and framed on the map; closing it (✕, Escape or Back) returns to the list, scroll position and map view included. On mobile projects open in a full-height drawer, with “Vis i kartet” to show them on the map.
+- Results show descriptions, discussion counts and latest updates, sorted by recent activity, newest or title.
 - One persistent discussion per project with replies, votes, and sorting by recent activity, newest, or top. Comments and replies can optionally reference any project update.
 - A latest-update context card and a “since the latest update” filter that includes older conversations with recent replies. Updates never become comments or own separate comment sections.
 - Existing comments, votes, and replies are preserved; previous update associations become optional references. Historical “Om prosjektet” entries are read as project context.
@@ -49,7 +52,7 @@ Map tiles load from Esri's Light Gray Canvas service, with an OpenStreetMap stre
 
 ## Structure
 
-- `app/components/explorer.tsx`: navigation, filters, project results, and account entry points; `project-card.tsx`, `recent-activity.tsx`, and `toast.tsx` render its list, activity column, and confirmations.
+- `app/components/explorer.tsx`: navigation, filters, project results, and account entry points; `project-card.tsx` and `toast.tsx` render its list and confirmations; `app/lib/explore-state.ts` reads and writes its query string.
 - `app/components/project-map.tsx`: Leaflet map, project overlays, and geometry drawing.
 - `app/components/project-post.tsx`: project reference page and update timeline.
 - `app/components/project-discussion.tsx` and `app/lib/discussion.ts`: shared project discussion, optional references, and activity-aware filtering.

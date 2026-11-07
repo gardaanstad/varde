@@ -620,8 +620,11 @@ for (const viewport of [
     const person = await member({ username: uniqueName() });
     await signIn(context, person);
     await page.goto("/");
+    // Desktop markup comes first here; phones wait for the drawer to replace it.
+    if (viewport.width < 800)
+      await expect(page.locator("[data-explorer-drawer]")).toBeVisible();
     const trigger = page.getByRole("button", {
-      name: viewport.width < 800 ? "Din profil" : `@${person.username}`,
+      name: "Din profil",
       exact: true,
     });
     await trigger.click();
@@ -653,11 +656,11 @@ for (const viewport of [
         return settled;
       })
       .toBe(true);
-    // Mobile reaches saved projects through the profile; desktop has a sidebar entry.
+    // Mobile reaches saved projects through the profile; desktop has a header button.
     await expect(
       panel.getByRole("button", { name: "Lagrede prosjekter" }),
     ).toHaveCount(viewport.width < 800 ? 1 : 0);
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/:\d+\/(\?|$)/);
     await expect(
       publicProfile.getByRole("heading", {
         name: person.username,
@@ -747,7 +750,7 @@ for (const viewport of [
       publicProfile.getByText("Flere trær og gode møteplasser."),
     ).toBeVisible();
     await expect(publicProfile.getByText("Tøyen, Oslo")).toBeVisible();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/:\d+\/(\?|$)/);
     await expect.poll(bounds).toEqual(before);
     if (viewport.width >= 800) {
       await page.keyboard.press("Escape");

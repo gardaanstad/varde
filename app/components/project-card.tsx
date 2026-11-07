@@ -20,21 +20,39 @@ const cardStat = "relative z-1 inline-flex items-center gap-1.25 tabular-nums";
 export default function ProjectCard({
   project,
   commentCount,
+  highlighted = false,
   onOpen,
+  onHover,
 }: {
   project: Project;
   commentCount: number;
+  /** Its shape is hovered on the map. */
+  highlighted?: boolean;
   onOpen: () => void;
+  /** Pointer or keyboard focus entering (true) or leaving the card. */
+  onHover?: (hovering: boolean) => void;
 }) {
   const updates = getProjectUpdates(project);
   return (
     <li
       className={cn(
-        "relative isolate flex items-start gap-6 border-b border-border py-5 max-md:gap-3.5 max-md:pt-4 max-md:pb-3.75",
+        "relative isolate flex items-start gap-5 border-b border-border py-4.5 max-md:gap-3.5 max-md:pt-4 max-md:pb-3.75",
         // Hover wash bleeds slightly past the text edge, like a list row.
         "before:absolute before:inset-x-[-12px] before:inset-y-1 before:-z-1 before:rounded-xl before:transition-colors before:duration-120",
-        "hover:before:bg-surface-muted/65 max-md:before:inset-x-[-8px] max-md:before:inset-y-0.5",
+        "hover:before:bg-surface-muted/65 data-[highlighted=true]:before:bg-accent-soft/55 max-md:before:inset-x-[-8px] max-md:before:inset-y-0.5",
       )}
+      data-card-id={project.id}
+      data-highlighted={highlighted}
+      onPointerEnter={(event) => {
+        if (event.pointerType === "mouse") onHover?.(true);
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType === "mouse") onHover?.(false);
+      }}
+      onFocus={() => onHover?.(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) onHover?.(false);
+      }}
     >
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-1.5 text-xs leading-normal text-muted max-md:gap-1.25 max-md:leading-4 [&>svg]:shrink-0">
@@ -43,7 +61,7 @@ export default function ProjectCard({
           <span aria-hidden="true">·</span>
           <span className="min-w-0 truncate">{projectPlace(project)}</span>
         </div>
-        <h2 className="my-1 text-lg leading-[1.35] font-[620] tracking-[-0.35px] max-md:mt-0.5 max-md:mb-0.75 max-md:text-base max-md:leading-[1.3] max-md:tracking-[-0.25px]">
+        <h2 className="my-1 text-[17px] leading-[1.35] font-[620] tracking-[-0.3px] max-md:mt-0.5 max-md:mb-0.75 max-md:text-base max-md:leading-[1.3] max-md:tracking-[-0.25px]">
           {/* Stretched over the whole card; other controls sit above it. */}
           <button
             type="button"
@@ -94,13 +112,13 @@ export default function ProjectCard({
         </div>
       </div>
       {/* Mobile: a square thumbnail, top-aligned with the category line. */}
-      <div className="relative mt-0.5 aspect-4/3 w-38 shrink-0 overflow-hidden rounded-lg bg-surface-muted max-md:mt-0 max-md:aspect-square max-md:w-19">
+      <div className="relative mt-0.5 aspect-4/3 w-30 shrink-0 overflow-hidden rounded-lg bg-surface-muted max-md:mt-0 max-md:aspect-square max-md:w-19">
         {hasPhoto(project) ? (
           <Image
             src={project.image}
             alt=""
             fill
-            sizes="(max-width: 768px) 96px, 168px"
+            sizes="(max-width: 768px) 96px, 120px"
             className="object-cover"
           />
         ) : (

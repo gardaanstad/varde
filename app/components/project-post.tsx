@@ -1,6 +1,7 @@
 "use client";
 import {
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
@@ -44,12 +45,7 @@ import {
   composerSend,
   statusTone,
 } from "../lib/ui";
-import Dialog from "./dialog";
-import ProjectPostHeader, {
-  headerOverlap,
-  ProjectActions,
-  ProjectPostHeaderDetails,
-} from "./project-post-header";
+import ProjectPostHeader, { ProjectActions } from "./project-post-header";
 import ProjectDiscussion from "./project-discussion";
 import CategoryIcon from "./category-icon";
 import RelativeTime from "./relative-time";
@@ -70,7 +66,6 @@ import {
 import EmptyState from "./empty-state";
 import ImageGallery from "./image-gallery";
 import ImagePicker from "./image-picker";
-import ProjectPlaceholder from "./project-placeholder";
 import styles from "./project-post.module.css";
 
 const ProjectMap = dynamic(() => import("./project-map"), { ssr: false });
@@ -101,12 +96,14 @@ const composerTool = cn(
 type Props = {
   project: Project;
   initialUpdateId?: string;
-  embedded?: boolean;
+  /** Desktop panel: Escape closes it (the mobile drawer handles its own). */
+  closeOnEscape?: boolean;
   onClose: () => void;
   feedback?: ReactNode;
   saved: boolean;
   onSave: () => void;
-  onMap: () => void;
+  /** Mobile: the drawer covers the map, so it offers to show the project there. */
+  onMap?: () => void;
   comments: Comment[];
   onNotify: (message: string) => void;
 };
@@ -343,10 +340,10 @@ function slide(
 }
 
 /**
- * Mobile summary: two lines of the description above the image.
- * "Les mer" grows the text and reveals the facts the desktop sidebar shows.
+ * Two lines of the description above the image. "Les mer" grows the text and
+ * reveals the facts.
  */
-function MobileIntro({ project }: { project: Project }) {
+function ProjectIntro({ project }: { project: Project }) {
   const [open, setOpen] = useState(false);
   // The ellipsis clamp lifts before expanding and returns after collapsing.
   const [clamped, setClamped] = useState(true);
@@ -444,7 +441,7 @@ function MobileIntro({ project }: { project: Project }) {
             <ImageGallery
               images={photos}
               label={`Bilder av ${project.title}`}
-              sizes="100vw"
+              sizes="(max-width: 768px) 100vw, 560px"
               className={cover}
             />
           </div>
@@ -482,56 +479,6 @@ function MobileIntro({ project }: { project: Project }) {
       </button>
       <div ref={end} aria-hidden="true" />
     </div>
-  );
-}
-
-/** Desktop description: first paragraph, "Les mer" for the rest. */
-function DesktopIntro({ project }: { project: Project }) {
-  const [expanded, setExpanded] = useState(false);
-  const [first, ...rest] = project.description.split("\n\n");
-  const paragraph =
-    "text-body leading-[1.65] whitespace-pre-wrap wrap-anywhere text-ink-soft max-md:text-sm max-md:leading-[1.6]";
-  const edited = (
-    <p className={note}>Sist redigert {formatDateYear(project.updated)}</p>
-  );
-  return (
-    <>
-      <p className={paragraph}>{first}</p>
-      {rest.length > 0 ? (
-        <>
-          {/* The rest unfolds below the first paragraph. */}
-          <div
-            className={cn(
-              "grid grid-rows-[0fr] opacity-0 transition-[grid-template-rows,opacity] duration-320 ease-out-soft motion-reduce:transition-none",
-              "data-[expanded=true]:grid-rows-[1fr] data-[expanded=true]:opacity-100",
-            )}
-            data-expanded={expanded}
-            inert={!expanded}
-          >
-            <div className="min-h-0 overflow-hidden">
-              {rest.map((text, index) => (
-                <p key={index} className={cn(paragraph, "mt-3")}>
-                  {text}
-                </p>
-              ))}
-              {edited}
-            </div>
-          </div>
-          <div className="mt-0.5 flex flex-wrap gap-x-4.5">
-            <button
-              type="button"
-              className="inline-flex min-h-9 items-center gap-1.5 text-left text-ui font-medium text-accent underline-offset-4 hover:underline max-md:min-h-11"
-              aria-expanded={expanded}
-              onClick={() => setExpanded(!expanded)}
-            >
-              {expanded ? "Vis mindre" : "Les mer"}
-            </button>
-          </div>
-        </>
-      ) : (
-        edited
-      )}
-    </>
   );
 }
 
@@ -835,7 +782,7 @@ function UpdateComposer({
 export default function ProjectPost({
   project,
   initialUpdateId,
-  embedded = false,
+  closeOnEscape = false,
   onClose,
   feedback,
   saved,
@@ -938,7 +885,6 @@ export default function ProjectPost({
     }
   }
   const updates = getProjectUpdates(project);
-  const photos = projectPhotos(project);
   const referenceCounts = new Map<string, number>();
   for (const comment of comments)
     if (comment.updateId)
@@ -959,17 +905,31 @@ export default function ProjectPost({
     },
   ];
   useEffect(() => {
-    if (embedded)
-      document
-        .getElementById("project-card-title")
-        ?.focus({ preventScroll: true });
+    document
+      .getElementById("project-card-title")
+      ?.focus({ preventScroll: true });
     if (initialUpdateId)
       requestAnimationFrame(() =>
         document
           .getElementById(`update-${initialUpdateId}`)
           ?.scrollIntoView({ block: "start" }),
       );
-  }, [embedded, project.id, initialUpdateId]);
+  }, [project.id, initialUpdateId]);
+  const onEscape = useEffectEvent((event: KeyboardEvent) => {
+    if (
+      event.key !== "Escape" ||
+      event.defaultPrevented ||
+      document.querySelector("dialog[open]")
+    )
+      return;
+    event.preventDefault();
+    close();
+  });
+  useEffect(() => {
+    if (!closeOnEscape) return;
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [closeOnEscape]);
   /**
    * Tabs share everything above them, so switching keeps the scroll position.
    * Once scrolled past the tab bar, each tab returns to where it was left.
@@ -1030,26 +990,17 @@ export default function ProjectPost({
           project={project}
           scrollRootRef={contentRef}
           onClose={close}
-          embedded={embedded}
           actions={<ProjectActions {...actions} />}
         />
         <div
           ref={contentRef}
-          className={cn(
-            "min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin",
-            embedded && "pb-[calc(24px+var(--drawer-keyboard-inset,0px))]",
-          )}
-          style={embedded ? undefined : { marginTop: -headerOverlap }}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[calc(24px+var(--drawer-keyboard-inset,0px))] scrollbar-thin"
           data-project-scroll=""
           data-drawer-scroll
         >
-          {!embedded && (
-            <ProjectPostHeaderDetails project={project} />
-          )}
-          {/* Wide screens: intro, tabs and panel on the left; facts start at the top on the right. */}
-          <div className="md:grid md:grid-cols-[minmax(0,1fr)_232px] md:grid-rows-[auto_auto_1fr] md:items-start md:gap-x-7 md:px-7 md:pb-10 lg:grid-cols-[minmax(0,1fr)_272px] lg:gap-x-10">
+          <div>
             <section
-              className="px-4.5 pt-2 pb-3.5 md:col-start-1 md:max-w-180 md:px-0 md:pt-4 md:pb-4.5"
+              className="px-4.5 pt-2 pb-3.5 md:px-6"
               aria-label="Om prosjektet"
             >
               {draft ? (
@@ -1058,14 +1009,12 @@ export default function ProjectPost({
                   <EditDescription />
                   <EditFacts />
                 </div>
-              ) : embedded ? (
-                <MobileIntro project={project} />
               ) : (
-                <DesktopIntro project={project} />
+                <ProjectIntro project={project} />
               )}
             </section>
             <nav
-              className="mx-4.5 border-b border-border md:col-start-1 md:mx-0 md:max-w-180"
+              className="mx-4.5 border-b border-border md:mx-6"
               hidden={Boolean(draft)}
               id="project-sections"
               aria-label="Prosjektinnhold"
@@ -1091,11 +1040,8 @@ export default function ProjectPost({
                 ))}
               </div>
             </nav>
-            <div className="px-4.5 pt-4.5 pb-8 md:contents">
-              <div
-                className="max-w-180 min-w-0 md:col-start-1 md:pt-6"
-                hidden={Boolean(draft)}
-              >
+            <div className="px-4.5 pt-4.5 pb-8 md:px-6 md:pt-5">
+              <div className="min-w-0" hidden={Boolean(draft)}>
                 <div
                   id="project-panel-discussion"
                   hidden={tab !== "discussion"}
@@ -1234,24 +1180,6 @@ export default function ProjectPost({
                   )}
                 </section>
               </div>
-              <aside
-                className="hidden md:col-start-2 md:row-span-3 md:row-start-1 md:block md:pt-5"
-                aria-label="Prosjektfakta"
-              >
-                {photos.length > 0 ? (
-                  <ImageGallery
-                    images={photos}
-                    label={`Bilder av ${project.title}`}
-                    sizes="280px"
-                    className={cover}
-                  />
-                ) : (
-                  <div className={cover}>
-                    <ProjectPlaceholder category={project.category} />
-                  </div>
-                )}
-                {!draft && <ProjectFacts project={project} />}
-              </aside>
             </div>
           </div>
           {draft && (
@@ -1268,21 +1196,5 @@ export default function ProjectPost({
       {feedback}
     </ProjectEditContext>
   );
-  return embedded ? (
-    content
-  ) : (
-    <Dialog
-      title={project.title}
-      className={cn(
-        "h-[calc(100dvh-64px)] max-h-230 w-[1120px] max-w-[calc(100vw-48px)] overflow-hidden rounded-2xl",
-        "backdrop:bg-ink/40 backdrop:backdrop-blur-[2px]",
-      )}
-      closeButton={false}
-      onClose={close}
-      initialFocusSelector="#project-card-title"
-      returnFocusSelector="#project-search"
-    >
-      {content}
-    </Dialog>
-  );
+  return content;
 }

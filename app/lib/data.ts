@@ -125,18 +125,47 @@ export const statuses: Record<Status, { label: string; color: string }> = {
   completed: { label: "Ferdigstilt", color: "#4f9279" },
 };
 export const statusOrder = Object.keys(statuses) as Status[];
-export const allPlaces = "Hele Norge";
+/** Preset views for drawing maps, suggested when entering a project's place. */
 export const cities: Record<string, { center: Point; zoom: number }> = {
   Oslo: { center: [59.912, 10.747], zoom: 13 },
   Bergen: { center: [60.391, 5.323], zoom: 13 },
   Trondheim: { center: [63.432, 10.401], zoom: 13 },
   Stavanger: { center: [58.969, 5.738], zoom: 13 },
-  [allPlaces]: { center: [63.1, 10.4], zoom: 5 },
 };
-/** Places with a preset map view, suggested when entering a project's place. */
-export const presetPlaces = Object.keys(cities).filter(
-  (place) => place !== allPlaces,
-);
+export const presetPlaces = Object.keys(cities);
+/** Mainland Norway, south-west and north-east corners. */
+export const norwayBounds: [Point, Point] = [
+  [57.9, 4.4],
+  [71.2, 31.2],
+];
+export type Bounds = {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+};
+export function pointsBounds(points: Point[]): Bounds {
+  const bounds = { south: 90, west: 180, north: -90, east: -180 };
+  for (const [lat, lng] of points) {
+    bounds.south = Math.min(bounds.south, lat);
+    bounds.north = Math.max(bounds.north, lat);
+    bounds.west = Math.min(bounds.west, lng);
+    bounds.east = Math.max(bounds.east, lng);
+  }
+  return bounds;
+}
+/** Whether any part of the project's extent lies inside `bounds`. */
+export function projectInBounds(project: Project, bounds: Bounds) {
+  const extent = pointsBounds(
+    project.geometry.length ? project.geometry : [project.center],
+  );
+  return (
+    extent.south <= bounds.north &&
+    extent.north >= bounds.south &&
+    extent.west <= bounds.east &&
+    extent.east >= bounds.west
+  );
+}
 const area = (lat: number, lng: number, scale = 1): Point[] => [
   [lat - 0.001 * scale, lng - 0.0017 * scale],
   [lat + 0.0007 * scale, lng - 0.0013 * scale],

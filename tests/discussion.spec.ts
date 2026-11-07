@@ -274,7 +274,7 @@ test("moderators edit the reference page and publish sourced updates without new
   await expect(bar).toContainText("Forkaste 1 endring?");
   await bar.getByRole("button", { name: "Forkast", exact: true }).click();
   await expect(bar).toHaveCount(0);
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.locator("[data-project-post]")).toBeVisible();
   await page.getByRole("button", { name: /^Oppdateringer/ }).click();
   await page
     .getByRole("button", { name: "Skriv en oppdatering", exact: true })
