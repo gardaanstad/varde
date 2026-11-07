@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { userAgent } from "next/server";
 import { getPageSession } from "../lib/auth";
 import { readCommunity } from "../lib/server/community";
+import { isModerator } from "../lib/server/http";
 import { CommunityProvider } from "../components/community-provider";
 import ExplorerShell from "../components/explorer-shell";
 
@@ -16,7 +17,10 @@ export default async function ExploreLayout({
   const { device } = userAgent({ headers: await headers() });
   return (
     <CommunityProvider
-      initialData={await readCommunity(session?.user.id)}
+      initialData={await readCommunity(
+        session?.user.id,
+        !!session && isModerator(session.user),
+      )}
       initialUserId={session?.user.id}
     >
       <ExplorerShell mobileHint={device.type === "mobile"} />

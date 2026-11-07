@@ -38,8 +38,9 @@ type HeaderProps = {
 };
 
 type ProjectActionsProps = {
-  /** Enters edit mode; moderators only. */
+  /** Enters edit mode; members suggest their changes. */
   onEdit?: () => void;
+  suggest?: boolean;
   copied: boolean;
   saved: boolean;
   onSave: () => void;
@@ -49,6 +50,7 @@ type ProjectActionsProps = {
 
 export function ProjectActions({
   onEdit,
+  suggest = false,
   copied,
   saved,
   onSave,
@@ -61,8 +63,8 @@ export function ProjectActions({
         <button
           type="button"
           className={headerIconButton}
-          aria-label="Rediger prosjekt"
-          data-tooltip="Rediger"
+          aria-label={suggest ? "Foreslå endring" : "Rediger prosjekt"}
+          data-tooltip={suggest ? "Foreslå endring" : "Rediger"}
           onClick={onEdit}
         >
           <Pencil size={18} />

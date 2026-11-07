@@ -1,5 +1,5 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { upload } from "../db/schema";
 import { HttpError } from "./http";
@@ -15,7 +15,8 @@ const signatures: Record<string, (bytes: Uint8Array) => boolean> = {
     String.fromCharCode(...b.slice(8, 12)) === "WEBP",
 };
 
-export async function saveUpload(file: File, userId: string) {
+/** `visible` is false for members' photos until a moderator approves them. */
+export async function saveUpload(file: File, userId: string, visible = true) {
   if (file.size > maxUploadBytes)
     throw new HttpError(413, "Bildet er for stort.");
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -31,6 +32,7 @@ export async function saveUpload(file: File, userId: string) {
       data: Buffer.from(bytes),
       userId,
       createdAt: new Date(),
+      public: visible,
     });
   return `/api/uploads/${id}`;
 }
@@ -38,8 +40,42 @@ export async function saveUpload(file: File, userId: string) {
 export async function readUpload(id: string) {
   if (!/^[a-f0-9]{32}$/.test(id)) return undefined;
   const [row] = await getDb()
-    .select({ type: upload.type, data: upload.data })
+    .select({
+      type: upload.type,
+      data: upload.data,
+      public: upload.public,
+      userId: upload.userId,
+    })
     .from(upload)
     .where(eq(upload.id, id));
   return row;
+}
+
+const uploadId = (src: string) => src.match(/^\/api\/uploads\/([a-f0-9]{32})$/)?.[1];
+
+/** Members may only reference their own or already public photos. */
+export async function requireOwnImages(srcs: string[], userId: string) {
+  const ids = srcs.map(uploadId).filter((id): id is string => !!id);
+  if (!ids.length) return;
+  const rows = await getDb()
+    .select({ id: upload.id })
+    .from(upload)
+    .where(
+      and(
+        inArray(upload.id, ids),
+        or(eq(upload.public, true), eq(upload.userId, userId)),
+      ),
+    );
+  if (rows.length !== new Set(ids).size)
+    throw new HttpError(400, "Bildet finnes ikke.");
+}
+
+/** Approved suggestions make their photos visible to everyone. */
+export async function publishUploads(srcs: string[]) {
+  const ids = srcs.map(uploadId).filter((id): id is string => !!id);
+  if (ids.length)
+    await getDb()
+      .update(upload)
+      .set({ public: true })
+      .where(inArray(upload.id, ids));
 }

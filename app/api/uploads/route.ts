@@ -9,17 +9,24 @@ import {
 } from "@/app/lib/server/http";
 import { maxUploadBytes, saveUpload } from "@/app/lib/server/uploads";
 
+/** Moderators publish directly; members' photos wait for their suggestion's approval. */
 export function POST(request: Request) {
   return api(async () => {
     requireOrigin(request);
     const member = await requireUser(request);
-    if (!isModerator(member))
-      throw new HttpError(403, "Bare moderatorer kan laste opp bilder.");
+    const moderator = isModerator(member);
     if (Number(request.headers.get("content-length")) > maxUploadBytes + 10_000)
       throw new HttpError(413, "Bildet er for stort.");
     await throttle(member.id);
+    if (!moderator)
+      await throttle(member.id, {
+        key: `upload:${member.id}`,
+        limit: 30,
+        window: 3_600_000,
+        message: "Du har lastet opp mange bilder. Prøv igjen om en time.",
+      });
     const file = (await request.formData().catch(() => null))?.get("file");
     if (!(file instanceof File)) throw new HttpError(400, "Velg et bilde.");
-    return json({ src: await saveUpload(file, member.id) }, 201);
+    return json({ src: await saveUpload(file, member.id, moderator) }, 201);
   });
 }

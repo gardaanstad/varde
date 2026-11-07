@@ -287,12 +287,15 @@ export function EditBar({
   onStage,
   onConfirm,
   onDiscard,
+  suggestion,
 }: {
   stage: EditStage;
   saving: boolean;
   onStage: (stage: EditStage) => void;
   onConfirm: () => void;
   onDiscard: () => void;
+  /** Members send their changes as a suggestion, with an optional note. */
+  suggestion?: { note: string; onNote: (note: string) => void };
 }) {
   const edit = useProjectEdit();
   if (!edit) return null;
@@ -310,7 +313,9 @@ export function EditBar({
     >
       {reviewing ? (
         <>
-          <h2 className="text-body font-semibold">Lagre {count}?</h2>
+          <h2 className="text-body font-semibold">
+            {suggestion ? "Foreslå" : "Lagre"} {count}?
+          </h2>
           <ul
             className="mt-2 mb-3 max-h-[min(40dvh,280px)] overflow-y-auto border-t border-border"
             aria-label="Endringer"
@@ -337,6 +342,20 @@ export function EditBar({
               </li>
             ))}
           </ul>
+          {suggestion && (
+            <textarea
+              className={cn(
+                fieldControl,
+                "mb-3 block min-h-16 resize-y rounded-lg px-2.5 py-2 text-ui max-sm:text-base",
+              )}
+              aria-label="Merknad"
+              placeholder="Merknad (valgfritt)"
+              maxLength={500}
+              rows={2}
+              value={suggestion.note}
+              onChange={(event) => suggestion.onNote(event.target.value)}
+            />
+          )}
           <div className={barRow}>
             <button
               type="button"
@@ -351,7 +370,13 @@ export function EditBar({
               disabled={saving}
               onClick={onConfirm}
             >
-              {saving ? "Lagrer …" : "Bekreft og lagre"}
+              {suggestion
+                ? saving
+                  ? "Sender …"
+                  : "Send forslag"
+                : saving
+                  ? "Lagrer …"
+                  : "Bekreft og lagre"}
             </button>
           </div>
         </>
@@ -395,7 +420,7 @@ export function EditBar({
             disabled={!changed.length || invalid.length > 0}
             onClick={() => onStage("review")}
           >
-            Lagre
+            {suggestion ? "Send" : "Lagre"}
           </button>
         </div>
       )}

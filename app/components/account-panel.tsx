@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Bookmark,
   ChevronRight,
+  Inbox,
   LoaderCircle,
   LogOut,
   Settings,
@@ -36,12 +37,15 @@ export default function AccountPanel({
   onBack,
   onSaved,
   savedCount = 0,
+  suggestionCount = 0,
   next = "/",
 }: {
   onBack?: () => void;
   /** Opens the saved projects list, where the app has no other entry to it. */
   onSaved?: () => void;
   savedCount?: number;
+  /** Pending suggestions: one's own, or the whole queue for moderators. */
+  suggestionCount?: number;
   next?: string;
 }) {
   const { user, pending } = useAuth();
@@ -235,25 +239,37 @@ export default function AccountPanel({
                 </button>
               }
               links={
-                onSaved && (
-                  <button
-                    type="button"
-                    className={cn(
-                      accountAction,
-                      "mt-4 min-h-12 rounded-lg border-border",
-                    )}
-                    onClick={onSaved}
+                <div className="mt-4">
+                  {onSaved && (
+                    <button
+                      type="button"
+                      className={cn(accountAction, "min-h-12 rounded-lg")}
+                      onClick={onSaved}
+                    >
+                      <Bookmark size={18} aria-hidden="true" />
+                      <span className="flex-1 text-sm">Lagrede prosjekter</span>
+                      {savedCount > 0 && (
+                        <span className="text-xs tabular-nums text-muted">
+                          {savedCount}
+                        </span>
+                      )}
+                      <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                  )}
+                  <Link
+                    href="/forslag"
+                    className={cn(accountAction, "min-h-12 rounded-lg")}
                   >
-                    <Bookmark size={18} aria-hidden="true" />
-                    <span className="flex-1 text-sm">Lagrede prosjekter</span>
-                    {savedCount > 0 && (
+                    <Inbox size={18} aria-hidden="true" />
+                    <span className="flex-1 text-sm">Forslag</span>
+                    {suggestionCount > 0 && (
                       <span className="text-xs tabular-nums text-muted">
-                        {savedCount}
+                        {suggestionCount}
                       </span>
                     )}
                     <ChevronRight size={16} aria-hidden="true" />
-                  </button>
-                )
+                  </Link>
+                </div>
               }
             />
           </div>

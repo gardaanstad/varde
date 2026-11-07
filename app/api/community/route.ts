@@ -19,7 +19,12 @@ import {
 export function GET(request: Request) {
   return api(async () => {
     const session = await readSession(request.headers);
-    return json(await readCommunity(session?.user.id));
+    return json(
+      await readCommunity(
+        session?.user.id,
+        !!session && isModerator(session.user),
+      ),
+    );
   });
 }
 export function POST(request: Request) {
@@ -43,6 +48,6 @@ export function POST(request: Request) {
         await addComment(member.id, body);
         break;
     }
-    return json(await readCommunity(member.id));
+    return json(await readCommunity(member.id, isModerator(member)));
   });
 }

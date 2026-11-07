@@ -17,6 +17,7 @@ import {
   ArrowLeft,
   Bookmark,
   ChevronDown,
+  Inbox,
   RotateCcw,
   List,
   Map as MapIcon,
@@ -111,6 +112,8 @@ const filterRow = cn(
   "[&>svg]:shrink-0 [&>svg]:text-muted aria-pressed:[&>svg]:text-accent aria-pressed:[&>span:last-child]:text-accent-strong",
 );
 const filterCount = "text-xs tabular-nums text-muted";
+const countBadge =
+  "inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums";
 const navRow = cn(
   "flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-ui font-medium text-ink/80",
   "transition-colors duration-150 hover:bg-ink/[0.045] hover:text-ink motion-reduce:transition-none",
@@ -239,7 +242,8 @@ export default function Explorer({
   const drawerHandleRef = useRef<HTMLButtonElement>(null);
   const projectTriggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const { user, pending: authPending, canModerate, requireAccount } = useAuth();
-  const { projects, saved, comments, mutate } = useCommunity();
+  const { projects, saved, comments, mutate, suggest, suggestions } =
+    useCommunity();
   const pendingBookmarks = useRef(new Set<string>());
   const [query, setQuery] = useState("");
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -955,6 +959,7 @@ export default function Explorer({
         onBack={isMobile ? backToExplorer : undefined}
         onSaved={isMobile ? openSavedFromProfile : undefined}
         savedCount={saved.length}
+        suggestionCount={suggestions}
         next={postId ? projectHref(postId) : "/"}
       />
     </div>
@@ -1153,6 +1158,10 @@ export default function Explorer({
     </div>
   );
 
+  /** Members suggest projects; moderators add them directly. */
+  function openEditor() {
+    if (canModerate || requireAccount()) setEditorOpen(true);
+  }
   function openProfile() {
     setModal("profile");
     setSnapPoint(1);
@@ -1210,11 +1219,24 @@ export default function Explorer({
           <div className="flex h-11 items-center justify-between">
             {brand}
             <div className="flex items-center gap-0.5">
+              {canModerate && (
+                <Link
+                  href="/forslag"
+                  className={cn(compactIconAction, "relative text-muted")}
+                  aria-label={`Forslag${suggestions ? ` (${suggestions})` : ""}`}
+                >
+                  <Inbox size={20} />
+                  {suggestions > 0 && (
+                    <span className={cn(countBadge, "absolute top-1 right-0.5")}>
+                      {suggestions}
+                    </span>
+                  )}
+                </Link>
+              )}
               <button
                 className={cn(compactIconAction, "text-muted")}
-                aria-label="Nytt prosjekt"
-                hidden={!canModerate}
-                onClick={() => setEditorOpen(true)}
+                aria-label={canModerate ? "Nytt prosjekt" : "Foreslå prosjekt"}
+                onClick={openEditor}
               >
                 <Plus size={21} />
               </button>
@@ -1324,7 +1346,7 @@ export default function Explorer({
           <div className="shrink-0 px-1">{navigation}</div>
           {view !== "saved" ? sidebarFilters : <div className="flex-1" />}
           <nav
-            className="shrink-0 border-t border-border px-1 pt-2 [&>button+button]:mt-0.5"
+            className="shrink-0 border-t border-border px-1 pt-2 [&>*+*]:mt-0.5"
             aria-label="Konto"
           >
             <button
@@ -1344,14 +1366,19 @@ export default function Explorer({
                 <span className={filterCount}>{saved.length}</span>
               )}
             </button>
-            <button
-              className={navRow}
-              hidden={!canModerate}
-              onClick={() => setEditorOpen(true)}
-            >
+            <button className={navRow} onClick={openEditor}>
               <Plus size={16} />
-              Legg til prosjekt
+              {canModerate ? "Legg til prosjekt" : "Foreslå prosjekt"}
             </button>
+            {canModerate && (
+              <Link href="/forslag" className={navRow}>
+                <Inbox size={16} />
+                <span className="flex-1">Forslag</span>
+                {suggestions > 0 && (
+                  <span className={countBadge}>{suggestions}</span>
+                )}
+              </Link>
+            )}
             <button
               className={navRow}
               onClick={openProfile}
@@ -1618,6 +1645,17 @@ export default function Explorer({
         <Dialog title="Prosjektet finnes ikke" onClose={() => closePost()}>
           {missingProject}
         </Dialog>
+      )}
+      {editorOpen && user && !canModerate && (
+        <ProjectEditor
+          suggest
+          onClose={() => setEditorOpen(false)}
+          onSave={async (project) => {
+            await suggest({ kind: "project", project });
+            setEditorOpen(false);
+            notify("Forslaget er sendt");
+          }}
+        />
       )}
       {editorOpen && canModerate && (
         <ProjectEditor

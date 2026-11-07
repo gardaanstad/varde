@@ -146,4 +146,39 @@ export const upload = sqliteTable("upload", {
   data: blob("data", { mode: "buffer" }).notNull(),
   userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  // Members' photos stay private until a moderator approves their suggestion.
+  public: integer("public", { mode: "boolean" }).notNull().default(true),
 });
+/** Members' suggested projects, corrections and tips, awaiting moderation. */
+export const suggestion = sqliteTable(
+  "suggestion",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind", { enum: ["project", "correction", "update"] }).notNull(),
+    // Null for a new project until it is approved.
+    projectId: text("project_id").references(() => project.id, {
+      onDelete: "cascade",
+    }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    data: text("data", { mode: "json" })
+      .$type<import("../suggestions").SuggestionData>()
+      .notNull(),
+    note: text("note").notNull().default(""),
+    status: text("status", { enum: ["pending", "approved", "rejected"] })
+      .notNull()
+      .default("pending"),
+    reason: text("reason").notNull().default(""),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
+    reviewerId: text("reviewer_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (t) => [
+    index("suggestion_status_idx").on(t.status, t.createdAt),
+    index("suggestion_user_idx").on(t.userId, t.createdAt),
+    index("suggestion_project_idx").on(t.projectId),
+  ],
+);

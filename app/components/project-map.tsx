@@ -147,6 +147,8 @@ type Props = {
   draw?: boolean;
   /** Small inline drawing map: no hint bar or layer menu. */
   compact?: boolean;
+  /** A preview framed on its projects; the explorer's view is left alone. */
+  frame?: boolean;
   points?: Point[];
   geometryType?: "area" | "line";
   /** Every drawing edit: added, moved, inserted or removed points. */
@@ -160,6 +162,7 @@ export default function ProjectMap({
   onSelect = noSelect,
   draw = false,
   compact = false,
+  frame = false,
   points = noPoints,
   geometryType = "area",
   onPointsChange,
@@ -306,6 +309,10 @@ export default function ProjectMap({
     if (!ready || !map) return;
     const place = city === allPlaces ? undefined : cities[city];
     const shown = projectsRef.current.flatMap((project) => project.geometry);
+    if (frame && shown.length) {
+      map.fitBounds(L.latLngBounds(shown), { padding: [32, 32], maxZoom: 15 });
+      return;
+    }
     if (!draw && explorerView?.city === city)
       map.setView(explorerView.center, explorerView.zoom, { animate: false });
     else if (draw && initialPoints.current.length)
@@ -329,7 +336,7 @@ export default function ProjectMap({
     return () => {
       map.off("moveend", remember);
     };
-  }, [city, ready, draw]);
+  }, [city, ready, draw, frame]);
   useEffect(() => {
     selectedRef.current = selectedId;
     const map = mapRef.current;
