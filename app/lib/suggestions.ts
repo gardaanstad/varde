@@ -24,10 +24,20 @@ export type CorrectionKey = (typeof correctionKeys)[number];
 /** An empty website means the link is removed. */
 export type CorrectionChanges = Partial<Pick<Project, CorrectionKey>>;
 
-export type SuggestionData =
-  | { project: Project }
-  | { changes: CorrectionChanges; base: CorrectionChanges }
-  | { text: string; sourceUrl: string; image?: string };
+type CorrectionData = {
+  changes: CorrectionChanges;
+  base: CorrectionChanges;
+  /** The fields a moderator applied. */
+  applied?: CorrectionKey[];
+};
+type TipData = {
+  text: string;
+  sourceUrl: string;
+  image?: string;
+  /** The update an approved tip became; credits it. */
+  updateId?: string;
+};
+export type SuggestionData = { project: Project } | CorrectionData | TipData;
 
 type SuggestionBase = {
   id: string;
@@ -40,20 +50,19 @@ type SuggestionBase = {
   /** The existing project, or the published one once a new project is approved. */
   projectId?: string;
   title: string;
+  /** Reviewed since the member last opened their suggestions. */
+  fresh?: boolean;
 };
 export type Suggestion = SuggestionBase &
   (
     | { kind: "project"; data: { project: Project } }
     | {
         kind: "correction";
-        data: { changes: CorrectionChanges; base: CorrectionChanges };
+        data: CorrectionData;
         /** The project as it is now. */
         project?: Project;
       }
-    | {
-        kind: "update";
-        data: { text: string; sourceUrl: string; image?: string };
-      }
+    | { kind: "update"; data: TipData }
   );
 export type SuggestionLists = {
   mine: Suggestion[];

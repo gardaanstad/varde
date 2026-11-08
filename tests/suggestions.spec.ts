@@ -2,7 +2,9 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { seedProjects, type Project } from "../app/lib/data";
 import type { SuggestionLists } from "../app/lib/suggestions";
-import { cookieHeaders, member, mutation, origin, png, signIn } from "./support";
+import { eq } from "drizzle-orm";
+import { project as projectTable } from "../app/lib/db/schema";
+import { cookieHeaders, db, member, mutation, origin, png, signIn } from "./support";
 
 const name = () => `test_${randomUUID().slice(0, 8)}`;
 type Account = Awaited<ReturnType<typeof member>>;
@@ -166,6 +168,25 @@ test("suggestions are authorized, validated and applied on the server", async ({
     images: [{ src: image, credit: `@${person.username}` }],
   });
   expect((await request.get(image)).status()).toBe(200);
+  expect(current.updates[0].via).toBe(person.username);
+  expect(current.contributors).toEqual([person.username]);
+  // A moderator saving the project as read doesn't store the credits.
+  expect(
+    (
+      await mutation(
+        request,
+        "/api/community",
+        { action: "project", project: current, create: false },
+        moderator,
+      )
+    ).ok(),
+  ).toBe(true);
+  const [stored] = await db
+    .select({ data: projectTable.data })
+    .from(projectTable)
+    .where(eq(projectTable.id, project.id));
+  expect(stored.data.contributors).toBeUndefined();
+  expect(stored.data.updates[0].via).toBeUndefined();
 
   // Rejections keep their reason for the member.
   await submit({ ...correction, changes: { developer: "Nye Veier" } }, person);
@@ -220,7 +241,7 @@ test("members are limited to ten suggestions an hour", async ({ request }) => {
   ).toBe(429);
 });
 
-test("members suggest corrections and tips; moderators review a diff and approve", async ({
+test("members suggest corrections and tips; moderators review a diff, approve, and credit them", async ({
   browser,
   request,
 }) => {
@@ -247,10 +268,13 @@ test("members suggest corrections and tips; moderators review a diff and approve
   await page
     .getByRole("textbox", { name: "Byggherre", exact: true })
     .fill("Nye Veier");
+  await page
+    .getByRole("textbox", { name: "Beskrivelse", exact: true })
+    .fill(`${project.description}\n\nByggestart er satt til mars.`);
   const bar = page.getByRole("region", { name: "Redigering", exact: true });
-  await expect(bar).toContainText("2 endringer");
+  await expect(bar).toContainText("3 endringer");
   await bar.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(bar).toContainText("Foreslå 2 endringer?");
+  await expect(bar).toContainText("Foreslå 3 endringer?");
   await bar.getByRole("textbox", { name: "Merknad" }).fill("Se kunngjøringen.");
   await bar.getByRole("button", { name: "Send forslag", exact: true }).click();
   await expect(page.getByText("Forslaget er sendt")).toBeVisible();
@@ -278,7 +302,6 @@ test("members suggest corrections and tips; moderators review a diff and approve
   const own = page.locator("article").filter({ hasText: project.title });
   await expect(own).toHaveCount(2);
   await expect(own.first()).toContainText("Venter");
-  await memberContext.close();
 
   const moderatorContext = await browser.newContext({ baseURL: origin });
   await signIn(moderatorContext, moderator);
@@ -295,8 +318,23 @@ test("members suggest corrections and tips; moderators review a diff and approve
   const correction = review
     .locator('article[data-suggestion="correction"]')
     .filter({ hasText: project.title });
+  // Rows start collapsed: one line, then a summary.
   await expect(correction).toContainText(`@${person.username}`);
+  await expect(correction.locator("[data-summary]")).toHaveText(
+    "3 felt endret · Beskrivelse, Status, Byggherre",
+  );
+  await expect(correction.locator('[data-field="developer"]')).toBeHidden();
+  await correction.locator("[data-row-toggle]").click();
   await expect(correction).toContainText("Se kunngjøringen.");
+  // Only the added sentence is marked; the two unchanged paragraphs fold.
+  const description = correction.locator("[data-text-diff]");
+  await expect(description.locator("ins")).toHaveText(
+    "Byggestart er satt til mars.",
+  );
+  await expect(description.locator("del")).toHaveCount(0);
+  await expect(
+    description.getByRole("button", { name: "… 2 uendrede avsnitt" }),
+  ).toBeVisible();
   const developer = correction.locator('[data-field="developer"]');
   await expect(developer.locator("del")).toHaveText("Statens vegvesen");
   await expect(developer.locator("ins")).toHaveText("Nye Veier");
@@ -307,10 +345,15 @@ test("members suggest corrections and tips; moderators review a diff and approve
   let current = await readProject(request, project.id);
   expect(current.status).toBe("construction");
   expect(current.developer).toBe("Statens vegvesen");
+  expect(current.description).toContain("Byggestart er satt til mars.");
 
   const tip = review
     .locator('article[data-suggestion="update"]')
     .filter({ hasText: project.title });
+  await expect(tip.locator("[data-summary]")).toHaveText(
+    "Reguleringsplanen er vedtatt.",
+  );
+  await tip.locator("[data-row-toggle]").click();
   await expect(
     tip.getByRole("textbox", { name: "Overskrift", exact: true }),
   ).toHaveValue("Reguleringsplanen er vedtatt.");
@@ -331,6 +374,42 @@ test("members suggest corrections and tips; moderators review a diff and approve
     review.locator("article").filter({ hasText: project.title }).first(),
   ).toContainText("Godkjent");
   await moderatorContext.close();
+
+  // Credits are read from approved suggestions, never stored on the project.
+  expect(current.contributors).toEqual([person.username]);
+  expect(current.updates[0].via).toBe(person.username);
+  const visitor = await browser.newPage();
+  await visitor.setViewportSize({ width: 1280, height: 900 });
+  await visitor.goto(`/prosjekt/${project.id}`);
+  const facts = visitor.getByRole("complementary", { name: "Prosjektfakta" });
+  await expect(facts).toContainText(`via @${person.username}`);
+  await expect(visitor.locator("header").first()).not.toContainText(
+    `@${person.username}`,
+  );
+  await visitor.getByRole("button", { name: /^Oppdateringer/ }).click();
+  const update = visitor.locator(`#update-${current.updates[0].id}`);
+  await expect(update).toContainText(`via @${person.username}`);
+  await update.getByRole("link", { name: `@${person.username}` }).click();
+  await expect(visitor).toHaveURL(new RegExp(`/profil/${person.username}$`));
+  await visitor.close();
+
+  // The member sees that their suggestions were reviewed, once.
+  const unseen = await (
+    await request.get("/api/community", { headers: cookieHeaders(person) })
+  ).json();
+  expect(unseen.reviewed).toBe(2);
+  await page.goto("/");
+  await expect(
+    page.getByRole("button", { name: `@${person.username} 2 behandlet` }),
+  ).toBeVisible();
+  await page.goto("/forslag");
+  await expect(own.first()).toContainText("Ny");
+  await expect(own.first()).toContainText("Godkjent");
+  const seen = await (
+    await request.get("/api/community", { headers: cookieHeaders(person) })
+  ).json();
+  expect(seen.reviewed).toBe(0);
+  await memberContext.close();
 });
 
 test("members suggest new projects; moderators edit and publish them", async ({
@@ -387,6 +466,10 @@ test("members suggest new projects; moderators edit and publish them", async ({
   const card = review
     .locator('article[data-suggestion="project"]')
     .filter({ hasText: title });
+  // Collapsed: category, place and status only; details behind the toggle.
+  await expect(card.locator("[data-summary]")).toContainText("Oslo");
+  await expect(card).not.toContainText("En ny bru over fjorden.");
+  await card.locator("[data-row-toggle]").click();
   await expect(card).toContainText("En ny bru over fjorden.");
   await expect(
     card.getByRole("img", { name: "Bilde 1" }),
@@ -408,6 +491,7 @@ test("members suggest new projects; moderators edit and publish them", async ({
     updates: [],
   });
   expect(published.created).toBeTruthy();
+  expect(published.contributors).toEqual([person.username]);
   expect((await request.get(published.image)).status()).toBe(200);
   await moderatorContext.close();
 });

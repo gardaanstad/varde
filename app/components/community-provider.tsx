@@ -20,6 +20,8 @@ type CommunityData = {
   votes: Record<string, number>;
   /** Pending suggestions: the queue for moderators, one's own otherwise. */
   suggestions: number;
+  /** A member's suggestions reviewed since they last looked. */
+  reviewed: number;
 };
 type CommunityContext = CommunityData & {
   mutate: (mutation: CommunityMutation) => Promise<void>;
@@ -40,6 +42,7 @@ function merge(current: CommunityData, next: CommunityData): CommunityData {
     saved: reuse(current.saved, next.saved),
     votes: reuse(current.votes, next.votes),
     suggestions: next.suggestions,
+    reviewed: next.reviewed,
   };
 }
 export function CommunityProvider({
@@ -123,6 +126,7 @@ export function CommunityProvider({
         saved: personal ? state.data.saved : [],
         votes: personal ? state.data.votes : {},
         suggestions: personal ? state.data.suggestions : 0,
+        reviewed: personal ? state.data.reviewed : 0,
         mutate,
         refresh,
         suggest,

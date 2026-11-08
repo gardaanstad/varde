@@ -1,5 +1,15 @@
 import "server-only";
-import { aliasedTable, and, asc, desc, eq, ne, sql } from "drizzle-orm";
+import {
+  aliasedTable,
+  and,
+  asc,
+  desc,
+  eq,
+  isNotNull,
+  isNull,
+  ne,
+  sql,
+} from "drizzle-orm";
 import type { z } from "zod";
 import { getDb } from "../db/client";
 import { project, suggestion, user } from "../db/schema";
@@ -215,17 +225,19 @@ async function apply(
       projectSchema.parse(applyChanges(current, changes)) as Project,
       false,
     );
+    await record(row, { ...data, applied: Object.keys(changes) as CorrectionKey[] });
     return;
   }
   if (row.kind === "update" && "text" in data) {
     const date = new Date().toISOString();
     const text = input.text ?? data.text;
+    const updateId = crypto.randomUUID();
     await saveProject(
       projectSchema.parse({
         ...current,
         updates: [
           {
-            id: crypto.randomUUID(),
+            id: updateId,
             title: input.title ?? tipTitle(text),
             body: text,
             date,
@@ -238,9 +250,34 @@ async function apply(
       false,
     );
     if (data.image) await publishUploads([data.image]);
+    await record(row, { ...data, updateId });
     return;
   }
   throw new HttpError(400, "Ugyldig forslag.");
+}
+
+/** Keeps what an approval produced, which credits the member. */
+async function record(row: Row, data: Row["data"]) {
+  await getDb()
+    .update(suggestion)
+    .set({ data })
+    .where(eq(suggestion.id, row.id));
+}
+
+/** The member's reviews they haven't seen; returns their ids. */
+export async function markSeen(userId: string) {
+  const rows = await getDb()
+    .update(suggestion)
+    .set({ seenAt: new Date() })
+    .where(
+      and(
+        eq(suggestion.userId, userId),
+        isNotNull(suggestion.reviewedAt),
+        isNull(suggestion.seenAt),
+      ),
+    )
+    .returning({ id: suggestion.id });
+  return new Set(rows.map((row) => row.id));
 }
 
 const author = aliasedTable(user, "author");
@@ -268,6 +305,7 @@ function toView({
     reason: row.reason,
     createdAt: row.createdAt.toISOString(),
     reviewedAt: row.reviewedAt?.toISOString(),
+    fresh: !!row.reviewedAt && !row.seenAt,
     author,
     projectId: row.projectId ?? undefined,
   };

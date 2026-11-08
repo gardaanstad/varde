@@ -53,6 +53,9 @@ import ProjectPostHeader, {
 import ProjectDiscussion from "./project-discussion";
 import CategoryIcon from "./category-icon";
 import RelativeTime from "./relative-time";
+import Link from "next/link";
+import { profileHref } from "../lib/profiles";
+import { openProfile } from "../lib/profile-overlay";
 import {
   changedFields,
   changesToSave,
@@ -174,7 +177,40 @@ function ProjectFacts({
           </dd>
         </div>
       )}
+      {!!project.contributors?.length && (
+        <div className="pt-2.5 text-right text-xs leading-normal text-muted">
+          <dt className="sr-only">Forslag fra</dt>
+          <dd>
+            via{" "}
+            {project.contributors.map((username, index) => (
+              <span key={username}>
+                {index > 0 && ", "}
+                <Credit username={username} />
+              </span>
+            ))}
+          </dd>
+        </div>
+      )}
     </dl>
+  );
+}
+
+/** A suggester's username, quietly linked to their profile. */
+function Credit({ username }: { username: string }) {
+  return (
+    <Link
+      href={profileHref(username)}
+      className="text-muted underline-offset-3 hover:text-ink hover:underline"
+      onClick={(event) => {
+        // Plain clicks open the profile over the project, like comments do.
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button)
+          return;
+        event.preventDefault();
+        openProfile(username);
+      }}
+    >
+      @{username}
+    </Link>
   );
 }
 
@@ -1206,12 +1242,19 @@ export default function ProjectPost({
                           className={styles.entry}
                           data-highlighted={highlightId === update.id}
                         >
-                          <RelativeTime
-                            date={update.date}
-                            mode="suffix"
-                            withYear
-                            className="text-xs leading-normal font-medium text-muted"
-                          />
+                          <p className="text-xs leading-normal font-medium text-muted">
+                            <RelativeTime
+                              date={update.date}
+                              mode="suffix"
+                              withYear
+                            />
+                            {update.via && (
+                              <>
+                                {" · via "}
+                                <Credit username={update.via} />
+                              </>
+                            )}
+                          </p>
                           <h3 className="mt-1 mb-2.5 text-lg leading-normal font-[620] tracking-[-0.3px] max-sm:mt-0.5 max-sm:mb-2 max-sm:text-[17px]">
                             {update.title}
                           </h3>

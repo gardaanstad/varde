@@ -24,6 +24,8 @@ export type ProjectUpdate = {
   images?: ProjectImage[];
   origin?: boolean;
   sourceUrl?: string;
+  /** Username of the member whose tip this was. Added on read, never stored. */
+  via?: string;
 };
 export type Project = {
   id: string;
@@ -51,6 +53,11 @@ export type Project = {
   comments: number;
   developer: string;
   updates: ProjectUpdate[];
+  /**
+   * Usernames of members whose approved suggestions created or corrected
+   * the project. Added on read from approved suggestions, never stored.
+   */
+  contributors?: string[];
 };
 export type Comment = {
   id: string;

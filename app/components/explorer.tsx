@@ -112,6 +112,9 @@ const filterRow = cn(
   "[&>svg]:shrink-0 [&>svg]:text-muted aria-pressed:[&>svg]:text-accent aria-pressed:[&>span:last-child]:text-accent-strong",
 );
 const filterCount = "text-xs tabular-nums text-muted";
+/** Marks the avatar when a member's suggestions have been reviewed. */
+const reviewedDot =
+  "absolute -top-0.5 -right-0.5 size-2.75 rounded-full border-2 border-surface bg-accent";
 const countBadge =
   "inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums";
 const navRow = cn(
@@ -242,7 +245,7 @@ export default function Explorer({
   const drawerHandleRef = useRef<HTMLButtonElement>(null);
   const projectTriggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const { user, pending: authPending, canModerate, requireAccount } = useAuth();
-  const { projects, saved, comments, mutate, suggest, suggestions } =
+  const { projects, saved, comments, mutate, suggest, suggestions, reviewed } =
     useCommunity();
   const pendingBookmarks = useRef(new Set<string>());
   const [query, setQuery] = useState("");
@@ -960,6 +963,7 @@ export default function Explorer({
         onSaved={isMobile ? openSavedFromProfile : undefined}
         savedCount={saved.length}
         suggestionCount={suggestions}
+        reviewedCount={reviewed}
         next={postId ? projectHref(postId) : "/"}
       />
     </div>
@@ -1222,6 +1226,7 @@ export default function Explorer({
               {canModerate && (
                 <Link
                   href="/forslag"
+                  prefetch={false}
                   className={cn(compactIconAction, "relative text-muted")}
                   aria-label={`Forslag${suggestions ? ` (${suggestions})` : ""}`}
                 >
@@ -1245,14 +1250,21 @@ export default function Explorer({
                   "inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-transparent text-xs font-semibold text-muted",
                   "hover:bg-ink/[0.06] hover:text-ink active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100",
                 )}
-                aria-label={user ? "Din profil" : "Logg inn"}
+                aria-label={
+                  user
+                    ? `Din profil${reviewed ? ` (${reviewed} behandlet)` : ""}`
+                    : "Logg inn"
+                }
                 onClick={openProfile}
               >
                 {user?.username ? (
-                  <ProfileAvatar
-                    name={user.username}
-                    className="size-9 text-sm"
-                  />
+                  <span className="relative">
+                    <ProfileAvatar
+                      name={user.username}
+                      className="size-9 text-sm"
+                    />
+                    {reviewed > 0 && <span className={reviewedDot} />}
+                  </span>
                 ) : (
                   <User size={18} />
                 )}
@@ -1371,7 +1383,7 @@ export default function Explorer({
               {canModerate ? "Legg til prosjekt" : "Foreslå prosjekt"}
             </button>
             {canModerate && (
-              <Link href="/forslag" className={navRow}>
+              <Link href="/forslag" prefetch={false} className={navRow}>
                 <Inbox size={16} />
                 <span className="flex-1">Forslag</span>
                 {suggestions > 0 && (
@@ -1393,7 +1405,7 @@ export default function Explorer({
               ) : (
                 <User size={16} />
               )}
-              <span className="min-w-0 truncate">
+              <span className="min-w-0 flex-1 truncate">
                 {authPending
                   ? "Henter konto …"
                   : user?.username
@@ -1402,6 +1414,12 @@ export default function Explorer({
                       ? "Velg brukernavn"
                       : "Logg inn"}
               </span>
+              {reviewed > 0 && (
+                <span className={countBadge}>
+                  {reviewed}
+                  <span className="sr-only"> behandlet</span>
+                </span>
+              )}
             </button>
           </nav>
         </aside>

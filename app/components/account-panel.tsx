@@ -38,6 +38,7 @@ export default function AccountPanel({
   onSaved,
   savedCount = 0,
   suggestionCount = 0,
+  reviewedCount = 0,
   next = "/",
 }: {
   onBack?: () => void;
@@ -46,6 +47,8 @@ export default function AccountPanel({
   savedCount?: number;
   /** Pending suggestions: one's own, or the whole queue for moderators. */
   suggestionCount?: number;
+  /** One's own suggestions reviewed since last looked; shown as a badge. */
+  reviewedCount?: number;
   next?: string;
 }) {
   const { user, pending } = useAuth();
@@ -258,14 +261,26 @@ export default function AccountPanel({
                   )}
                   <Link
                     href="/forslag"
+                    // Opening the page marks reviews as seen; never prefetch it.
+                    prefetch={false}
                     className={cn(accountAction, "min-h-12 rounded-lg")}
                   >
                     <Inbox size={18} aria-hidden="true" />
                     <span className="flex-1 text-sm">Forslag</span>
-                    {suggestionCount > 0 && (
-                      <span className="text-xs tabular-nums text-muted">
-                        {suggestionCount}
+                    {reviewedCount > 0 ? (
+                      <span
+                        className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums"
+                        data-reviewed
+                      >
+                        {reviewedCount}
+                        <span className="sr-only"> behandlet</span>
                       </span>
+                    ) : (
+                      suggestionCount > 0 && (
+                        <span className="text-xs tabular-nums text-muted">
+                          {suggestionCount}
+                        </span>
+                      )
                     )}
                     <ChevronRight size={16} aria-hidden="true" />
                   </Link>

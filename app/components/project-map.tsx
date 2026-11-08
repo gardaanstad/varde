@@ -249,9 +249,11 @@ export default function ProjectMap({
     L.control
       .attribution({ position: "bottomright", prefix: false })
       .addTo(map);
-    L.control
-      .scale({ imperial: false, position: "bottomleft", maxWidth: 80 })
-      .addTo(map);
+    // Previews are too small for a scale bar; it would cover place labels.
+    if (!frame)
+      L.control
+        .scale({ imperial: false, position: "bottomleft", maxWidth: 80 })
+        .addTo(map);
     mapRef.current = map;
     map.on("click", () => {
       if (!handlers.current.draw) handlers.current.onSelect(null);
@@ -268,7 +270,7 @@ export default function ProjectMap({
       map.stop();
       map.remove();
     };
-  }, [draw]);
+  }, [draw, frame]);
   useEffect(() => {
     if (!ready || !mapRef.current) return;
     const canvas = layer !== "streets";

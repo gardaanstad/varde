@@ -175,6 +175,8 @@ export const suggestion = sqliteTable(
     reviewerId: text("reviewer_id").references(() => user.id, {
       onDelete: "set null",
     }),
+    // When the member saw the review; drives their "reviewed" badge.
+    seenAt: integer("seen_at", { mode: "timestamp_ms" }),
   },
   (t) => [
     index("suggestion_status_idx").on(t.status, t.createdAt),
