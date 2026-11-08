@@ -15,6 +15,7 @@ import {
   ImagePlus,
   Megaphone,
   ChevronDown,
+  MapPin,
   MessageCircle,
   MessagesSquare,
   Plus,
@@ -337,6 +338,37 @@ function slide(
   };
   if (from === to) finish();
   else element.addEventListener("transitionend", finish);
+}
+
+/** Category, place and status at a glance, under the title. */
+function ProjectMeta({ project }: { project: Project }) {
+  return (
+    <p
+      className="mb-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-ui leading-normal text-muted max-md:text-xs [&>span]:inline-flex [&>span]:items-center [&>span]:gap-1.5 [&_svg]:shrink-0"
+      data-project-meta=""
+    >
+      <span>
+        <CategoryIcon category={project.category} size={14} />
+        {project.category}
+      </span>
+      <span>
+        <MapPin size={14} aria-hidden="true" />
+        {projectPlace(project)}
+      </span>
+      <span className="font-medium text-ink">
+        <i
+          className={cn(
+            "size-2 rounded-full",
+            statusTone[project.status].dot,
+          )}
+        />
+        {statuses[project.status].label}
+        {project.year && (
+          <span className="font-normal text-muted">· {project.year}</span>
+        )}
+      </span>
+    </p>
+  );
 }
 
 /**
@@ -1010,7 +1042,10 @@ export default function ProjectPost({
                   <EditFacts />
                 </div>
               ) : (
-                <ProjectIntro project={project} />
+                <>
+                  <ProjectMeta project={project} />
+                  <ProjectIntro project={project} />
+                </>
               )}
             </section>
             <nav

@@ -143,6 +143,13 @@ export type MapApi = {
   fit: (points: Point[], options?: { bottom?: number; maxZoom?: number }) => void;
   show: (view: MapView) => void;
   showNorway: () => void;
+  /**
+   * While the container is being resized by hand: `syncSize` keeps the right
+   * edge's geography in place, and views are reported once it ends.
+   */
+  beginResize: () => void;
+  syncSize: () => void;
+  endResize: () => void;
 };
 export type MapViewChange = MapView & { bounds: Bounds };
 const reducedMotion = () =>
@@ -169,7 +176,6 @@ type Props = {
   /** Drawn like the selected project, e.g. while its list card is hovered. */
   highlightedId?: string | null;
   onSelect?: (id: string | null) => void;
-  onHover?: (id: string | null) => void;
   draw?: boolean;
   /** Small inline drawing map: no hint bar or layer menu. */
   compact?: boolean;
@@ -189,7 +195,6 @@ export default function ProjectMap({
   selectedId = null,
   highlightedId = null,
   onSelect = noSelect,
-  onHover,
   draw = false,
   compact = false,
   points = noPoints,
@@ -213,13 +218,13 @@ export default function ProjectMap({
   const highlightedRef = useRef(highlightedId);
   const handlers = useRef<{
     onSelect: (id: string | null) => void;
-    onHover?: (id: string | null) => void;
-    onViewChange?: (view: MapViewChange) => void;
+      onViewChange?: (view: MapViewChange) => void;
     onReady?: (api: MapApi) => void;
     bottomInset?: () => number;
     draw: boolean;
     commit: (next: Point[]) => void;
-  }>({ onSelect, onHover, onViewChange, onReady, draw, commit: () => {} });
+  }>({ onSelect, onViewChange, onReady, draw, commit: () => {} });
+  const resizing = useRef(false);
   // Drawing edits can be undone one by one, moves and removals included.
   const [history, setHistory] = useState<Point[][]>([]);
   const [ready, setReady] = useState(false);
@@ -258,7 +263,6 @@ export default function ProjectMap({
   useEffect(() => {
     handlers.current = {
       onSelect,
-      onHover,
       onViewChange,
       onReady,
       bottomInset,
@@ -270,7 +274,6 @@ export default function ProjectMap({
     };
   }, [
     onSelect,
-    onHover,
     onViewChange,
     onReady,
     bottomInset,
@@ -307,7 +310,11 @@ export default function ProjectMap({
       if (!handlers.current.draw) handlers.current.onSelect(null);
     });
     const resize = new ResizeObserver(() => {
-      if (container.current?.clientWidth && container.current.clientHeight)
+      if (
+        !resizing.current &&
+        container.current?.clientWidth &&
+        container.current.clientHeight
+      )
         map.invalidateSize();
     });
     resize.observe(container.current);
@@ -382,6 +389,7 @@ export default function ProjectMap({
     if (start) map.setView(start.center, start.zoom, { animate: false });
     else showNorway(false);
     const report = () => {
+      if (resizing.current) return;
       const center = map.getCenter();
       const size = map.getSize();
       const bounds = L.latLngBounds(
@@ -408,6 +416,12 @@ export default function ProjectMap({
     };
     report();
     map.on("moveend", report);
+    const syncSize = () => {
+      const before = map.getSize().x;
+      map.invalidateSize({ pan: false });
+      const change = map.getSize().x - before;
+      if (change) map.panBy([-change, 0], { animate: false });
+    };
     // Leaflet drops new views while a zoom animates, so they wait for its end.
     const settled = (move: () => void) => {
       map.off("zoomend", pending);
@@ -438,6 +452,15 @@ export default function ProjectMap({
         );
       },
       showNorway: () => settled(() => showNorway(!reducedMotion())),
+      beginResize() {
+        resizing.current = true;
+      },
+      syncSize,
+      endResize() {
+        syncSize();
+        resizing.current = false;
+        report();
+      },
     });
     return () => {
       map.off("moveend", report);
@@ -512,14 +535,8 @@ export default function ProjectMap({
             L.DomEvent.stopPropagation(event);
             select(project, shape);
           })
-          .on("mouseover", () => {
-            element.classList.add("is-hovered");
-            handlers.current.onHover?.(project.id);
-          })
-          .on("mouseout", () => {
-            element.classList.remove("is-hovered");
-            handlers.current.onHover?.(null);
-          })
+          .on("mouseover", () => element.classList.add("is-hovered"))
+          .on("mouseout", () => element.classList.remove("is-hovered"))
           .bindTooltip(projectTooltip(project), tooltipOptions);
         hitsRef.current.set(project.id, hit);
       }
@@ -540,11 +557,7 @@ export default function ProjectMap({
           }
         });
       }
-      if (!line)
-        shape
-          .bindTooltip(projectTooltip(project), tooltipOptions)
-          .on("mouseover", () => handlers.current.onHover?.(project.id))
-          .on("mouseout", () => handlers.current.onHover?.(null));
+      if (!line) shape.bindTooltip(projectTooltip(project), tooltipOptions);
       // Areas are only a few pixels wide at regional zoom; alignments stay visible.
       if (line) continue;
       const dot = L.circleMarker(project.center, {
@@ -559,8 +572,6 @@ export default function ProjectMap({
           L.DomEvent.stopPropagation(event);
           handlers.current.onSelect(project.id);
         })
-        .on("mouseover", () => handlers.current.onHover?.(project.id))
-        .on("mouseout", () => handlers.current.onHover?.(null))
         .bindTooltip(projectTooltip(project), tooltipOptions);
       dotsRef.current.set(project.id, dot);
     }
@@ -675,6 +686,15 @@ export default function ProjectMap({
       const selected =
         project.id === selectedId || project.id === highlightedId;
       const shape = shapesRef.current.get(project.id);
+      // The open project stays at full strength; the rest step back.
+      for (const layer of [
+        shape,
+        casingsRef.current.get(project.id),
+        dotsRef.current.get(project.id),
+      ])
+        layer
+          ?.getElement()
+          ?.classList.toggle("is-selected", project.id === selectedId);
       shape?.setStyle(shapeStyle(project.geometryType === "line", selected));
       casingsRef.current
         .get(project.id)
@@ -876,6 +896,7 @@ export default function ProjectMap({
       // Leaflet's pane z-indices stay inside, below the page's own layers.
       className="relative isolate h-full w-full overflow-hidden bg-surface-muted"
       data-project-map=""
+      data-selection={!draw && selectedId ? "" : undefined}
       data-drawing={draw ? "true" : undefined}
       data-map-style={layer}
       onKeyDown={(event) => {

@@ -52,7 +52,8 @@
   transition:
     stroke-width 160ms ease,
     fill-opacity 160ms ease,
-    stroke-opacity 160ms ease;
+    stroke-opacity 160ms ease,
+    opacity 200ms ease;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -61,6 +62,11 @@
     fill-opacity: 0.3;
     stroke-opacity: 1;
   }
+}
+
+/* With a project open, the others step back so it stands out. */
+[data-project-map][data-selection] .leaflet-overlay-pane path:not(.is-selected):not(.project-hit) {
+  opacity: 0.4;
 }
 
 /* Hit bands around lines stay invisible, even on hover. */

@@ -58,6 +58,7 @@ import ChoiceSelect from "./choice-select";
 import ProjectEditor from "./project-editor";
 import ProjectPost from "./project-post";
 import ProjectCard from "./project-card";
+import PanelResizer from "./panel-resizer";
 import EmptyState from "./empty-state";
 import Toast, { type ToastMessage } from "./toast";
 import {
@@ -305,6 +306,8 @@ export default function Explorer({
   const searchRef = useRef<HTMLInputElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
 
   // The map is the place filter: the list holds what its view covers.
   const mapApi = useRef<MapApi | null>(null);
@@ -324,11 +327,8 @@ export default function Explorer({
     steppingBack.current = true;
     window.history.back();
   }
-  // A hovered card lights up its shape; a hovered shape lights up its card.
-  const [hover, setHover] = useState<{
-    id: string;
-    from: "list" | "map";
-  } | null>(null);
+  // A hovered card lights up its shape on the map.
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const openSearch = useCallback(() => {
     if (postId || profileName || modal || savedOnly) return;
@@ -537,22 +537,22 @@ export default function Explorer({
   const listedProjects = savedOnly ? savedProjects : searched;
 
   // Mobile shows the project its drawer holds, also while that drawer closes.
-  const post = projects.find(
-    (project) => project.id === (isMobile ? shown.postId : postId),
-  );
-
-  // A shape hovered on the map brings its card into view beside it.
+  // Desktop: the project layer stays while it slides back out.
+  const [panelPostId, setPanelPostId] = useState(postId);
+  if (postId && postId !== panelPostId) setPanelPostId(postId);
+  const panelClosing = !postId && panelPostId !== null;
   useEffect(() => {
-    if (hover?.from !== "map") return;
-    listRef.current
-      ?.querySelector(`[data-card-id="${CSS.escape(hover.id)}"]`)
-      ?.scrollIntoView({
-        block: "nearest",
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-          ? "auto"
-          : "smooth",
-      });
-  }, [hover]);
+    if (!panelClosing) return;
+    // Normally the slide's end clears it; this covers reduced motion.
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    const timer = setTimeout(() => setPanelPostId(null), reduced ? 0 : 400);
+    return () => clearTimeout(timer);
+  }, [panelClosing]);
+  const post = projects.find(
+    (project) => project.id === (isMobile ? shown.postId : panelPostId),
+  );
 
   function onMapView(view: MapViewChange) {
     mapViewRef.current = view;
@@ -671,7 +671,7 @@ export default function Explorer({
     setModal(null);
     setPostId(id);
     setSelectedId(id);
-    setHover(null);
+    setHoveredId(null);
     enterPostView(id);
     window.history.pushState(
       { projectOverlay: true },
@@ -784,17 +784,6 @@ export default function Explorer({
   }
 
   /** Desktop: the saved collection replaces the results, and toggles back. */
-  function showSaved() {
-    if (!requireAccount()) return;
-    setModal(null);
-    if (postId) {
-      closePost();
-      setSavedOnly(true);
-      return;
-    }
-    setSavedOnly(!savedOnly);
-  }
-
   const feedback = toast && (
     <Toast toast={toast} mobile={isMobile} onClose={() => setToast(null)} />
   );
@@ -1005,16 +994,6 @@ export default function Explorer({
       {search}
       <div className="mt-2 flex min-w-0 items-center gap-1.5">
         <ChoiceSelect
-          label="Status"
-          multiple
-          value={status}
-          onChange={setStatus}
-          triggerLabel={statusSummary(status)}
-          className={cn(panelChoiceClasses, statusChanged && panelChoiceActive)}
-          icon={<ListFilter size={15} aria-hidden="true" />}
-          options={statusOptions}
-        />
-        <ChoiceSelect
           label="Kategori"
           multiple
           value={category}
@@ -1026,7 +1005,25 @@ export default function Explorer({
           )}
           options={categoryOptions}
         />
-        <div className="-mr-2 ml-auto shrink-0">{sortFilter}</div>
+        {/* Status is secondary: an icon with a badge once it's changed. */}
+        <span className="ml-auto shrink-0" data-tooltip="Status">
+          <ChoiceSelect
+            label="Status"
+            multiple
+            value={status}
+            onChange={setStatus}
+            className={cn(
+              statusChoiceClasses,
+              "[&_[data-slot=choice-trigger]]:size-9 [&_[data-slot=choice-trigger]>span:nth-of-type(2)]:top-0.5 [&_[data-slot=choice-trigger]>span:nth-of-type(2)]:right-0",
+              statusChanged
+                ? "[&_[data-slot=choice-trigger]>svg]:text-accent"
+                : "[&_[data-slot=choice-trigger]>span:nth-of-type(2)]:hidden!",
+            )}
+            icon={<ListFilter size={17} aria-hidden="true" />}
+            options={statusOptions}
+          />
+        </span>
+        <div className="-mr-2 shrink-0">{sortFilter}</div>
       </div>
     </section>
   );
@@ -1045,7 +1042,7 @@ export default function Explorer({
     >
       <AccountPanel
         onBack={isMobile ? backToExplorer : undefined}
-        onSaved={isMobile ? openSavedFromProfile : undefined}
+        onSaved={openSavedFromProfile}
         savedCount={saved.length}
         next={postId ? projectHref(postId) : "/"}
       />
@@ -1078,10 +1075,11 @@ export default function Explorer({
       clear: () => setCategory(toggle(category, value)),
     })),
   ];
+  // Not a filter, so not a chip: a quiet action beside the count.
   const showOutside = !savedOnly && outsideHits > 0 && (
     <button
       type="button"
-      className={cn(chip, "gap-1.25 pr-2.5 pl-2")}
+      className="inline-flex min-h-7 items-center gap-1 text-xs font-medium whitespace-nowrap text-accent underline-offset-3 hover:text-accent-strong hover:underline"
       aria-label={`Vis ${outsideHits} treff utenfor kartet`}
       onClick={showSearchHits}
     >
@@ -1135,7 +1133,7 @@ export default function Explorer({
                 type="button"
                 className={cn(compactIconAction, "-ml-3 -mr-2 text-muted")}
                 aria-label={isMobile ? "Tilbake til profilen" : "Tilbake"}
-                onClick={isMobile ? backToProfile : showSaved}
+                onClick={isMobile ? backToProfile : () => setSavedOnly(false)}
               >
                 <ArrowLeft size={20} />
               </button>
@@ -1156,7 +1154,8 @@ export default function Explorer({
               {listedProjects.length}{" "}
               {listedProjects.length === 1 ? "prosjekt" : "prosjekter"}
             </span>
-            {!savedOnly && (activeFilters.length > 0 || showOutside) && (
+            {showOutside}
+            {!savedOnly && activeFilters.length > 0 && (
               <ul
                 className="flex flex-wrap items-center gap-1.5"
                 aria-label="Aktive filtre"
@@ -1185,7 +1184,6 @@ export default function Explorer({
                     </button>
                   </li>
                 )}
-                {showOutside && <li>{showOutside}</li>}
               </ul>
             )}
           </div>
@@ -1194,8 +1192,22 @@ export default function Explorer({
         {listedProjects.length === 0 ? (
           <EmptyState
             level={2}
-            icon={savedOnly ? <Bookmark size={22} /> : <Search size={22} />}
-            title={savedOnly ? "Ingen lagrede prosjekter" : "Ingen treff"}
+            icon={
+              savedOnly ? (
+                <Bookmark size={22} />
+              ) : filtersChanged ? (
+                <Search size={22} />
+              ) : (
+                <MapPin size={22} />
+              )
+            }
+            title={
+              savedOnly
+                ? "Ingen lagrede prosjekter"
+                : filtersChanged
+                  ? "Ingen treff"
+                  : "Ingen prosjekter her"
+            }
           >
             {emptyActions}
           </EmptyState>
@@ -1206,15 +1218,12 @@ export default function Explorer({
                 key={project.id}
                 project={project}
                 commentCount={commentsByProject.get(project.id)?.length ?? 0}
-                highlighted={
-                  hover?.from === "map" && hover.id === project.id
-                }
                 onOpen={() => openPost(project.id)}
                 onHover={(hovering) =>
-                  setHover((current) =>
+                  setHoveredId((current) =>
                     hovering
-                      ? { id: project.id, from: "list" }
-                      : current?.id === project.id
+                      ? project.id
+                      : current === project.id
                         ? null
                         : current,
                   )
@@ -1232,8 +1241,10 @@ export default function Explorer({
       key={post.id}
       project={post}
       initialUpdateId={postUpdateId}
-      closeOnEscape={!isMobile}
-      onClose={() => closePost()}
+      closeOnEscape={!isMobile && !panelClosing}
+      onClose={() => {
+        if (!panelClosing) closePost();
+      }}
       feedback={isMobile ? feedback : undefined}
       saved={savedIds.has(post.id)}
       onSave={() => toggleSaved(post.id)}
@@ -1260,7 +1271,9 @@ export default function Explorer({
     setSnapPoint(1);
   }
   /** Mobile reaches saved projects through the profile, and returns there. */
+  /** Saved projects live under the profile, on desktop as on mobile. */
   function openSavedFromProfile() {
+    if (postId) closePost();
     setModal(null);
     setSavedOnly(true);
     setSnapPoint(1);
@@ -1423,33 +1436,21 @@ export default function Explorer({
       className={cn(
         "flex h-dvh min-h-0 overflow-hidden bg-canvas motion-reduce:[&_*]:transition-none motion-reduce:[&_*]:animate-none",
         isMobile ? "flex-col" : "flex-row",
+        // While the panel is resized: one cursor, no selection, map at rest.
+        "data-resizing:cursor-col-resize data-resizing:select-none [&[data-resizing]_[data-project-map]]:pointer-events-none",
       )}
+      ref={rootRef}
     >
       {!isMobile && (
         <aside
-          className="relative z-10 flex h-full w-[clamp(380px,36vw,540px)] shrink-0 flex-col border-r border-border bg-surface shadow-[1px_0_12px_rgb(20_28_24/0.05)]"
+          ref={panelRef}
+          id="project-panel"
+          className="relative z-10 flex h-full w-[var(--panel-width,clamp(380px,36vw,540px))] shrink-0 flex-col border-r border-border bg-surface shadow-[1px_0_12px_rgb(20_28_24/0.05)]"
           aria-label="Prosjekter"
         >
           <header className="flex h-16 shrink-0 items-center justify-between gap-2 pr-3 pl-5">
             {brand}
             <nav className="flex items-center gap-0.5" aria-label="Konto">
-              <button
-                className={cn(
-                  compactIconAction,
-                  "w-auto min-w-11 gap-1.5 px-2.5 text-ui font-medium tabular-nums",
-                  savedOnly && "bg-accent-soft text-accent-strong",
-                )}
-                aria-label="Lagrede prosjekter"
-                aria-pressed={savedOnly}
-                data-tooltip="Lagrede prosjekter"
-                onClick={showSaved}
-              >
-                <Bookmark
-                  size={18}
-                  fill={savedOnly ? "currentColor" : "none"}
-                />
-                {saved.length > 0 && saved.length}
-              </button>
               <button
                 className={cn(compactIconAction, "text-muted")}
                 aria-label="Legg til prosjekt"
@@ -1462,23 +1463,57 @@ export default function Explorer({
               {profileButton}
             </nav>
           </header>
-          <div className="relative min-h-0 flex-1">
-            {/* Hidden, not unmounted, behind a project: it keeps its scroll. */}
+          <div className="relative min-h-0 flex-1 overflow-hidden">
+            {/* Stays mounted under a project, so it keeps its scroll. */}
             <div
               className={cn(
-                "absolute inset-0 flex flex-col",
-                postId && "invisible",
+                "absolute inset-0 flex flex-col transition-transform duration-320 ease-out-soft",
+                postId && "-translate-x-4",
               )}
+              // Live again as soon as the project starts sliding away, so
+              // focus can return to the card it was opened from.
               inert={Boolean(postId)}
             >
               {projectResults}
             </div>
-            {postId && (
-              <div className="absolute inset-0 flex flex-col border-t border-border bg-surface motion-safe:animate-preview-in">
-                {projectPost || missingProject}
-              </div>
+            {panelPostId && (
+              <>
+                {/* The list shows dimmed along the left edge; a click there goes back. */}
+                <div
+                  aria-hidden="true"
+                  className={cn(
+                    "absolute inset-0 bg-ink/12 transition-opacity duration-220",
+                    postId ? "animate-backdrop-in" : "opacity-0",
+                  )}
+                  onClick={() => {
+                    if (postId) closePost();
+                  }}
+                />
+                <div
+                  className={cn(
+                    "absolute inset-y-0 right-0 left-4 flex flex-col overflow-hidden rounded-tl-[14px] border-t border-l border-border bg-surface shadow-[-12px_0_32px_rgb(20_28_24/0.12)]",
+                    postId ? "animate-panel-in" : "animate-panel-out",
+                  )}
+                  data-project-layer=""
+                  inert={!postId}
+                  onAnimationEnd={(event) => {
+                    if (!postId && event.target === event.currentTarget)
+                      setPanelPostId(null);
+                  }}
+                >
+                  {projectPost || missingProject}
+                </div>
+              </>
             )}
           </div>
+          <PanelResizer
+            panel={panelRef}
+            root={rootRef}
+            controls="project-panel"
+            onResizeStart={() => mapApi.current?.beginResize()}
+            onResize={() => mapApi.current?.syncSize()}
+            onResizeEnd={() => mapApi.current?.endResize()}
+          />
         </aside>
       )}
 
@@ -1507,17 +1542,8 @@ export default function Explorer({
             onReady={onMapReady}
             bottomInset={isMobile ? mobileMapInset : undefined}
             selectedId={selectedId}
-            highlightedId={hover?.from === "list" ? hover.id : null}
+            highlightedId={hoveredId}
             onSelect={(id) => (id ? openPost(id) : setSelectedId(postId))}
-            onHover={(id) =>
-              setHover((current) =>
-                id
-                  ? { id, from: "map" }
-                  : current?.from === "map"
-                    ? null
-                    : current,
-              )
-            }
           />
           {isMobile && matching.length === 0 && !savedOnly && (
             <div

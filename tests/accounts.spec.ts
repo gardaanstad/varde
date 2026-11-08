@@ -656,10 +656,10 @@ for (const viewport of [
         return settled;
       })
       .toBe(true);
-    // Mobile reaches saved projects through the profile; desktop has a header button.
+    // Saved projects are reached through the profile at every width.
     await expect(
       panel.getByRole("button", { name: "Lagrede prosjekter" }),
-    ).toHaveCount(viewport.width < 800 ? 1 : 0);
+    ).toHaveCount(1);
     await expect(page).toHaveURL(/:\d+\/(\?|$)/);
     await expect(
       publicProfile.getByRole("heading", {

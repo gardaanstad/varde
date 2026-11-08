@@ -20,14 +20,11 @@ const cardStat = "relative z-1 inline-flex items-center gap-1.25 tabular-nums";
 export default function ProjectCard({
   project,
   commentCount,
-  highlighted = false,
   onOpen,
   onHover,
 }: {
   project: Project;
   commentCount: number;
-  /** Its shape is hovered on the map. */
-  highlighted?: boolean;
   onOpen: () => void;
   /** Pointer or keyboard focus entering (true) or leaving the card. */
   onHover?: (hovering: boolean) => void;
@@ -38,11 +35,11 @@ export default function ProjectCard({
       className={cn(
         "relative isolate flex items-start gap-5 border-b border-border py-4.5 max-md:gap-3.5 max-md:pt-4 max-md:pb-3.75",
         // Hover wash bleeds slightly past the text edge, like a list row.
-        "before:absolute before:inset-x-[-12px] before:inset-y-1 before:-z-1 before:rounded-xl before:transition-colors before:duration-120",
-        "hover:before:bg-surface-muted/65 data-[highlighted=true]:before:bg-accent-soft/55 max-md:before:inset-x-[-8px] max-md:before:inset-y-0.5",
+        // Instant, so moving down the list reads as a pointer, not a fade.
+        "before:absolute before:inset-x-[-12px] before:inset-y-1 before:-z-1 before:rounded-xl",
+        "hover:before:bg-surface-muted/65 max-md:before:inset-x-[-8px] max-md:before:inset-y-0.5",
       )}
       data-card-id={project.id}
-      data-highlighted={highlighted}
       onPointerEnter={(event) => {
         if (event.pointerType === "mouse") onHover?.(true);
       }}

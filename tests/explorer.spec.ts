@@ -520,17 +520,60 @@ test.describe("desktop explorer", () => {
       .toMatch(/^59\.9\d+,10\.7[45]\d+,13$/);
   });
 
-  test("cards and shapes highlight each other", async ({ page }) => {
+  test("hovering a card highlights its shape, not the other way round", async ({
+    page,
+  }) => {
     await page.goto(oslo);
     await card(page, project.title).hover();
     await expect(
       page.locator(`path[data-project-id="${project.id}"]`),
     ).toHaveAttribute("stroke-width", "4");
-    await page.mouse.move(1000, 20);
+    // The list stays put when a shape is hovered.
+    const list = listRegion(page);
+    const top = await list.evaluate((element) => element.scrollTop);
     await page.locator('path[data-project-id="regjeringskvartalet"]').hover();
-    await expect(
-      listRegion(page).locator('[data-card-id="regjeringskvartalet"]'),
-    ).toHaveAttribute("data-highlighted", "true");
+    await page.waitForTimeout(300);
+    expect(await list.evaluate((element) => element.scrollTop)).toBe(top);
+  });
+
+  test("the list panel resizes by pointer and keyboard, and remembers it", async ({
+    page,
+  }) => {
+    await page.goto(oslo);
+    const handle = page.getByRole("separator", {
+      name: "Bredde på prosjektlisten",
+    });
+    const panel = page.locator("#project-panel");
+    const width = () =>
+      panel.evaluate((element) => element.getBoundingClientRect().width);
+    await expect(handle).toHaveAttribute("aria-valuenow", /^\d+$/);
+    const start = Number(await handle.getAttribute("aria-valuenow"));
+    await expect.poll(width).toBe(start);
+    const box = (await handle.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, 400);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 60, 400, { steps: 6 });
+    await expect(page.locator("[data-resizing]")).toHaveCount(1);
+    await page.mouse.up();
+    await expect(page.locator("[data-resizing]")).toHaveCount(0);
+    await expect.poll(width).toBe(start + 60);
+    await expect(handle).toHaveAttribute("aria-valuenow", String(start + 60));
+    // Keys step it; it never leaves its range.
+    await handle.focus();
+    await page.keyboard.press("ArrowLeft");
+    await expect.poll(width).toBe(start + 44);
+    await page.keyboard.press("End");
+    const max = Number(await handle.getAttribute("aria-valuemax"));
+    await expect.poll(width).toBe(max);
+    expect(max).toBeLessThan(1280 - 300);
+    await page.keyboard.press("Home");
+    const min = Number(await handle.getAttribute("aria-valuemin"));
+    await expect.poll(width).toBe(min);
+    await page.reload();
+    await expect.poll(width).toBe(min);
+    // A double click returns to the default width.
+    await handle.dblclick();
+    await expect.poll(width).toBe(start);
   });
 
   test("projects open in a panel beside the map and return to the list", async ({
@@ -550,7 +593,9 @@ test.describe("desktop explorer", () => {
     const panel = page.locator("[data-project-post]");
     await expect(panel).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`/prosjekt/${id}\\?kart=`));
-    await expect(list).toBeHidden();
+    // A layer over the list, which stays mounted (and inert) beneath it.
+    await expect(page.locator("[data-project-layer]")).toBeVisible();
+    await expect(list.locator("xpath=..")).toHaveAttribute("inert", "");
     await expect(
       page.getByRole("region", { name: "Prosjektkart" }).first(),
     ).toBeVisible();
