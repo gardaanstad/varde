@@ -22,8 +22,6 @@ export const user = sqliteTable("user", {
   username: text("username").unique(),
   bio: text("bio").notNull().default(""),
   location: text("location").notNull().default(""),
-  /** When the user last opened their activity feed; null until the first time. */
-  feedSeenAt: integer("feed_seen_at", { mode: "timestamp_ms" }),
 });
 export const session = sqliteTable(
   "session",
@@ -112,7 +110,6 @@ export const comment = sqliteTable(
   (t) => [
     index("comment_project_idx").on(t.projectId),
     index("comment_user_idx").on(t.userId),
-    index("comment_parent_idx").on(t.parentId),
   ],
 );
 /**
@@ -129,13 +126,22 @@ export const follow = sqliteTable(
       .notNull()
       .references(() => project.id, { onDelete: "cascade" }),
     /**
-     * Activity before this time never counts as unread. Set on insert; the
-     * database default only exists so the column could be added to old rows.
+     * False after an explicit unfollow. The row stays so that commenting on
+     * the project later doesn't follow it again.
      */
+    following: integer("following", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    // Always given on insert (see newFollow in server/community.ts). The
+    // database defaults only let the columns be added to old rows, which the
+    // migration then sets.
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
-      .default(sql`0`)
-      .$defaultFn(() => new Date()),
+      .default(sql`0`),
+    /** Activity on the project up to this time is read. */
+    seenAt: integer("seen_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`0`),
   },
   (t) => [
     primaryKey({ columns: [t.userId, t.projectId] }),

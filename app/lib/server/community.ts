@@ -29,7 +29,7 @@ export async function readCommunity(userId?: string) {
       ? db
           .select({ projectId: follow.projectId })
           .from(follow)
-          .where(eq(follow.userId, userId))
+          .where(and(eq(follow.userId, userId), eq(follow.following, true)))
       : [],
     userId ? db.select().from(vote).where(eq(vote.userId, userId)) : [],
   ]);
@@ -136,19 +136,34 @@ export async function castVote(
       });
 }
 
+/** A follow that starts now, with nothing before it unread. */
+function newFollow(userId: string, projectId: string, following = true) {
+  const now = new Date();
+  return { userId, projectId, following, createdAt: now, seenAt: now };
+}
+
 export async function setFollow(
   userId: string,
   projectId: string,
   following: boolean,
 ) {
   await findProject(projectId);
-  const db = getDb();
-  if (following)
-    await db.insert(follow).values({ userId, projectId }).onConflictDoNothing();
-  else
-    await db
-      .delete(follow)
-      .where(and(eq(follow.userId, userId), eq(follow.projectId, projectId)));
+  const values = newFollow(userId, projectId, following);
+  const now = values.createdAt.getTime();
+  // Following again starts fresh; staying followed keeps the read state.
+  await getDb()
+    .insert(follow)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [follow.userId, follow.projectId],
+      set: following
+        ? {
+            following: true,
+            createdAt: sql`case when ${follow.following} then ${follow.createdAt} else ${now} end`,
+            seenAt: sql`case when ${follow.following} then ${follow.seenAt} else ${now} end`,
+          }
+        : { following: false },
+    });
 }
 
 export async function addComment(
@@ -176,8 +191,8 @@ export async function addComment(
       throw new HttpError(400, "Svaret må tilhøre den samme samtalen.");
   }
   // Identity and timestamps always come from the verified session and server.
-  // Taking part in a discussion follows the project, so replies and new
-  // comments show up in the feed; following stays if it was already set.
+  // Taking part in a discussion follows the project, unless the user has
+  // unfollowed it before; an existing follow keeps its read state.
   await db.batch([
     db.insert(comment).values({
       id: crypto.randomUUID(),
@@ -190,7 +205,7 @@ export async function addComment(
     }),
     db
       .insert(follow)
-      .values({ userId, projectId: input.projectId })
+      .values(newFollow(userId, input.projectId))
       .onConflictDoNothing(),
   ]);
 }

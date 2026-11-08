@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "941ab4d2-3af1-4035-bc17-7f000f4de9a3",
+  "id": "15556e94-9284-4fdd-b95e-cb5aaeb262c1",
   "prevId": "07a40ced-bf7c-494c-8798-bba74065581e",
   "tables": {
     "account": {
@@ -217,13 +217,6 @@
             "user_id"
           ],
           "isUnique": false
-        },
-        "comment_parent_idx": {
-          "name": "comment_parent_idx",
-          "columns": [
-            "parent_id"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {
@@ -275,8 +268,24 @@
           "notNull": true,
           "autoincrement": false
         },
+        "following": {
+          "name": "following",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
         "created_at": {
           "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "0"
+        },
+        "seen_at": {
+          "name": "seen_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -632,13 +641,6 @@
           "notNull": true,
           "autoincrement": false,
           "default": "''"
-        },
-        "feed_seen_at": {
-          "name": "feed_seen_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {

@@ -19,7 +19,7 @@ export default function PrivacyPage() {
       <Section title="Hva vi lagrer">
         Navn, e-post og profilbilde fra Google-kontoen din, brukt kun til
         innlogging og aldri vist offentlig. Brukernavn, bio, sted, kommentarer,
-        stemmer, prosjektene du følger og når du sist åpnet aktiviteten din.
+        stemmer, prosjektene du følger og når du sist åpnet hvert av dem.
         Innloggingsøkter med IP-adresse og nettlesertype.
       </Section>
       <Section title="Hvorfor">

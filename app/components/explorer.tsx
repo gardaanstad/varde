@@ -14,7 +14,6 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   ArrowDownUp,
-  ArrowLeft,
   Bell,
   ChevronDown,
   RotateCcw,
@@ -52,13 +51,12 @@ import ProjectEditor from "./project-editor";
 import ProjectPost from "./project-post";
 import ProjectCard from "./project-card";
 import RecentActivity from "./recent-activity";
-import {
-  FollowingActivity,
-  PersonalActivity,
-  type FeedTarget,
+import FollowedProjects, {
+  type FollowedTarget,
   UnreadBadge,
-} from "./activity-feed";
-import { useFeed } from "./feed-provider";
+} from "./followed-projects";
+import { useFollowing } from "./following-provider";
+import { unreadCount, unreadProjects } from "../lib/following";
 import EmptyState from "./empty-state";
 import Toast, { type ToastMessage } from "./toast";
 import {
@@ -117,7 +115,6 @@ const filterRow = cn(
   "aria-pressed:bg-accent/[0.13] aria-pressed:font-semibold aria-pressed:text-accent-strong aria-pressed:hover:bg-accent/[0.17]",
   "[&>svg]:shrink-0 [&>svg]:text-muted aria-pressed:[&>svg]:text-accent aria-pressed:[&>span:last-child]:text-accent-strong",
 );
-const filterCount = "text-xs tabular-nums text-muted";
 const navRow = cn(
   "flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-ui font-medium text-ink/80",
   "transition-colors duration-150 hover:bg-ink/[0.045] hover:text-ink motion-reduce:transition-none",
@@ -247,8 +244,9 @@ export default function Explorer({
   const projectTriggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const { user, pending: authPending, canModerate, requireAccount } = useAuth();
   const { projects, following, comments, mutate } = useCommunity();
-  const { feed, markSeen } = useFeed();
-  const unread = feed?.unread ?? 0;
+  const { following: followed, markSeen } = useFollowing();
+  // The badge counts projects with something new, as the Følger rows do.
+  const unread = unreadProjects(followed);
   const pendingFollows = useRef(new Set<string>());
   const [query, setQuery] = useState("");
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -258,14 +256,9 @@ export default function Explorer({
   const [allCategories, setAllCategories] = useState(false);
   const [sort, setSort] = useState("current");
   const [view, setView] = useState<"map" | "list" | "following">("list");
-  const [followingTab, setFollowingTab] = useState<"activity" | "projects">(
-    "activity",
-  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Where in the project to open: an update, or a comment in the discussion.
-  const [postTarget, setPostTarget] = useState<
-    Omit<FeedTarget, "projectId">
-  >({});
+  const [postTarget, setPostTarget] = useState<FollowedTarget>({});
   const [postId, setPostId] = useState<string | null>(initialProjectId || null);
   const [profileName, setProfileName] = useState<string | null>(
     initialProfile || null,
@@ -407,15 +400,8 @@ export default function Explorer({
         )
       : filtered;
   }, [filtered, query]);
-  const followedProjects = useMemo(
-    () =>
-      projects
-        .filter((project) => followingIds.has(project.id))
-        .sort(compareProjects),
-    [compareProjects, projects, followingIds],
-  );
   const followingView = view === "following";
-  const listedProjects = followingView ? followedProjects : searched;
+  const listedProjects = searched;
 
   // Mobile shows the project its drawer holds, also while that drawer closes.
   const post = projects.find(
@@ -518,7 +504,7 @@ export default function Explorer({
     };
   }, [isMobile]);
 
-  function openPost(id: string, target: Omit<FeedTarget, "projectId"> = {}) {
+  function openPost(id: string, target: FollowedTarget = {}) {
     setPostTarget(target);
     projectTriggerRef.current =
       document.activeElement instanceof HTMLElement ||
@@ -546,6 +532,15 @@ export default function Explorer({
     if (window.history.state?.projectOverlay) window.history.back();
     else window.history.replaceState({}, "", "/");
   }
+
+  // Opening a followed project reads it, wherever it was opened from, and so
+  // does activity that arrives while it stays open.
+  const openUnread = followed?.projects.find(
+    (item) => item.projectId === postId && unreadCount(item) > 0,
+  );
+  useEffect(() => {
+    if (openUnread) void markSeen(openUnread.projectId);
+  }, [openUnread, markSeen]);
 
   async function toggleFollow(id: string) {
     if (pendingFollows.current.has(id)) return;
@@ -619,13 +614,12 @@ export default function Explorer({
     setSnapPoint(1);
   }
 
-  /** Desktop: the sidebar entry toggles the following view. */
-  function showFollowing(tab?: "activity" | "projects") {
+  /** The sidebar entry (desktop) and the bell (mobile) toggle the view. */
+  function showFollowing() {
     if (!requireAccount()) return;
     followingFrom.current = "explorer";
-    if (tab) setFollowingTab(tab);
     if (postId) closePost();
-    else if (view === "following" && !tab) {
+    else if (view === "following") {
       if (previousExplorerView.current === "map") showMap();
       else showList();
       return;
@@ -1029,65 +1023,16 @@ export default function Explorer({
         ))}
       </ol>
     );
-  const followingTabs = (
-    <div
-      className="grid shrink-0 grid-cols-2 gap-1 rounded-lg bg-ink/[0.055] p-1"
-      role="group"
-      aria-label="Følger"
-    >
-      <button
-        className={segment(followingTab === "activity")}
-        aria-pressed={followingTab === "activity"}
-        onClick={() => setFollowingTab("activity")}
-      >
-        <span>Aktivitet</span>
-        {unread > 0 && <UnreadBadge count={unread} />}
-      </button>
-      <button
-        className={segment(followingTab === "projects")}
-        aria-pressed={followingTab === "projects"}
-        onClick={() => setFollowingTab("projects")}
-      >
-        <span>Prosjekter</span>
-        <span className={filterCount}>{following.length}</span>
-      </button>
-    </div>
+  const followingList = (
+    <FollowedProjects
+      projects={projects}
+      followingIds={following}
+      following={followed}
+      onOpen={openPost}
+      onUnfollow={(id) => void toggleFollow(id)}
+      onBack={isMobile ? leaveFollowing : undefined}
+    />
   );
-  const followingContent = (
-    <>
-      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-border bg-surface py-1.5 max-md:min-h-12 max-md:bg-transparent">
-        <div className="flex min-w-0 items-center gap-x-3">
-          {isMobile && (
-            <button
-              type="button"
-              className={cn(compactIconAction, "-ml-3 -mr-2 text-muted")}
-              aria-label="Tilbake"
-              onClick={leaveFollowing}
-            >
-              <ArrowLeft size={20} />
-            </button>
-          )}
-          <h1 className="text-xl leading-normal font-[650] tracking-[-0.4px] max-md:text-lg">
-            Følger
-          </h1>
-        </div>
-        {followingTabs}
-      </div>
-      {followingTab === "projects" ? (
-        projectList
-      ) : feed ? (
-        <FollowingActivity
-          feed={feed}
-          projects={projects}
-          markSeen={markSeen}
-          onOpen={openTarget}
-        />
-      ) : null}
-    </>
-  );
-  // Signed-in users see their own activity beside the list once they follow
-  // something or someone has replied to them; everyone else the latest overall.
-  const personalAside = feed && (feed.items.length > 0 || following.length > 0);
   const projectResults = (
     <section
       data-drawer-scroll
@@ -1102,7 +1047,7 @@ export default function Explorer({
       >
         <div className="min-w-0">
           {followingView ? (
-            followingContent
+            followingList
           ) : (
             <>
               {isMobile ? mobileFilters : <div className="mb-1">{search}</div>}
@@ -1171,20 +1116,11 @@ export default function Explorer({
             className="min-w-0 pt-5 max-xl:hidden"
             aria-labelledby="recent-activity"
           >
-            {personalAside ? (
-              <PersonalActivity
-                feed={feed}
-                projects={projects}
-                onOpen={openTarget}
-                onShowAll={() => showFollowing("activity")}
-              />
-            ) : (
-              <RecentActivity
-                projects={listedProjects}
-                comments={comments}
-                onOpen={(id, updateId) => openPost(id, { updateId })}
-              />
-            )}
+            <RecentActivity
+              projects={listedProjects}
+              comments={comments}
+              onOpen={(id, updateId) => openPost(id, { updateId })}
+            />
           </aside>
         )}
       </div>
@@ -1234,7 +1170,6 @@ export default function Explorer({
     followingFrom.current = "profile";
     if (view !== "following")
       previousExplorerView.current = view === "list" ? "list" : "map";
-    setFollowingTab("projects");
     setModal(null);
     setView("following");
     setSnapPoint(1);
@@ -1242,9 +1177,6 @@ export default function Explorer({
   function leaveFollowing() {
     setView(previousExplorerView.current === "map" ? "map" : "list");
     if (followingFrom.current === "profile") openProfile();
-  }
-  function openTarget({ projectId, ...target }: FeedTarget) {
-    openPost(projectId, target);
   }
   function backToExplorer() {
     if (postId) closePost();
@@ -1302,10 +1234,12 @@ export default function Explorer({
                     "relative text-muted",
                     followingView && "text-accent",
                   )}
-                  aria-label={unread > 0 ? `Følger, ${unread} nye` : "Følger"}
+                  aria-label={
+                    unread > 0 ? `Følger, ${unread} med nytt` : "Følger"
+                  }
                   aria-pressed={followingView}
                   onClick={() =>
-                    followingView ? leaveFollowing() : showFollowing("activity")
+                    followingView ? leaveFollowing() : showFollowing()
                   }
                 >
                   <Bell
@@ -1439,13 +1373,7 @@ export default function Explorer({
             >
               <Bell size={16} fill={followingView ? "currentColor" : "none"} />
               <span className="flex-1">Følger</span>
-              {unread > 0 ? (
-                <UnreadBadge count={unread} />
-              ) : (
-                following.length > 0 && (
-                  <span className={filterCount}>{following.length}</span>
-                )
-              )}
+              {unread > 0 && <UnreadBadge count={unread} />}
             </button>
             <button
               className={navRow}

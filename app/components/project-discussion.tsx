@@ -69,7 +69,7 @@ export default function ProjectDiscussion({
   projectId: string;
   comments: Comment[];
   updates: ProjectUpdate[];
-  /** A comment linked from the activity feed: scrolled to and marked. */
+  /** A comment opened from the Følger list: scrolled to and marked. */
   initialCommentId?: string;
   /**
    * Scopes the section to one update: it lists threads that reference the

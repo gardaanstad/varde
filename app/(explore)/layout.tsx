@@ -3,9 +3,9 @@ import { headers } from "next/headers";
 import { userAgent } from "next/server";
 import { getPageSession } from "../lib/auth";
 import { readCommunity } from "../lib/server/community";
-import { readFeed } from "../lib/server/feed";
+import { readFollowing } from "../lib/server/following";
 import { CommunityProvider } from "../components/community-provider";
-import { FeedProvider } from "../components/feed-provider";
+import { FollowingProvider } from "../components/following-provider";
 import ExplorerShell from "../components/explorer-shell";
 
 export default async function ExploreLayout({
@@ -18,16 +18,16 @@ export default async function ExploreLayout({
   const member = session?.user.username ? userId : undefined;
   // Phones get the mobile layout in the first HTML, so it doesn't swap after load.
   const { device } = userAgent({ headers: await headers() });
-  const [community, feed] = await Promise.all([
+  const [community, following] = await Promise.all([
     readCommunity(userId),
-    member ? readFeed(member) : null,
+    member ? readFollowing(member) : null,
   ]);
   return (
     <CommunityProvider initialData={community} initialUserId={userId}>
-      <FeedProvider initialFeed={feed} initialUserId={member}>
+      <FollowingProvider initialFollowing={following} initialUserId={member}>
         <ExplorerShell mobileHint={device.type === "mobile"} />
         {children}
-      </FeedProvider>
+      </FollowingProvider>
     </CommunityProvider>
   );
 }
