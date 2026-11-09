@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
-  type ReactNode,
 } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -16,11 +15,14 @@ import {
   ArrowUpRight,
   Check,
   ChevronDown,
+  CircleSlash,
+  Ellipsis,
   Inbox,
   Lightbulb,
   MessageSquareText,
   Pencil,
   Plus,
+  RotateCcw,
   TriangleAlert,
   X,
 } from "lucide-react";
@@ -28,7 +30,6 @@ import { apiRequest, errorMessage } from "../lib/api-client";
 import { cn } from "../lib/cn";
 import {
   diffParagraphs,
-  diffStats,
   diffWords,
   formatDistance,
   geometryChange,
@@ -38,8 +39,6 @@ import {
 import {
   projectHref,
   projectPhotos,
-  projectPlace,
-  statuses,
   type Project,
 } from "../lib/data";
 import {
@@ -56,16 +55,14 @@ import {
   tipTitle,
 } from "../lib/suggestions";
 import {
-  controlBase,
   dangerButton,
   fieldControl,
-  primaryButton,
   secondaryButton,
-  statusTone,
   textButton,
 } from "../lib/ui";
+import { Menu } from "@base-ui/react/menu";
 import BackLink from "./back-link";
-import CategoryIcon from "./category-icon";
+import ProfileAvatar from "./profile-avatar";
 import { fields, type FieldId } from "./project-edit";
 import RelativeTime from "./relative-time";
 import Toast, { type ToastMessage } from "./toast";
@@ -83,10 +80,6 @@ const input = cn(
   "min-h-10 rounded-lg px-2.5 text-ui max-sm:text-base",
 );
 const fieldLabel = "block text-xs font-medium text-muted";
-const rowAction = cn(
-  controlBase,
-  "min-h-8 gap-1.5 rounded-lg px-3 text-xs shadow-none max-sm:size-9 max-sm:min-h-9 max-sm:px-0",
-);
 /** Removed and added text, styled like a code review. */
 const removed =
   "rounded-[3px] bg-diff-remove px-px text-diff-remove-ink line-through decoration-diff-remove-ink/45 box-decoration-clone";
@@ -99,17 +92,24 @@ const kindIcons: Record<SuggestionKind, typeof Plus> = {
   correction: Pencil,
   update: Lightbulb,
 };
-function KindBadge({ kind }: { kind: SuggestionKind }) {
+/** The row's leading icon; the kind's name is read out, not shown. */
+function KindIcon({ kind }: { kind: SuggestionKind }) {
   const Icon = kindIcons[kind];
   return (
     <span
-      className="inline-flex h-5.5 shrink-0 items-center gap-1 rounded-md bg-surface-muted px-1.5 text-2xs font-semibold text-ink-soft"
+      className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-muted text-ink-soft"
       data-kind={kind}
+      data-tooltip={kindLabels[kind]}
     >
-      <Icon size={12} strokeWidth={2.25} aria-hidden="true" />
-      {kindLabels[kind]}
+      <Icon size={15} strokeWidth={2.1} aria-hidden="true" />
+      <span className="sr-only">{kindLabels[kind]}</span>
     </span>
   );
+}
+
+/** "1 endring", "3 endringer". */
+export function changeCount(count: number) {
+  return `${count} ${count === 1 ? "endring" : "endringer"}`;
 }
 
 const statusChip: Record<SuggestionStatus, string> = {
@@ -148,70 +148,67 @@ function Parts({ parts }: { parts: DiffPart[] }) {
   );
 }
 
+type DiffLine = { marker: "+" | "−" | ""; parts: DiffPart[] };
+
 /**
- * A unified text diff: changed paragraphs with their words marked, runs of
- * unchanged ones folded behind a toggle.
+ * A unified text diff, every paragraph shown. Changed paragraphs get a + or
+ * − in the gutter; an edited one shows its old and new form, each with its
+ * own words marked. Unchanged ones keep the same indent.
  */
 function TextDiff({ before, after }: { before: string; after: string }) {
-  const diff = useMemo(() => diffParagraphs(before, after), [before, after]);
-  const [shown, setShown] = useState<Set<number>>(new Set());
-  const groups: (
-    | { type: "same"; texts: string[]; start: number }
-    | { type: "change"; parts: DiffPart[] }
-  )[] = [];
-  diff.forEach((paragraph, index) => {
-    const last = groups.at(-1);
-    if (paragraph.type === "same")
-      if (last?.type === "same") last.texts.push(paragraph.text);
-      else groups.push({ type: "same", texts: [paragraph.text], start: index });
-    else groups.push(paragraph);
-  });
-  const paragraph =
-    "border-l-2 py-0.5 pl-3 text-ui leading-[1.65] whitespace-pre-wrap wrap-anywhere";
+  const lines = useMemo(() => {
+    const out: DiffLine[] = [];
+    for (const paragraph of diffParagraphs(before, after)) {
+      if (paragraph.type === "same") {
+        out.push({ marker: "", parts: [{ type: "same", text: paragraph.text }] });
+        continue;
+      }
+      const kinds = new Set(paragraph.parts.map((part) => part.type));
+      if (kinds.has("remove"))
+        out.push({
+          marker: "−",
+          parts: paragraph.parts.filter((part) => part.type !== "add"),
+        });
+      if (kinds.has("add"))
+        out.push({
+          marker: "+",
+          parts: paragraph.parts.filter((part) => part.type !== "remove"),
+        });
+    }
+    return out;
+  }, [before, after]);
   return (
     <div className="space-y-1.5" data-text-diff="">
-      {groups.map((group, index) => {
-        if (group.type === "change") {
-          const kinds = new Set(group.parts.map((part) => part.type));
-          return (
-            <p
-              key={index}
-              className={cn(
-                paragraph,
-                "text-ink",
-                kinds.has("add") && !kinds.has("remove") && !kinds.has("same")
-                  ? "border-diff-add-ink/50"
-                  : kinds.has("remove") && !kinds.has("add") && !kinds.has("same")
-                    ? "border-diff-remove-ink/50"
-                    : "border-border-strong",
-              )}
-            >
-              <Parts parts={group.parts} />
-            </p>
-          );
-        }
-        if (shown.has(group.start))
-          return group.texts.map((text, offset) => (
-            <p
-              key={`${index}-${offset}`}
-              className={cn(paragraph, "border-transparent text-muted")}
-            >
-              {text}
-            </p>
-          ));
-        return (
-          <button
-            key={index}
-            type="button"
-            className="flex min-h-7 w-full items-center gap-1.5 rounded-md bg-surface-subtle px-3 text-left text-xs font-medium text-muted transition-colors hover:bg-surface-muted hover:text-ink"
-            onClick={() => setShown(new Set(shown).add(group.start))}
+      {lines.map((line, index) => (
+        <div
+          key={index}
+          className="grid grid-cols-[14px_minmax(0,1fr)] gap-x-1.5"
+          data-marker={line.marker || undefined}
+        >
+          <span
+            className={cn(
+              "text-center font-mono text-ui leading-[1.65] font-semibold select-none",
+              line.marker === "+" ? "text-diff-add-ink" : "text-diff-remove-ink",
+            )}
+            aria-hidden="true"
           >
-            <ChevronDown size={13} aria-hidden="true" />…{" "}
-            {group.texts.length}{" "}
-            {group.texts.length === 1 ? "uendret avsnitt" : "uendrede avsnitt"}
-          </button>
-        );
-      })}
+            {line.marker}
+          </span>
+          <p
+            className={cn(
+              "text-ui leading-[1.65] whitespace-pre-wrap wrap-anywhere",
+              line.marker ? "text-ink" : "text-ink-soft",
+            )}
+          >
+            {line.marker && (
+              <span className="sr-only">
+                {line.marker === "+" ? "Lagt til: " : "Fjernet: "}
+              </span>
+            )}
+            <Parts parts={line.parts} />
+          </p>
+        </div>
+      ))}
     </div>
   );
 }
@@ -319,29 +316,11 @@ const changedIds = (changes: CorrectionChanges) =>
     fields[id].keys.some((key) => key !== "center" && key in changes),
   );
 
-/** One line under the title: what the suggestion is about. */
-function summary(suggestion: Suggestion): ReactNode {
+/** The second line, before the date: what the suggestion is about. */
+function summary(suggestion: Suggestion): string {
   if (suggestion.kind === "update")
     return tipTitle(suggestion.data.text) || suggestion.data.text;
-  if (suggestion.kind === "project") {
-    const project = suggestion.data.project;
-    return (
-      <span className="inline-flex min-w-0 items-center gap-1.5">
-        <CategoryIcon category={project.category} size={13} />
-        <span className="truncate">
-          {project.category} · {projectPlace(project)}
-        </span>
-        <i
-          className={cn(
-            "ml-1 size-1.75 shrink-0 rounded-full",
-            statusTone[project.status].dot,
-          )}
-          aria-hidden="true"
-        />
-        <span className="shrink-0">{statuses[project.status].label}</span>
-      </span>
-    );
-  }
+  if (suggestion.kind === "project") return suggestion.data.project.category;
   const ids = changedIds(suggestion.data.changes);
   const applied = suggestion.data.applied;
   const appliedIds = applied
@@ -349,25 +328,73 @@ function summary(suggestion: Suggestion): ReactNode {
         fields[id].keys.some((key) => applied.includes(key as CorrectionKey)),
       )
     : undefined;
-  const count =
-    appliedIds && appliedIds.length !== ids.length
-      ? `${appliedIds.length} av ${ids.length} felt`
-      : `${ids.length} felt endret`;
-  return `${count} · ${ids.map((id) => fields[id].label).join(", ")}`;
+  return appliedIds && appliedIds.length !== ids.length
+    ? `${appliedIds.length} av ${changeCount(ids.length)}`
+    : changeCount(ids.length);
+}
+
+/** Per field: leave this change out of the approval, or take it back in. */
+function FieldMenu({
+  label,
+  excluded,
+  onExclude,
+}: {
+  label: string;
+  excluded: boolean;
+  onExclude: (excluded: boolean) => void;
+}) {
+  if (excluded)
+    return (
+      <button
+        type="button"
+        className={cn(textButton, "-my-1 -mr-2 min-h-7 px-2 text-xs")}
+        onClick={() => onExclude(false)}
+      >
+        <RotateCcw size={12} aria-hidden="true" />
+        Ta med igjen
+      </button>
+    );
+  return (
+    <Menu.Root>
+      <Menu.Trigger
+        className={cn(
+          "-my-1 -mr-1.5 grid size-7 place-items-center rounded-md text-muted",
+          "opacity-0 transition-opacity duration-120 group-hover/field:opacity-100 focus-visible:opacity-100",
+          "hover:bg-ink/[0.06] hover:text-ink data-popup-open:bg-ink/[0.06] data-popup-open:opacity-100",
+          "pointer-coarse:opacity-100 motion-reduce:transition-none",
+        )}
+        aria-label={`Valg for ${label.toLowerCase()}`}
+      >
+        <Ellipsis size={16} aria-hidden="true" />
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner side="bottom" align="end" sideOffset={4} className="z-50">
+          <Menu.Popup className="min-w-52 rounded-lg border border-border bg-surface p-1 text-ui shadow-popover outline-none motion-safe:animate-menu-enter">
+            <Menu.Item
+              className="flex min-h-9 cursor-default items-center gap-2 rounded-md px-2.5 text-ink outline-none select-none data-highlighted:bg-surface-muted"
+              onClick={() => onExclude(true)}
+            >
+              <CircleSlash size={14} className="text-muted" aria-hidden="true" />
+              Ikke ta med denne endringen
+            </Menu.Item>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
+  );
 }
 
 function CorrectionBody({
   suggestion,
   queue,
-  selected,
-  onSelect,
+  excluded,
+  onExclude,
 }: {
   suggestion: Extract<Suggestion, { kind: "correction" }>;
   queue: boolean;
-  selected: FieldId[];
-  onSelect: (selected: FieldId[]) => void;
+  excluded: FieldId[];
+  onExclude: (field: FieldId, excluded: boolean) => void;
 }) {
-  const id = useId();
   const { project, data } = suggestion;
   if (!project) return null;
   // The queue compares with the project as it is now; elsewhere, with how it
@@ -385,49 +412,26 @@ function CorrectionBody({
   return (
     <ul className="divide-y divide-border" aria-label="Endringer">
       {changedIds(data.changes).map((field) => {
-        const inputId = `${id}-${field}`;
         const value = (p: Project) => fields[field].show(p);
-        const stats =
-          field === "description"
-            ? diffStats(diffParagraphs(before.description, after.description))
-            : undefined;
+        const out = excluded.includes(field);
         return (
           <li
             key={field}
-            className={cn(
-              "grid items-start gap-x-3 gap-y-1.5 py-2.5",
-              queue
-                ? "grid-cols-[18px_104px_minmax(0,1fr)] max-sm:grid-cols-[18px_minmax(0,1fr)]"
-                : "grid-cols-[104px_minmax(0,1fr)] max-sm:grid-cols-1",
-            )}
+            className="group/field py-3 first:pt-1"
             data-field={field}
+            data-excluded={out || undefined}
           >
-            {queue && (
-              <input
-                id={inputId}
-                type="checkbox"
-                className="mt-1 size-4 accent-accent"
-                aria-label={`Ta med ${fields[field].label.toLowerCase()}`}
-                checked={selected.includes(field)}
-                onChange={(event) =>
-                  onSelect(
-                    event.target.checked
-                      ? [...selected, field]
-                      : selected.filter((item) => item !== field),
-                  )
-                }
-              />
-            )}
-            <label
-              htmlFor={queue ? inputId : undefined}
-              className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-medium text-muted"
-            >
-              {fields[field].label}
-              {stats && (
-                <span className="font-semibold tabular-nums">
-                  <span className="text-diff-add-ink">+{stats.added}</span>{" "}
-                  <span className="text-diff-remove-ink">−{stats.removed}</span>
-                </span>
+            <div className="mb-1.5 flex min-h-6 items-center gap-2">
+              <h3
+                className={cn(
+                  "text-xs font-semibold text-ink",
+                  out && "text-muted line-through decoration-muted/60",
+                )}
+              >
+                {fields[field].label}
+              </h3>
+              {out && (
+                <span className="text-2xs font-medium text-muted">Ikke med</span>
               )}
               {stale(field) && (
                 <span
@@ -438,12 +442,20 @@ function CorrectionBody({
                   Endret siden
                 </span>
               )}
-            </label>
+              {queue && (
+                <span className="ml-auto">
+                  <FieldMenu
+                    label={fields[field].label}
+                    excluded={out}
+                    onExclude={(next) => onExclude(field, next)}
+                  />
+                </span>
+              )}
+            </div>
             <div
               className={cn(
-                "min-w-0",
-                queue && "max-sm:col-start-2",
-                !queue && "max-sm:col-start-1",
+                "min-w-0 transition-opacity duration-150 motion-reduce:transition-none",
+                out && "opacity-40 grayscale",
               )}
             >
               {field === "description" ? (
@@ -484,7 +496,14 @@ function ProjectBody({
   overrides: Overrides;
   onChange: (overrides: Overrides) => void;
 }) {
-  const facts: FieldId[] = ["year", "developer", "website", "geometry"];
+  const facts: FieldId[] = [
+    "status",
+    "place",
+    "year",
+    "developer",
+    "website",
+    "geometry",
+  ];
   return (
     <div className="space-y-4">
       {editing ? (
@@ -599,23 +618,56 @@ function TipBody({
   );
 }
 
+/** The suggester's own note, quoted quietly. */
+function Note({ author, note }: { author: string; note: string }) {
+  return (
+    <figure className="flex gap-2.5 rounded-lg border-l-2 border-border-strong bg-surface-subtle py-2 pr-3 pl-2.5">
+      <ProfileAvatar name={author} className="mt-0.5 size-5.5 text-2xs" />
+      <div className="min-w-0">
+        <figcaption
+          className="flex w-fit items-center gap-1 rounded text-xs font-medium text-muted"
+          tabIndex={0}
+          data-tooltip={`Merknad fra @${author}`}
+          aria-label={`Merknad fra @${author}`}
+        >
+          <MessageSquareText size={12} aria-hidden="true" />@{author}
+        </figcaption>
+        <blockquote className="mt-0.5 text-ui leading-relaxed whitespace-pre-wrap wrap-anywhere text-ink-soft">
+          {note}
+        </blockquote>
+      </div>
+    </figure>
+  );
+}
+
+const iconAction = cn(
+  "grid size-9 shrink-0 place-items-center rounded-full border",
+  "transition-[color,background-color,border-color,transform] duration-150",
+  "active:scale-[0.96] disabled:pointer-events-none disabled:opacity-40",
+  "motion-reduce:transition-none motion-reduce:active:scale-100",
+);
+
 function SuggestionRow({
   suggestion,
   tab,
+  expanded,
+  onToggle,
   onReview,
 }: {
   suggestion: Suggestion;
   tab: Tab;
+  expanded: boolean;
+  onToggle: () => void;
   onReview: Review;
 }) {
   const bodyId = useId();
   const queue = tab === "queue";
-  const [expanded, setExpanded] = useState(false);
+  // The body mounts on first open and stays, so closing can animate.
+  const [mounted, setMounted] = useState(expanded);
+  if (expanded && !mounted) setMounted(true);
   const [editing, setEditing] = useState(false);
   const [overrides, setOverrides] = useState<Overrides>({});
-  const [selected, setSelected] = useState<FieldId[]>(() =>
-    suggestion.kind === "correction" ? changedIds(suggestion.data.changes) : [],
-  );
+  const [excluded, setExcluded] = useState<FieldId[]>([]);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -624,6 +676,12 @@ function SuggestionRow({
   const linked =
     suggestion.projectId &&
     (suggestion.kind !== "project" || suggestion.status === "approved");
+  const included =
+    suggestion.kind === "correction"
+      ? changedIds(suggestion.data.changes).filter(
+          (id) => !excluded.includes(id),
+        )
+      : [];
 
   useEffect(() => {
     if (rejecting) reasonRef.current?.focus();
@@ -637,7 +695,6 @@ function SuggestionRow({
       await onReview(mutation);
     } catch (failure) {
       setError(errorMessage(failure, "Kunne ikke behandle forslaget."));
-      setExpanded(true);
       setBusy(false);
     }
   }
@@ -653,43 +710,34 @@ function SuggestionRow({
         title: overrides.title?.trim() || tipTitle(suggestion.data.text),
       }),
       ...(suggestion.kind === "correction" && {
-        keys: selected.flatMap((id) => fields[id].keys) as CorrectionKey[],
+        keys: included.flatMap((id) => fields[id].keys) as CorrectionKey[],
       }),
     });
   }
-  function startRejecting() {
-    setExpanded(true);
-    setRejecting(true);
-  }
+  const reject = () =>
+    void run({ action: "reject", id: suggestion.id, reason });
 
-  const meta = (
-    <>
-      {tab !== "mine" && <span>@{suggestion.author}</span>}
-      {tab !== "mine" && <span aria-hidden="true">·</span>}
-      <RelativeTime date={suggestion.createdAt} />
-    </>
-  );
   return (
     <article
       className={cn(
-        "group/row transition-colors duration-150 motion-reduce:transition-none",
-        expanded ? "bg-surface" : "hover:bg-surface-subtle",
+        "transition-colors duration-150 motion-reduce:transition-none",
+        !expanded && "hover:bg-surface-subtle",
       )}
       aria-labelledby={`${bodyId}-title`}
       data-suggestion={suggestion.kind}
       data-expanded={expanded || undefined}
     >
-      <div className="flex items-start gap-3 px-4 py-3 max-sm:gap-2 max-sm:px-3.5">
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 flex-col items-stretch gap-1 rounded-md text-left outline-offset-4"
-          aria-expanded={expanded}
-          aria-controls={bodyId}
-          onClick={() => setExpanded(!expanded)}
-          data-row-toggle=""
-        >
+      <button
+        type="button"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left outline-offset-[-2px] max-sm:px-3.5"
+        aria-expanded={expanded}
+        aria-controls={bodyId}
+        onClick={onToggle}
+        data-row-toggle=""
+      >
+        <KindIcon kind={suggestion.kind} />
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex min-w-0 items-center gap-2">
-            <KindBadge kind={suggestion.kind} />
             {suggestion.fresh && tab === "mine" && (
               <span className="size-2 shrink-0 rounded-full bg-accent">
                 <span className="sr-only">Ny</span>
@@ -701,162 +749,126 @@ function SuggestionRow({
             >
               {suggestion.title}
             </span>
-            <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted max-sm:hidden">
-              {meta}
-            </span>
           </span>
           <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
             <span className="min-w-0 truncate" data-summary="">
               {summary(suggestion)}
             </span>
-          </span>
-          <span className="flex min-w-0 items-center gap-1.5 text-2xs text-muted sm:hidden">
-            {meta}
+            <span aria-hidden="true">·</span>
+            <RelativeTime date={suggestion.createdAt} className="shrink-0" />
           </span>
           {suggestion.status === "rejected" && suggestion.reason && (
             <span className="truncate text-xs text-danger">
               {suggestion.reason}
             </span>
           )}
-        </button>
-        <div className="flex shrink-0 items-center gap-1.5 pt-px">
-          {queue ? (
-            <>
-              <button
-                type="button"
-                className={cn(secondaryButton, rowAction)}
-                aria-label="Avvis"
-                onClick={startRejecting}
-                disabled={busy}
-              >
-                <X size={15} className="sm:hidden" aria-hidden="true" />
-                <span className="max-sm:hidden">Avvis</span>
-              </button>
-              <button
-                type="button"
-                className={cn(primaryButton, rowAction)}
-                aria-label="Godkjenn"
-                disabled={
-                  busy ||
-                  (suggestion.kind === "correction" && !selected.length)
-                }
-                onClick={approve}
-              >
-                <Check size={15} className="sm:hidden" aria-hidden="true" />
-                <span className="max-sm:hidden">Godkjenn</span>
-              </button>
-            </>
-          ) : (
-            <StatusBadge status={suggestion.status} />
+        </span>
+        {!queue && <StatusBadge status={suggestion.status} />}
+        <ChevronDown
+          size={16}
+          aria-hidden="true"
+          className={cn(
+            "shrink-0 text-muted transition-transform duration-280 ease-out-soft motion-reduce:transition-none",
+            expanded && "rotate-180",
           )}
-          {/* A second, pointer-only target for the row's toggle. */}
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-hidden="true"
-            className="grid size-8 place-items-center rounded-lg text-muted hover:bg-ink/[0.05] hover:text-ink max-sm:hidden"
-            onClick={() => setExpanded(!expanded)}
-          >
-            <ChevronDown
-              size={16}
-              className={cn(
-                "transition-transform duration-200 motion-reduce:transition-none",
-                expanded && "rotate-180",
-              )}
-            />
-          </button>
-        </div>
-      </div>
+        />
+      </button>
+      {/* Height animates through the grid track, so nothing is measured. */}
       <div
         id={bodyId}
-        hidden={!expanded}
-        className="space-y-4 px-4 pb-4 max-sm:px-3.5"
+        className={cn(
+          "grid transition-[grid-template-rows,opacity,visibility] duration-280 ease-out-soft motion-reduce:transition-none",
+          expanded
+            ? "visible grid-rows-[1fr] opacity-100"
+            : "invisible grid-rows-[0fr] opacity-0",
+        )}
+        inert={!expanded}
+        data-row-body=""
       >
-        {expanded && (
-          <>
-            {suggestion.kind === "project" && (
-              <ProjectBody
-                project={suggestion.data.project}
-                editing={queue && editing}
-                overrides={overrides}
-                onChange={setOverrides}
-              />
-            )}
-            {suggestion.kind === "correction" && (
-              <CorrectionBody
-                suggestion={suggestion}
-                queue={queue}
-                selected={selected}
-                onSelect={setSelected}
-              />
-            )}
-            {suggestion.kind === "update" && (
-              <TipBody
-                suggestion={suggestion}
-                queue={queue}
-                editing={queue && editing}
-                overrides={overrides}
-                onChange={setOverrides}
-              />
-            )}
-            {suggestion.note && (
-              <p className="flex gap-2 rounded-lg bg-surface-subtle px-3 py-2 text-ui leading-relaxed whitespace-pre-wrap wrap-anywhere text-ink-soft">
-                <MessageSquareText
-                  size={14}
-                  className="mt-1 shrink-0 text-muted"
-                  aria-label="Merknad"
+        <div className="min-h-0 overflow-hidden">
+          {mounted && (
+            <div className="space-y-4 px-4 pb-4 pl-15 max-sm:px-3.5">
+              {suggestion.kind === "project" && (
+                <ProjectBody
+                  project={suggestion.data.project}
+                  editing={queue && editing}
+                  overrides={overrides}
+                  onChange={setOverrides}
                 />
-                {suggestion.note}
-              </p>
-            )}
-            {error && (
-              <p role="alert" className="text-ui text-danger">
-                {error}
-              </p>
-            )}
-            {queue && rejecting && (
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  ref={reasonRef}
-                  className={cn(input, "min-w-0 flex-1 basis-60")}
-                  aria-label="Begrunnelse"
-                  placeholder="Begrunnelse (valgfritt)"
-                  maxLength={300}
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter")
-                      void run({ action: "reject", id: suggestion.id, reason });
-                    if (event.key === "Escape") setRejecting(false);
-                  }}
+              )}
+              {suggestion.kind === "correction" && (
+                <CorrectionBody
+                  suggestion={suggestion}
+                  queue={queue}
+                  excluded={excluded}
+                  onExclude={(field, out) =>
+                    setExcluded((current) =>
+                      out
+                        ? [...current, field]
+                        : current.filter((item) => item !== field),
+                    )
+                  }
                 />
-                <div className="ml-auto flex gap-2">
-                  <button
-                    type="button"
-                    className={cn(secondaryButton, "min-h-9 rounded-lg px-3 text-ui")}
-                    onClick={() => setRejecting(false)}
-                  >
-                    Avbryt
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(dangerButton, "min-h-9 rounded-lg px-3 text-ui")}
-                    disabled={busy}
-                    onClick={() =>
-                      void run({ action: "reject", id: suggestion.id, reason })
-                    }
-                  >
-                    Avvis forslag
-                  </button>
+              )}
+              {suggestion.kind === "update" && (
+                <TipBody
+                  suggestion={suggestion}
+                  queue={queue}
+                  editing={queue && editing}
+                  overrides={overrides}
+                  onChange={setOverrides}
+                />
+              )}
+              {suggestion.note && (
+                <Note author={suggestion.author} note={suggestion.note} />
+              )}
+              {error && (
+                <p role="alert" className="text-ui text-danger">
+                  {error}
+                </p>
+              )}
+              {queue && rejecting && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    ref={reasonRef}
+                    className={cn(input, "min-w-0 flex-1 basis-60")}
+                    aria-label="Begrunnelse"
+                    placeholder="Begrunnelse (valgfritt)"
+                    maxLength={300}
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") reject();
+                      if (event.key === "Escape") setRejecting(false);
+                    }}
+                  />
+                  <div className="ml-auto flex gap-2">
+                    <button
+                      type="button"
+                      className={cn(secondaryButton, "min-h-9 rounded-lg px-3 text-ui")}
+                      onClick={() => setRejecting(false)}
+                    >
+                      Avbryt
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(dangerButton, "min-h-9 rounded-lg px-3 text-ui")}
+                      disabled={busy}
+                      onClick={reject}
+                    >
+                      Avvis forslag
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-            {((queue && suggestion.kind !== "correction") || linked) && (
-              <div className="-mb-1 flex items-center gap-4">
+              )}
+              <div className="flex min-h-9 items-center gap-3 border-t border-border pt-3">
+                {tab !== "mine" && (
+                  <span className="text-xs text-muted">@{suggestion.author}</span>
+                )}
                 {queue && suggestion.kind !== "correction" && (
                   <button
                     type="button"
-                    className={cn(textButton, "-ml-2 min-h-8 text-ui")}
+                    className={cn(textButton, "min-h-8 px-1.5 text-ui")}
                     aria-pressed={editing}
                     onClick={() => setEditing(!editing)}
                   >
@@ -867,16 +879,51 @@ function SuggestionRow({
                 {linked && (
                   <Link
                     href={projectHref(suggestion.projectId!)}
-                    className="ml-auto inline-flex min-h-8 items-center gap-1 text-ui font-medium text-accent hover:underline hover:underline-offset-4"
+                    className="inline-flex min-h-8 items-center gap-1 text-ui font-medium text-accent hover:underline hover:underline-offset-4"
                   >
                     Åpne prosjekt
                     <ArrowRight size={14} aria-hidden="true" />
                   </Link>
                 )}
+                {queue && (
+                  <div className="ml-auto flex items-center gap-2">
+                    <button
+                      type="button"
+                      className={cn(
+                        iconAction,
+                        "border-danger/35 bg-surface text-danger hover:border-danger hover:bg-danger-soft",
+                        rejecting && "border-danger bg-danger-soft",
+                      )}
+                      aria-label="Avvis"
+                      aria-pressed={rejecting}
+                      data-tooltip="Avvis"
+                      disabled={busy}
+                      onClick={() => setRejecting(!rejecting)}
+                    >
+                      <X size={17} strokeWidth={2.25} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        iconAction,
+                        "border-status-completed bg-status-completed text-white hover:border-status-completed-ink hover:bg-status-completed-ink",
+                      )}
+                      aria-label="Godkjenn"
+                      data-tooltip="Godkjenn"
+                      disabled={
+                        busy ||
+                        (suggestion.kind === "correction" && !included.length)
+                      }
+                      onClick={approve}
+                    >
+                      <Check size={17} strokeWidth={2.5} aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-          </>
-        )}
+            </div>
+          )}
+        </div>
       </div>
     </article>
   );
@@ -912,6 +959,8 @@ export default function SuggestionList({
   const [lists, setLists] = useState(initial);
   const [tab, setTab] = useState<Tab>(moderator ? "queue" : "mine");
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  // One row open at a time.
+  const [openId, setOpenId] = useState<string | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
   useEffect(() => {
     if (!toast) return;
@@ -984,7 +1033,10 @@ export default function SuggestionList({
                   "aria-pressed:border-ink aria-pressed:text-ink",
                 )}
                 aria-pressed={tab === id}
-                onClick={() => setTab(id)}
+                onClick={() => {
+                  setTab(id);
+                  setOpenId(null);
+                }}
               >
                 {label}
                 {count !== undefined && (
@@ -1008,6 +1060,10 @@ export default function SuggestionList({
                   <SuggestionRow
                     suggestion={suggestion}
                     tab={tab}
+                    expanded={openId === suggestion.id}
+                    onToggle={() =>
+                      setOpenId(openId === suggestion.id ? null : suggestion.id)
+                    }
                     onReview={review}
                   />
                 </li>

@@ -318,38 +318,63 @@ test("members suggest corrections and tips; moderators review a diff, approve, a
   const correction = review
     .locator('article[data-suggestion="correction"]')
     .filter({ hasText: project.title });
-  // Rows start collapsed: one line, then a summary.
-  await expect(correction).toContainText(`@${person.username}`);
-  await expect(correction.locator("[data-summary]")).toHaveText(
-    "3 felt endret · Beskrivelse, Status, Byggherre",
-  );
-  await expect(correction.locator('[data-field="developer"]')).toBeHidden();
+  // Rows start collapsed: the project, then the change count and date, and
+  // no actions until opened.
+  await expect(correction.locator("[data-summary]")).toHaveText("3 endringer");
+  await expect(correction.locator('[data-field="developer"]')).toHaveCount(0);
+  await expect(
+    correction.getByRole("button", { name: "Godkjenn", exact: true }),
+  ).toHaveCount(0);
   await correction.locator("[data-row-toggle]").click();
-  await expect(correction).toContainText("Se kunngjøringen.");
-  // Only the added sentence is marked; the two unchanged paragraphs fold.
+  await expect(correction).toContainText(`@${person.username}`);
+  await expect(correction.getByRole("figure")).toContainText("Se kunngjøringen.");
+  // The whole text shows; only the added sentence is marked, with a +.
   const description = correction.locator("[data-text-diff]");
   await expect(description.locator("ins")).toHaveText(
     "Byggestart er satt til mars.",
   );
   await expect(description.locator("del")).toHaveCount(0);
-  await expect(
-    description.getByRole("button", { name: "… 2 uendrede avsnitt" }),
-  ).toBeVisible();
+  await expect(description.locator('[data-marker="+"]')).toHaveCount(1);
+  await expect(description.locator('[data-marker="−"]')).toHaveCount(0);
+  await expect(description.locator("p")).toHaveCount(3);
   const developer = correction.locator('[data-field="developer"]');
   await expect(developer.locator("del")).toHaveText("Statens vegvesen");
   await expect(developer.locator("ins")).toHaveText("Nye Veier");
-  // Edit before approving: leave the developer out.
-  await developer.getByRole("checkbox").uncheck();
-  await correction.getByRole("button", { name: "Godkjenn", exact: true }).click();
+
+  // Opening another row closes this one.
+  const tip = review
+    .locator('article[data-suggestion="update"]')
+    .filter({ hasText: project.title });
+  await tip.locator("[data-row-toggle]").click();
+  await expect(tip).toHaveAttribute("data-expanded", "true");
+  await expect(correction).not.toHaveAttribute("data-expanded", "true");
+  await correction.locator("[data-row-toggle]").click();
+  await expect(tip).not.toHaveAttribute("data-expanded", "true");
+
+  // Leave fields out from their menu; with none left, nothing to approve.
+  const approve = correction.getByRole("button", { name: "Godkjenn", exact: true });
+  const exclude = async (label: string) => {
+    await correction.getByRole("button", { name: `Valg for ${label}` }).click();
+    await review
+      .getByRole("menuitem", { name: "Ikke ta med denne endringen" })
+      .click();
+  };
+  for (const label of ["byggherre", "status", "beskrivelse"]) await exclude(label);
+  await expect(developer).toHaveAttribute("data-excluded", "true");
+  await expect(approve).toBeDisabled();
+  for (const field of ["status", "description"])
+    await correction
+      .locator(`[data-field="${field}"]`)
+      .getByRole("button", { name: "Ta med igjen" })
+      .click();
+  await expect(approve).toBeEnabled();
+  await approve.click();
   await expect(correction).toHaveCount(0);
   let current = await readProject(request, project.id);
   expect(current.status).toBe("construction");
   expect(current.developer).toBe("Statens vegvesen");
   expect(current.description).toContain("Byggestart er satt til mars.");
 
-  const tip = review
-    .locator('article[data-suggestion="update"]')
-    .filter({ hasText: project.title });
   await expect(tip.locator("[data-summary]")).toHaveText(
     "Reguleringsplanen er vedtatt.",
   );
@@ -466,8 +491,8 @@ test("members suggest new projects; moderators edit and publish them", async ({
   const card = review
     .locator('article[data-suggestion="project"]')
     .filter({ hasText: title });
-  // Collapsed: category, place and status only; details behind the toggle.
-  await expect(card.locator("[data-summary]")).toContainText("Oslo");
+  // Collapsed: the category and date only; details behind the toggle.
+  await expect(card.locator("[data-summary]")).toHaveText("Samferdsel");
   await expect(card).not.toContainText("En ny bru over fjorden.");
   await card.locator("[data-row-toggle]").click();
   await expect(card).toContainText("En ny bru over fjorden.");

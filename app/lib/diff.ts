@@ -156,19 +156,6 @@ export function diffParagraphs(a: string, b: string): ParagraphDiff[] {
   return out;
 }
 
-/** Words added and removed, for a one-line summary. */
-export function diffStats(parts: ParagraphDiff[]) {
-  let added = 0;
-  let removed = 0;
-  const words = (text: string) => text.match(/[^\s]+/g)?.length ?? 0;
-  for (const paragraph of parts)
-    if (paragraph.type === "change")
-      for (const part of paragraph.parts)
-        if (part.type === "add") added += words(part.text);
-        else if (part.type === "remove") removed += words(part.text);
-  return { added, removed };
-}
-
 type Shape = { geometry: [number, number][]; geometryType: "area" | "line" };
 
 /** Great-circle distance in metres. */

@@ -2,7 +2,6 @@ import { expect, test } from "@playwright/test";
 import {
   diffParagraphs,
   diffSequences,
-  diffStats,
   diffWords,
   type DiffPart,
 } from "../app/lib/diff";
@@ -82,7 +81,6 @@ test("paragraphs: unchanged paragraphs stay whole, edits are word diffs", () => 
     type: "change",
     parts: [{ type: "add", text: "Nytt avsnitt." }],
   });
-  expect(diffStats(diff)).toEqual({ added: 5, removed: 1 });
 });
 
 test("paragraphs: removed paragraphs and Windows line breaks", () => {
