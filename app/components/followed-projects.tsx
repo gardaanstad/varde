@@ -69,7 +69,7 @@ function FollowedRow({
   return (
     <li
       className={cn(
-        "relative isolate flex items-center gap-3 border-b border-border py-2.5",
+        "group/row relative isolate flex items-center gap-3 border-b border-border py-2.5",
         // The hover wash bleeds past the text edge, like the project list.
         "before:absolute before:inset-x-[-10px] before:inset-y-0.5 before:-z-1 before:rounded-lg before:transition-colors before:duration-120",
         "hover:before:bg-surface-muted/65 motion-reduce:before:transition-none",
@@ -150,6 +150,10 @@ function FollowedRow({
         className={cn(
           iconButton,
           "relative z-1 -mr-2 size-10 shrink-0 rounded-lg text-muted hover:text-ink",
+          // Mouse and trackpad: shown on hover or keyboard focus in the row.
+          // Touch has no hover, so it stays visible there, muted.
+          "transition-opacity duration-120 motion-reduce:transition-none",
+          "pointer-fine:opacity-0 pointer-fine:group-hover/row:opacity-100 pointer-fine:group-focus-within/row:opacity-100",
         )}
         aria-label={`Slutt å følge ${project.title}`}
         data-tooltip="Slutt å følge"

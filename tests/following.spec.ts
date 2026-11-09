@@ -222,9 +222,20 @@ test("unfollowing from a row can be undone, and following from a project page", 
     .getByRole("button", { name: /^Følger/ })
     .click();
   const row = page.locator(`[data-followed-project="${listed.id}"]`);
-  await row
-    .getByRole("button", { name: `Slutt å følge ${listed.title}` })
-    .click();
+  const unfollow = row.getByRole("button", {
+    name: `Slutt å følge ${listed.title}`,
+  });
+  // With a mouse, unfollow shows on hover or keyboard focus in the row.
+  await expect(unfollow).toHaveCSS("opacity", "0");
+  await row.getByRole("button", { name: listed.title, exact: true }).focus();
+  await expect(unfollow).toHaveCSS("opacity", "1");
+  await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+  await page.mouse.move(0, 0);
+  await expect(unfollow).toHaveCSS("opacity", "0");
+  await row.hover();
+  await expect(unfollow).toHaveCSS("opacity", "1");
+  await page.screenshot({ path: "test-results/following-hover-1280.png" });
+  await unfollow.click();
   await expect(row).toHaveCount(0);
   await expect(page.getByText("Følger ingen prosjekter")).toBeVisible();
   await page.getByRole("button", { name: "Angre" }).click();
@@ -239,4 +250,28 @@ test("unfollowing from a row can be undone, and following from a project page", 
   await expect(page.getByText(`Følger ${other.title}`)).toBeVisible();
   await page.getByRole("button", { name: "Angre" }).click();
   await expect(followButton).toHaveAttribute("aria-pressed", "false");
+});
+
+test("on touch screens the unfollow button stays visible", async ({
+  browser,
+  request,
+}) => {
+  const listed = seedProjects[13];
+  const reader = await member({ username: uniqueName() });
+  await follow(request, reader, listed.id);
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  await signIn(context, reader);
+  const page = await context.newPage();
+  await page.goto("/");
+  await page.getByRole("button", { name: "Følger", exact: true }).tap();
+  const unfollow = page
+    .locator(`[data-followed-project="${listed.id}"]`)
+    .getByRole("button", { name: `Slutt å følge ${listed.title}` });
+  await expect(unfollow).toBeVisible();
+  await expect(unfollow).toHaveCSS("opacity", "1");
+  await context.close();
 });

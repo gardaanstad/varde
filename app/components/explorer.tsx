@@ -1366,7 +1366,7 @@ export default function Explorer({
             <button
               className={cn(
                 navRow,
-                followingView && "bg-accent-soft text-accent-strong",
+                followingView && "bg-ink/[0.06] text-ink [&>svg]:text-ink",
               )}
               aria-pressed={followingView}
               onClick={() => showFollowing()}
