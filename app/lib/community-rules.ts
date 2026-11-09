@@ -70,9 +70,9 @@ export const mutationSchema = z.discriminatedUnion("action", [
     parentId: id.optional(),
   }),
   z.object({
-    action: z.literal("bookmark"),
+    action: z.literal("follow"),
     projectId: id,
-    saved: z.boolean(),
+    following: z.boolean(),
   }),
   z.object({
     action: z.literal("vote"),

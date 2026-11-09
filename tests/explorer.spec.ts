@@ -345,7 +345,7 @@ for (const viewport of [
   });
 }
 
-test("saved projects keep their collection and full reading height", async ({
+test("followed projects keep their collection and full reading height", async ({
   page,
   context,
   request,
@@ -360,7 +360,7 @@ test("saved projects keep their collection and full reading height", async ({
       await mutation(
         request,
         "/api/community",
-        { action: "bookmark", projectId: project.id, saved: true },
+        { action: "follow", projectId: project.id, following: true },
         person,
       )
     ).ok(),
@@ -369,10 +369,10 @@ test("saved projects keep their collection and full reading height", async ({
   // Desktop markup comes first here, then the mobile drawer replaces it.
   await expect(page.locator("[data-explorer-drawer]")).toBeVisible();
   await page.getByRole("button", { name: "Din profil", exact: true }).click();
-  await page.getByRole("button", { name: /^Lagrede prosjekter/ }).click();
+  await page.getByRole("button", { name: /^Følger/ }).click();
   await expectDrawerHeight(page, 1);
   await page
-    .getByRole("region", { name: "Prosjektliste", exact: true })
+    .getByRole("region", { name: "Følger", exact: true })
     .getByRole("button", { name: new RegExp(project.title) })
     .first()
     .click();
@@ -381,12 +381,10 @@ test("saved projects keep their collection and full reading height", async ({
     .getByRole("button", { name: "Lukk prosjekt", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Lagrede prosjekter", exact: true }),
+    page.getByRole("heading", { name: "Følger", exact: true }),
   ).toBeVisible();
   await expectDrawerHeight(page, 1);
-  await page
-    .getByRole("button", { name: "Tilbake til profilen", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Tilbake", exact: true }).click();
   await expect(page.locator("[data-account-panel]")).toBeVisible();
 });
 

@@ -15,7 +15,7 @@ import type { Comment, Project } from "../lib/data";
 type CommunityData = {
   projects: Project[];
   comments: Comment[];
-  saved: string[];
+  following: string[];
   votes: Record<string, number>;
 };
 type CommunityContext = CommunityData & {
@@ -32,7 +32,7 @@ function merge(current: CommunityData, next: CommunityData): CommunityData {
   return {
     projects: reuse(current.projects, next.projects),
     comments: reuse(current.comments, next.comments),
-    saved: reuse(current.saved, next.saved),
+    following: reuse(current.following, next.following),
     votes: reuse(current.votes, next.votes),
   };
 }
@@ -103,7 +103,7 @@ export function CommunityProvider({
     <Context.Provider
       value={{
         ...state.data,
-        saved: personal ? state.data.saved : [],
+        following: personal ? state.data.following : [],
         votes: personal ? state.data.votes : {},
         mutate,
         refresh,

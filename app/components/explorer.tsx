@@ -16,8 +16,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   ArrowDownUp,
-  ArrowLeft,
-  Bookmark,
+  Bell,
   RotateCcw,
   Map as MapIcon,
   ListFilter,
@@ -61,6 +60,12 @@ import ProjectEditor from "./project-editor";
 import ProjectPost from "./project-post";
 import ProjectCard from "./project-card";
 import PanelResizer from "./panel-resizer";
+import FollowedProjects, {
+  type FollowedTarget,
+  UnreadBadge,
+} from "./followed-projects";
+import { useFollowing } from "./following-provider";
+import { unreadCount, unreadProjects } from "../lib/following";
 import EmptyState from "./empty-state";
 import Toast, { type ToastMessage } from "./toast";
 import {
@@ -278,8 +283,11 @@ export default memo(function Explorer({
   const drawerHandleRef = useRef<HTMLButtonElement>(null);
   const projectTriggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const { user, pending: authPending, canModerate, requireAccount } = useAuth();
-  const { projects, saved, comments, mutate } = useCommunity();
-  const pendingBookmarks = useRef(new Set<string>());
+  const { projects, following, comments, mutate } = useCommunity();
+  const { following: followed, markSeen } = useFollowing();
+  // The badge counts projects with something new, as the Følger rows do.
+  const unread = unreadProjects(followed);
+  const pendingFollows = useRef(new Set<string>());
   const [initial] = useState(() =>
     parseExploreState(new URLSearchParams(initialSearch)),
   );
@@ -288,11 +296,14 @@ export default memo(function Explorer({
   const [status, setStatus] = useState<string[]>(initial.status);
   const [category, setCategory] = useState<string[]>(initial.category);
   const [sort, setSort] = useState(initial.sort);
-  const [savedOnly, setSavedOnly] = useState(false);
+  const [followingOnly, setFollowingOnly] = useState(false);
+  // Where the followed projects were opened from, to return there.
+  const followingFrom = useRef<"profile" | "explorer">("explorer");
   const [selectedId, setSelectedId] = useState<string | null>(
     initialProjectId || null,
   );
-  const [postUpdateId, setPostUpdateId] = useState<string | undefined>();
+  // Where in the project to open: an update, or a comment in the discussion.
+  const [postTarget, setPostTarget] = useState<FollowedTarget>({});
   const [postId, setPostId] = useState<string | null>(initialProjectId || null);
   // Desktop: the open project fills the window, over the map.
   const [fullPage, setFullPage] = useState(
@@ -347,11 +358,11 @@ export default memo(function Explorer({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const openSearch = useCallback(() => {
-    if (postId || profileName || modal || savedOnly) return;
+    if (postId || profileName || modal || followingOnly) return;
     // Focus during the tap so mobile browsers also open the keyboard.
     if (isMobile) flushSync(() => setMobileSearchOpen(true));
     searchRef.current?.focus({ preventScroll: true });
-  }, [isMobile, modal, postId, profileName, savedOnly]);
+  }, [isMobile, modal, postId, profileName, followingOnly]);
 
   function closeMobileSearch() {
     flushSync(() => {
@@ -514,7 +525,7 @@ export default memo(function Explorer({
     }
     return groups;
   }, [comments]);
-  const savedIds = useMemo(() => new Set(saved), [saved]);
+  const followingIds = useMemo(() => new Set(following), [following]);
 
   // Before the map reports its view (and on the server) the list covers Norway.
   const listBounds = frozenBounds ?? viewBounds;
@@ -565,14 +576,7 @@ export default memo(function Explorer({
     [compareProjects, listBounds, searchHits],
   );
   const outsideHits = needle ? searchHits.length - searched.length : 0;
-  const savedProjects = useMemo(
-    () =>
-      projects
-        .filter((project) => savedIds.has(project.id))
-        .sort(compareProjects),
-    [compareProjects, projects, savedIds],
-  );
-  const listedProjects = savedOnly ? savedProjects : searched;
+  const listedProjects = searched;
 
   // Mobile shows the project its drawer holds, also while that drawer closes.
   // Desktop: the project layer stays while it slides back out.
@@ -660,7 +664,7 @@ export default memo(function Explorer({
       "",
       withSearch(projectHref(id), false),
     );
-    setPostUpdateId(undefined);
+    setPostTarget({});
     setPostId(id);
     setSelectedId(id);
     enterPostView(id);
@@ -708,8 +712,8 @@ export default memo(function Explorer({
     };
   }, [isMobile]);
 
-  function openPost(id: string, updateId?: string) {
-    setPostUpdateId(updateId);
+  function openPost(id: string, target: FollowedTarget = {}) {
+    setPostTarget(target);
     projectTriggerRef.current =
       document.activeElement instanceof HTMLElement ||
       document.activeElement instanceof SVGElement
@@ -785,27 +789,36 @@ export default memo(function Explorer({
     setSelectedId(project.id);
   }
 
-  async function toggleSaved(id: string) {
-    if (pendingBookmarks.current.has(id)) return;
+  // Opening a followed project reads it, wherever it was opened from, and so
+  // does activity that arrives while it stays open.
+  const openUnread = followed?.projects.find(
+    (item) => item.projectId === postId && unreadCount(item) > 0,
+  );
+  useEffect(() => {
+    if (openUnread) void markSeen(openUnread.projectId);
+  }, [openUnread, markSeen]);
+
+  async function toggleFollow(id: string) {
+    if (pendingFollows.current.has(id)) return;
     if (!user?.username) {
       try {
-        sessionStorage.setItem("varde-save-after-login", id);
+        sessionStorage.setItem("varde-follow-after-login", id);
       } catch {
         /* Sign-in still works without browser storage. */
       }
       requireAccount();
       return;
     }
-    const exists = savedIds.has(id);
-    pendingBookmarks.current.add(id);
+    const exists = followingIds.has(id);
+    pendingFollows.current.add(id);
     try {
-      await mutate({ action: "bookmark", projectId: id, saved: !exists });
+      await mutate({ action: "follow", projectId: id, following: !exists });
       const title =
         projects.find((project) => project.id === id)?.title || "Prosjektet";
       setToast({
-        message: exists ? `${title} fjernet` : `${title} lagret`,
+        message: exists ? `Følger ikke ${title}` : `Følger ${title}`,
         undo: () => {
-          void mutate({ action: "bookmark", projectId: id, saved: exists })
+          void mutate({ action: "follow", projectId: id, following: exists })
             .then(() => setToast(null))
             .catch((error) =>
               notify(errorMessage(error, "Kunne ikke angre endringen.")),
@@ -813,9 +826,9 @@ export default memo(function Explorer({
         },
       });
     } catch (error) {
-      notify(errorMessage(error, "Kunne ikke lagre prosjektet."));
+      notify(errorMessage(error, "Kunne ikke følge prosjektet."));
     } finally {
-      pendingBookmarks.current.delete(id);
+      pendingFollows.current.delete(id);
     }
   }
 
@@ -823,16 +836,16 @@ export default memo(function Explorer({
     if (!user?.username) return;
     let id: string | null = null;
     try {
-      id = sessionStorage.getItem("varde-save-after-login");
-      sessionStorage.removeItem("varde-save-after-login");
+      id = sessionStorage.getItem("varde-follow-after-login");
+      sessionStorage.removeItem("varde-follow-after-login");
     } catch {
       return;
     }
     if (!id) return;
-    void mutate({ action: "bookmark", projectId: id, saved: true }).catch(
-      (error) => notify(errorMessage(error, "Kunne ikke lagre prosjektet.")),
+    void mutate({ action: "follow", projectId: id, following: true }).catch(
+      (error) => notify(errorMessage(error, "Kunne ikke følge prosjektet.")),
     );
-    // A saved-project intent is consumed once when the account is ready.
+    // A follow intent is consumed once when the account is ready.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?.username]);
 
@@ -847,11 +860,10 @@ export default memo(function Explorer({
 
   function showList() {
     setModal(null);
-    setSavedOnly(false);
+    setFollowingOnly(false);
     setSnapPoint(1);
   }
 
-  /** Desktop: the saved collection replaces the results, and toggles back. */
   const feedback = toast && (
     <Toast toast={toast} mobile={isMobile} onClose={() => setToast(null)} />
   );
@@ -1110,8 +1122,8 @@ export default memo(function Explorer({
     >
       <AccountPanel
         onBack={isMobile ? backToExplorer : undefined}
-        onSaved={openSavedFromProfile}
-        savedCount={saved.length}
+        onFollowing={openFollowingFromProfile}
+        followingCount={following.length}
         next={postId ? projectHref(postId) : "/"}
       />
     </div>
@@ -1144,7 +1156,7 @@ export default memo(function Explorer({
     })),
   ];
   // Not a filter, so not a chip: a quiet action beside the count.
-  const showOutside = !savedOnly && outsideHits > 0 && (
+  const showOutside = outsideHits > 0 && (
     <button
       type="button"
       className="inline-flex min-h-7 items-center gap-1 text-xs font-medium whitespace-nowrap text-accent underline-offset-3 hover:text-accent-strong hover:underline"
@@ -1155,11 +1167,7 @@ export default memo(function Explorer({
       {`+${outsideHits} utenfor kartet`}
     </button>
   );
-  const emptyActions = savedOnly ? (
-    <p className="max-w-85 text-ui leading-[1.6]">
-      Lagre et prosjekt for å finne det her.
-    </p>
-  ) : (
+  const emptyActions = (
     <div className="flex flex-wrap justify-center gap-2">
       {outsideHits > 0 ? (
         <button className={secondaryAction} onClick={showSearchHits}>
@@ -1206,27 +1214,21 @@ export default memo(function Explorer({
       aria-label="Prosjektliste"
     >
       <div className="px-5 pb-8 max-md:px-4.5 max-md:pt-0 max-md:pb-6">
-        {!savedOnly && (isMobile ? mobileFilters : desktopFilters)}
+        {followingOnly ? (
+          <FollowedProjects
+            projects={projects}
+            followingIds={following}
+            following={followed}
+            onOpen={openPost}
+            onUnfollow={(id) => void toggleFollow(id)}
+            onBack={leaveFollowing}
+          />
+        ) : (
+          <>
+        {isMobile ? mobileFilters : desktopFilters}
         <div className="sticky top-0 z-10 flex min-h-12 items-center justify-between gap-3 border-b border-border bg-surface py-1.5 max-md:static max-md:bg-transparent">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-            {savedOnly && (
-              <button
-                type="button"
-                className={cn(compactIconAction, "-ml-3 -mr-2 text-muted")}
-                aria-label={isMobile ? "Tilbake til profilen" : "Tilbake"}
-                onClick={isMobile ? backToProfile : () => setSavedOnly(false)}
-              >
-                <ArrowLeft size={20} />
-              </button>
-            )}
-            <h1
-              className={cn(
-                "text-lg leading-normal font-[650] tracking-[-0.4px]",
-                !savedOnly && "sr-only",
-              )}
-            >
-              {savedOnly ? "Lagrede prosjekter" : "Prosjekter"}
-            </h1>
+            <h1 className="sr-only">Prosjekter</h1>
             <span
               className="text-ui whitespace-nowrap text-muted tabular-nums"
               role="status"
@@ -1236,7 +1238,7 @@ export default memo(function Explorer({
               {listedProjects.length === 1 ? "prosjekt" : "prosjekter"}
             </span>
             {showOutside}
-            {!savedOnly && activeFilters.length > 0 && (
+            {activeFilters.length > 0 && (
               <ul
                 className="flex flex-wrap items-center gap-1.5"
                 aria-label="Aktive filtre"
@@ -1268,27 +1270,15 @@ export default memo(function Explorer({
               </ul>
             )}
           </div>
-          {(isMobile || savedOnly) && sortFilter}
+          {isMobile && sortFilter}
         </div>
         {listedProjects.length === 0 ? (
           <EmptyState
             level={2}
             icon={
-              savedOnly ? (
-                <Bookmark size={22} />
-              ) : filtersChanged ? (
-                <Search size={22} />
-              ) : (
-                <MapPin size={22} />
-              )
+              filtersChanged ? <Search size={22} /> : <MapPin size={22} />
             }
-            title={
-              savedOnly
-                ? "Ingen lagrede prosjekter"
-                : filtersChanged
-                  ? "Ingen treff"
-                  : "Ingen prosjekter her"
-            }
+            title={filtersChanged ? "Ingen treff" : "Ingen prosjekter her"}
           >
             {emptyActions}
           </EmptyState>
@@ -1305,6 +1295,8 @@ export default memo(function Explorer({
             ))}
           </ol>
         )}
+          </>
+        )}
       </div>
     </section>
   );
@@ -1313,7 +1305,8 @@ export default memo(function Explorer({
     <ProjectPost
       key={post.id}
       project={post}
-      initialUpdateId={postUpdateId}
+      initialUpdateId={postTarget.updateId}
+      initialCommentId={postTarget.commentId}
       closeOnEscape={!isMobile && !panelClosing}
       onClose={() => {
         if (!panelClosing) closePost();
@@ -1325,8 +1318,8 @@ export default memo(function Explorer({
         isMobile ? undefined : fullPage ? minimizePost : maximizePost
       }
       feedback={isMobile ? feedback : undefined}
-      saved={savedIds.has(post.id)}
-      onSave={() => toggleSaved(post.id)}
+      following={followingIds.has(post.id)}
+      onFollow={() => toggleFollow(post.id)}
       comments={commentsByProject.get(post.id) ?? noComments}
       onNotify={notify}
       onMap={isMobile ? () => showPostOnMap(post) : undefined}
@@ -1349,17 +1342,23 @@ export default memo(function Explorer({
     setModal("profile");
     setSnapPoint(1);
   }
-  /** Mobile reaches saved projects through the profile, and returns there. */
-  /** Saved projects live under the profile, on desktop as on mobile. */
-  function openSavedFromProfile() {
+  /** The header bell toggles the followed projects in place of the list. */
+  function showFollowing() {
+    if (!requireAccount()) return;
+    followingFrom.current = "explorer";
     if (postId) closePost();
     setModal(null);
-    setSavedOnly(true);
+    setFollowingOnly(true);
     setSnapPoint(1);
   }
-  function backToProfile() {
-    setSavedOnly(false);
-    openProfile();
+  /** The profile also links to them, and they lead back there. */
+  function openFollowingFromProfile() {
+    showFollowing();
+    followingFrom.current = "profile";
+  }
+  function leaveFollowing() {
+    setFollowingOnly(false);
+    if (followingFrom.current === "profile") openProfile();
   }
   function backToExplorer() {
     if (postId) closePost();
@@ -1407,6 +1406,23 @@ export default memo(function Explorer({
       )}
     </button>
   );
+  const followingButton = user?.username && (
+    <button
+      className={cn(compactIconAction, "relative text-muted hover:text-ink")}
+      aria-label={unread > 0 ? `Følger, ${unread} med nytt` : "Følger"}
+      aria-pressed={followingOnly}
+      data-tooltip={isMobile ? undefined : "Følger"}
+      onClick={() => (followingOnly ? leaveFollowing() : showFollowing())}
+    >
+      <Bell size={20} fill={followingOnly ? "currentColor" : "none"} />
+      {unread > 0 && (
+        <UnreadBadge
+          count={unread}
+          className="pointer-events-none absolute top-1 right-0.5 ring-2 ring-surface"
+        />
+      )}
+    </button>
+  );
   const drawerBody = (
     <>
       {modal === "profile" && (
@@ -1436,6 +1452,7 @@ export default memo(function Explorer({
               >
                 <Plus size={21} />
               </button>
+              {followingButton}
               {profileButton}
             </div>
           </div>
@@ -1539,6 +1556,7 @@ export default memo(function Explorer({
               >
                 <Plus size={20} />
               </button>
+              {followingButton}
               {profileButton}
             </nav>
           </header>
@@ -1617,7 +1635,7 @@ export default memo(function Explorer({
             highlightedId={hoveredId}
             onSelect={(id) => (id ? openPost(id) : setSelectedId(postId))}
           />
-          {isMobile && matching.length === 0 && !savedOnly && (
+          {isMobile && matching.length === 0 && !followingOnly && (
             <div
               className={cn(
                 "absolute top-[45%] left-1/2 z-[650] flex min-w-60 max-w-[calc(100%-90px)] -translate-1/2 flex-col items-center gap-3 rounded-2xl border border-border bg-surface/95 p-7 shadow-[0_10px_40px_rgb(20_28_24/0.12)]",
@@ -1737,7 +1755,7 @@ export default memo(function Explorer({
               </DrawerTitle>
               <DrawerDescription className="sr-only">
                 Dra eller trykk på håndtaket for å endre høyden. Utforsk kart,
-                prosjekter og lagrede prosjekter.
+                prosjekter og prosjektene du følger.
               </DrawerDescription>
               {drawerReady && drawerBody}
             </DrawerContent>
@@ -1812,7 +1830,7 @@ export default memo(function Explorer({
             setQuery("");
             setStatus([]);
             setCategory([]);
-            setSavedOnly(false);
+            setFollowingOnly(false);
             setEditorOpen(false);
             notify("Prosjektet er lagt til");
             openPost(project.id);

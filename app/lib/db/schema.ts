@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   blob,
   index,
@@ -111,7 +112,11 @@ export const comment = sqliteTable(
     index("comment_user_idx").on(t.userId),
   ],
 );
-export const bookmark = sqliteTable(
+/**
+ * Projects a user follows. The table keeps its original name from when
+ * following was called saving, so existing rows carry over unchanged.
+ */
+export const follow = sqliteTable(
   "bookmark",
   {
     userId: text("user_id")
@@ -120,8 +125,28 @@ export const bookmark = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => project.id, { onDelete: "cascade" }),
+    /**
+     * False after an explicit unfollow. The row stays so that commenting on
+     * the project later doesn't follow it again.
+     */
+    following: integer("following", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    // Always given on insert (see newFollow in server/community.ts). The
+    // database defaults only let the columns be added to old rows, which the
+    // migration then sets.
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`0`),
+    /** Activity on the project up to this time is read. */
+    seenAt: integer("seen_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`0`),
   },
-  (t) => [primaryKey({ columns: [t.userId, t.projectId] })],
+  (t) => [
+    primaryKey({ columns: [t.userId, t.projectId] }),
+    index("bookmark_project_idx").on(t.projectId),
+  ],
 );
 export const vote = sqliteTable(
   "vote",

@@ -98,12 +98,14 @@ const composerTool = cn(
 type Props = {
   project: Project;
   initialUpdateId?: string;
+  /** Opens the discussion at this comment. */
+  initialCommentId?: string;
   /** Desktop panel: Escape closes it (the mobile drawer handles its own). */
   closeOnEscape?: boolean;
   onClose: () => void;
   feedback?: ReactNode;
-  saved: boolean;
-  onSave: () => void;
+  following: boolean;
+  onFollow: () => void;
   /** Mobile: the drawer covers the map, so it offers to show the project there. */
   onMap?: () => void;
   /** Replaces closing on Escape, e.g. to step down from a full page first. */
@@ -859,14 +861,15 @@ function UpdateComposer({
 export default function ProjectPost({
   project,
   initialUpdateId,
+  initialCommentId,
   closeOnEscape = false,
   onClose,
   onEscape: escape,
   full = false,
   onToggleFull,
   feedback,
-  saved,
-  onSave,
+  following,
+  onFollow,
   onMap,
   comments,
   onNotify,
@@ -1068,8 +1071,8 @@ export default function ProjectPost({
   const actions = {
     onEdit: canModerate ? startEditing : undefined,
     copied,
-    saved,
-    onSave,
+    following,
+    onFollow,
     onShare: share,
     onMap,
   };
@@ -1166,6 +1169,7 @@ export default function ProjectPost({
                     projectId={project.id}
                     comments={comments}
                     updates={updates}
+                    initialCommentId={initialCommentId}
                     onReadUpdate={readUpdate}
                     onNotify={onNotify}
                   />

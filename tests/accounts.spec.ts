@@ -5,7 +5,7 @@ import { safeReturnPath, usernameSchema } from "../app/lib/account-rules";
 import { seedProjects } from "../app/lib/data";
 import {
   account,
-  bookmark,
+  follow,
   comment,
   session,
   user,
@@ -56,9 +56,9 @@ test("anonymous and forged sessions cannot perform account or community mutation
   expect(
     (
       await mutation(request, "/api/community", {
-        action: "bookmark",
+        action: "follow",
         projectId: project.id,
-        saved: true,
+        following: true,
       })
     ).status(),
   ).toBe(401);
@@ -135,7 +135,7 @@ test("onboarding and same-origin checks are enforced on the server", async ({
       await mutation(
         request,
         "/api/community",
-        { action: "bookmark", projectId: project.id, saved: true },
+        { action: "follow", projectId: project.id, following: true },
         fresh,
       )
     ).status(),
@@ -174,7 +174,7 @@ test("onboarding and same-origin checks are enforced on the server", async ({
   ).toBe(403);
 });
 
-test("comments use server identity; bookmarks and votes stay with the correct account", async ({
+test("comments use server identity; follows and votes stay with the correct account", async ({
   request,
 }) => {
   const first = await member({ username: uniqueName() });
@@ -217,7 +217,7 @@ test("comments use server identity; bookmarks and votes stay with the correct ac
   await mutation(
     request,
     "/api/community",
-    { action: "bookmark", projectId: project.id, saved: true },
+    { action: "follow", projectId: project.id, following: true },
     first,
   );
   const firstState = await (
@@ -226,8 +226,8 @@ test("comments use server identity; bookmarks and votes stay with the correct ac
   const secondState = await (
     await request.get("/api/community", { headers: cookieHeaders(second) })
   ).json();
-  expect(firstState.saved).toContain(project.id);
-  expect(secondState.saved).toEqual([]);
+  expect(firstState.following).toContain(project.id);
+  expect(secondState.following).toEqual([]);
   expect(firstState.votes).toEqual({});
   expect(secondState.votes[created.id]).toBe(1);
   expect(
@@ -235,7 +235,7 @@ test("comments use server identity; bookmarks and votes stay with the correct ac
       .votes,
   ).toBe(1);
   const anonymous = await (await request.get("/api/community")).json();
-  expect(anonymous.saved).toEqual([]);
+  expect(anonymous.following).toEqual([]);
   expect(anonymous.votes).toEqual({});
   expect(
     (
@@ -342,7 +342,7 @@ test("sign-out revokes the actual session and deletion removes account-owned rec
   await mutation(
     request,
     "/api/community",
-    { action: "bookmark", projectId: project.id, saved: true },
+    { action: "follow", projectId: project.id, following: true },
     person,
   );
   await mutation(
@@ -354,7 +354,7 @@ test("sign-out revokes the actual session and deletion removes account-owned rec
   expect(
     (await mutation(request, "/api/auth/delete-user", {}, person)).status(),
   ).toBe(200);
-  for (const table of [session, account, bookmark, vote, comment])
+  for (const table of [session, account, follow, vote, comment])
     expect(
       await db.select().from(table).where(eq(table.userId, person.id)),
     ).toHaveLength(0);
@@ -377,7 +377,7 @@ test("sign-out revokes the actual session and deletion removes account-owned rec
       await mutation(
         request,
         "/api/community",
-        { action: "bookmark", projectId: project.id, saved: true },
+        { action: "follow", projectId: project.id, following: true },
         another,
       )
     ).status(),
@@ -565,18 +565,18 @@ test("comment failures preserve the draft and successful comments persist after 
   await expect(page.getByText(message, { exact: true })).toBeVisible();
 });
 
-test("a saved-project intent survives login and profile settings update the public page", async ({
+test("a follow intent survives login and profile settings update the public page", async ({
   page,
   context,
 }) => {
   await page.goto(`/prosjekt/${project.id}`);
   await page
-    .getByRole("button", { name: "Lagre prosjekt", exact: true })
+    .getByRole("button", { name: "Følg", exact: true })
     .click();
   await expect(page).toHaveURL(/\/logg-inn\?next=/);
   expect(
     await page.evaluate(() =>
-      sessionStorage.getItem("varde-save-after-login"),
+      sessionStorage.getItem("varde-follow-after-login"),
     ),
   ).toBe(project.id);
   const person = await member({ username: uniqueName() });
@@ -585,7 +585,7 @@ test("a saved-project intent survives login and profile settings update the publ
     `/velkommen?next=${encodeURIComponent(`/prosjekt/${project.id}`)}`,
   );
   await expect(
-    page.getByRole("button", { name: "Fjern fra lagrede", exact: true }),
+    page.getByRole("button", { name: "Følger", exact: true, pressed: true }),
   ).toBeVisible();
   await page.goto(`/profil/${person.username}`);
   await page
@@ -656,9 +656,9 @@ for (const viewport of [
         return settled;
       })
       .toBe(true);
-    // Saved projects are reached through the profile at every width.
+    // Followed projects are reached through the profile at every width.
     await expect(
-      panel.getByRole("button", { name: "Lagrede prosjekter" }),
+      panel.getByRole("button", { name: /^Følger/ }),
     ).toHaveCount(1);
     await expect(page).toHaveURL(/:\d+\/(\?|$)/);
     await expect(
