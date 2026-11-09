@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  memo,
   useCallback,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -237,7 +239,11 @@ const ProjectMap = dynamic(() => import("./project-map"), {
   ),
 });
 
-export default function Explorer({
+/**
+ * Memoized: its props only change when the route does, so the layout's own
+ * re-renders (such as Next.js syncing the URL the map writes) pass it by.
+ */
+export default memo(function Explorer({
   initialProjectId,
   initialProfile,
   initialSearch = "",
@@ -288,6 +294,10 @@ export default function Explorer({
   );
   const [postUpdateId, setPostUpdateId] = useState<string | undefined>();
   const [postId, setPostId] = useState<string | null>(initialProjectId || null);
+  // Desktop: the open project fills the window, over the map.
+  const [fullPage, setFullPage] = useState(
+    Boolean(initialProjectId && initial.full),
+  );
   const [profileName, setProfileName] = useState<string | null>(
     initialProfile || null,
   );
@@ -311,8 +321,11 @@ export default function Explorer({
 
   // The map is the place filter: the list holds what its view covers.
   const mapApi = useRef<MapApi | null>(null);
-  const [mapView, setMapView] = useState<MapViewChange | null>(null);
+  // Every view lands in this ref; React only hears of it when the projects
+  // in view change, so panning about doesn't re-render the explorer.
   const mapViewRef = useRef<MapViewChange | null>(null);
+  const [viewBounds, setViewBounds] = useState<Bounds | null>(null);
+  const inViewKey = useRef("");
   // Desktop: framing an open project moves the map, but the list behind the
   // panel keeps the area it was opened from, so it returns unchanged.
   const [frozenBounds, setFrozenBounds] = useState<Bounds | null>(null);
@@ -323,9 +336,12 @@ export default function Explorer({
   // replacing the URL mid-step makes Next.js reload the page.
   const afterPop = useRef<(() => void) | null>(null);
   const steppingBack = useRef(false);
-  function stepBack() {
+  // Closing a project that was linked to directly, from its full page:
+  // one step back reaches its panel, which is then swapped for the list.
+  const backToList = useRef(false);
+  function stepBack(steps = 1) {
     steppingBack.current = true;
-    window.history.back();
+    window.history.go(-steps);
   }
   // A hovered card lights up its shape on the map.
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -345,24 +361,41 @@ export default function Explorer({
     searchTriggerRef.current?.focus({ preventScroll: true });
   }
 
-  // Filters and the map position live in the query string, for sharing and
-  // reloads. Each change replaces the entry, so history only holds pages.
-  const urlSearch = exploreSearch({
-    query,
-    status,
-    category,
-    sort,
-    view: mapView ?? initial.view,
-  });
-  const searchString = useRef(urlSearch);
-  useEffect(() => {
-    searchString.current = urlSearch;
+  // Filters, the map position and the full-page view live in the query
+  // string, for sharing and reloads. Each change replaces the entry, so
+  // history only holds pages. The map's position is written once it has
+  // rested, not after every move.
+  const urlState = useRef({ query, status, category, sort, full: fullPage });
+  const urlTimer = useRef(0);
+  /** The query string for `path`; the full-page view only on projects. */
+  const searchFor = useCallback(
+    (path: string, full = urlState.current.full) =>
+      exploreSearch({
+        ...urlState.current,
+        full: full && path.startsWith("/prosjekt/"),
+        view: mapViewRef.current ?? initial.view,
+      }),
+    [initial.view],
+  );
+  const syncUrl = useCallback(() => {
+    window.clearTimeout(urlTimer.current);
+    urlTimer.current = 0;
     // Mid-step the entry is changing; the step syncs the URL when it lands.
-    if (!steppingBack.current && window.location.search !== urlSearch)
-      replaceUrl(window.location.pathname + urlSearch);
-  }, [urlSearch]);
-  /** A path in the explorer, keeping the current filters and map position. */
-  const withSearch = (path: string) => path + searchString.current;
+    if (steppingBack.current) return;
+    const path = window.location.pathname;
+    const search = searchFor(path);
+    if (window.location.search !== search) replaceUrl(path + search);
+  }, [searchFor]);
+  useEffect(() => {
+    urlState.current = { query, status, category, sort, full: fullPage };
+    syncUrl();
+  }, [query, status, category, sort, fullPage, syncUrl]);
+  useEffect(() => () => window.clearTimeout(urlTimer.current), []);
+  /** A path in the explorer, with the current filters and map position. */
+  function withSearch(path: string, full?: boolean) {
+    syncUrl();
+    return path + searchFor(path, full);
+  }
 
   function enterPostView(id: string, frame = true) {
     if (isMobile) return;
@@ -398,13 +431,18 @@ export default function Explorer({
     steppingBack.current = true;
     const after = afterPop.current;
     afterPop.current = null;
+    const toList = backToList.current;
+    backToList.current = false;
     whenNextSettled(() => {
       steppingBack.current = false;
-      if (window.location.search !== searchString.current)
-        replaceUrl(window.location.pathname + searchString.current);
+      if (toList) replaceUrl("/" + searchFor("/"));
+      syncUrl();
       after?.();
     });
-    const path = window.location.pathname;
+    const path = toList ? "/" : window.location.pathname;
+    setFullPage(
+      new URLSearchParams(window.location.search).get("visning") === "full",
+    );
     const profile = routeParam(path, "/profil/");
     if (profile) {
       // Moving forward into a profile keeps whatever it was opened over.
@@ -479,7 +517,7 @@ export default function Explorer({
   const savedIds = useMemo(() => new Set(saved), [saved]);
 
   // Before the map reports its view (and on the server) the list covers Norway.
-  const listBounds = frozenBounds ?? mapView?.bounds ?? null;
+  const listBounds = frozenBounds ?? viewBounds;
   const inView = useMemo(
     () =>
       listBounds
@@ -556,8 +594,17 @@ export default function Explorer({
 
   function onMapView(view: MapViewChange) {
     mapViewRef.current = view;
-    setMapView(view);
+    const key = projects
+      .filter((project) => projectInBounds(project, view.bounds))
+      .map((project) => project.id)
+      .join();
+    if (key !== inViewKey.current) {
+      inViewKey.current = key;
+      setViewBounds(view.bounds);
+    }
     if (!postView.current) setFrozenBounds(null);
+    window.clearTimeout(urlTimer.current);
+    urlTimer.current = window.setTimeout(syncUrl, 300);
   }
   function onMapReady(api: MapApi) {
     mapApi.current = api;
@@ -611,7 +658,7 @@ export default function Explorer({
     window.history.replaceState(
       { projectOverlay: overlay },
       "",
-      withSearch(projectHref(id)),
+      withSearch(projectHref(id), false),
     );
     setPostUpdateId(undefined);
     setPostId(id);
@@ -671,12 +718,13 @@ export default function Explorer({
     setModal(null);
     setPostId(id);
     setSelectedId(id);
+    setFullPage(false);
     setHoveredId(null);
     enterPostView(id);
     window.history.pushState(
       { projectOverlay: true },
       "",
-      withSearch(projectHref(id)),
+      withSearch(projectHref(id), false),
     );
   }
 
@@ -688,8 +736,10 @@ export default function Explorer({
     focusTrigger = !isMobile || snapPoint !== compactSnapPoint,
     after?: () => void,
   ) {
+    const state = window.history.state ?? {};
     setPostId(null);
     setSelectedId(null);
+    setFullPage(false);
     requestAnimationFrame(() => {
       const trigger = projectTriggerRef.current;
       if (trigger?.isConnected && focusTrigger)
@@ -697,15 +747,33 @@ export default function Explorer({
       else if (isMobile) drawerHandleRef.current?.focus({ preventScroll: true });
       else searchRef.current?.focus({ preventScroll: true });
     });
-    if (window.history.state?.projectOverlay) {
-      // The history step leaves the map view as well (see onPopState).
+    if (state.projectOverlay || state.fullPage) {
+      // The history step leaves the map view as well (see onPopState). From
+      // a full page it is two steps: past the full page, then the panel.
       afterPop.current = after ?? null;
-      stepBack();
+      backToList.current = !state.projectOverlay;
+      stepBack(state.projectOverlay && state.fullPage ? 2 : 1);
     } else {
       window.history.replaceState({}, "", withSearch("/"));
       leavePostView();
       after?.();
     }
+  }
+
+  /** Desktop: the project grows over the map; Back returns to the panel. */
+  function maximizePost() {
+    if (!postId || fullPage || isMobile) return;
+    setFullPage(true);
+    window.history.pushState(
+      { projectOverlay: window.history.state?.projectOverlay, fullPage: true },
+      "",
+      withSearch(projectHref(postId), true),
+    );
+  }
+  function minimizePost() {
+    if (!fullPage) return;
+    setFullPage(false);
+    if (window.history.state?.fullPage) stepBack();
   }
 
   /** Mobile: the project drawer covers the map, so step down to show it. */
@@ -1117,6 +1185,19 @@ export default function Explorer({
       )}
     </div>
   );
+  // Stable, so memoized cards skip re-rendering when the list changes.
+  const openLatest = useRef(openPost);
+  useLayoutEffect(() => {
+    openLatest.current = openPost;
+  });
+  const openCard = useCallback((id: string) => openLatest.current(id), []);
+  const hoverCard = useCallback(
+    (id: string, hovering: boolean) =>
+      setHoveredId((current) =>
+        hovering ? id : current === id ? null : current,
+      ),
+    [],
+  );
   const projectResults = (
     <section
       ref={listRef}
@@ -1218,16 +1299,8 @@ export default function Explorer({
                 key={project.id}
                 project={project}
                 commentCount={commentsByProject.get(project.id)?.length ?? 0}
-                onOpen={() => openPost(project.id)}
-                onHover={(hovering) =>
-                  setHoveredId((current) =>
-                    hovering
-                      ? project.id
-                      : current === project.id
-                        ? null
-                        : current,
-                  )
-                }
+                onOpen={openCard}
+                onHover={hoverCard}
               />
             ))}
           </ol>
@@ -1245,6 +1318,12 @@ export default function Explorer({
       onClose={() => {
         if (!panelClosing) closePost();
       }}
+      // Escape and Back step down from the full page before closing.
+      onEscape={fullPage ? minimizePost : undefined}
+      full={fullPage}
+      onToggleFull={
+        isMobile ? undefined : fullPage ? minimizePost : maximizePost
+      }
       feedback={isMobile ? feedback : undefined}
       saved={savedIds.has(post.id)}
       onSave={() => toggleSaved(post.id)}
@@ -1463,49 +1542,40 @@ export default function Explorer({
               {profileButton}
             </nav>
           </header>
-          <div className="relative min-h-0 flex-1 overflow-hidden">
+          <div className="relative min-h-0 flex-1">
             {/* Stays mounted under a project, so it keeps its scroll. */}
             <div
-              className={cn(
-                "absolute inset-0 flex flex-col transition-transform duration-320 ease-out-soft",
-                postId && "-translate-x-4",
-              )}
+              className="absolute inset-0 flex flex-col"
               // Live again as soon as the project starts sliding away, so
               // focus can return to the card it was opened from.
               inert={Boolean(postId)}
             >
               {projectResults}
             </div>
-            {panelPostId && (
-              <>
-                {/* The list shows dimmed along the left edge; a click there goes back. */}
-                <div
-                  aria-hidden="true"
-                  className={cn(
-                    "absolute inset-0 bg-ink/12 transition-opacity duration-220",
-                    postId ? "animate-backdrop-in" : "opacity-0",
-                  )}
-                  onClick={() => {
-                    if (postId) closePost();
-                  }}
-                />
-                <div
-                  className={cn(
-                    "absolute inset-y-0 right-0 left-4 flex flex-col overflow-hidden rounded-tl-[14px] border-t border-l border-border bg-surface shadow-[-12px_0_32px_rgb(20_28_24/0.12)]",
-                    postId ? "animate-panel-in" : "animate-panel-out",
-                  )}
-                  data-project-layer=""
-                  inert={!postId}
-                  onAnimationEnd={(event) => {
-                    if (!postId && event.target === event.currentTarget)
-                      setPanelPostId(null);
-                  }}
-                >
-                  {projectPost || missingProject}
-                </div>
-              </>
-            )}
           </div>
+          {panelPostId && (
+            // A sidebar over the list sidebar, sliding out from the left
+            // edge. As a full page it grows over the header and the map.
+            <div
+              className={cn(
+                "absolute bottom-0 left-0 z-40 flex flex-col overflow-hidden bg-surface",
+                "transition-[top,width,box-shadow] duration-320 ease-out-soft",
+                fullPage
+                  ? "top-0 w-screen"
+                  : "top-16 w-full border-t border-border shadow-[10px_0_30px_rgb(20_28_24/0.10)]",
+                postId ? "animate-panel-in" : "animate-panel-out",
+              )}
+              data-project-layer=""
+              data-full={fullPage || undefined}
+              inert={!postId}
+              onAnimationEnd={(event) => {
+                if (!postId && event.target === event.currentTarget)
+                  setPanelPostId(null);
+              }}
+            >
+              {projectPost || missingProject}
+            </div>
+          )}
           <PanelResizer
             panel={panelRef}
             root={rootRef}
@@ -1520,6 +1590,8 @@ export default function Explorer({
       <main
         className="relative isolate flex min-h-0 min-w-0 flex-1 overflow-hidden bg-surface"
         aria-label="Utforsk prosjekter"
+        // Under a full-page project the map is out of reach, but untouched.
+        inert={!isMobile && fullPage && Boolean(postId)}
       >
         <section
           className={cn(
@@ -1762,4 +1834,4 @@ export default function Explorer({
       {(!isMobile || !post) && feedback}
     </div>
   );
-}
+});

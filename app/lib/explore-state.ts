@@ -9,6 +9,8 @@ export type ExploreState = {
   category: string[];
   sort: string;
   view: MapView | null;
+  /** A project shown as a full page over the map (`visning=full`). */
+  full?: boolean;
 };
 
 // Most people follow what is coming, so finished projects start hidden.
@@ -64,6 +66,7 @@ export function parseExploreState(
       ? params.get("sorter")!
       : defaultSort,
     view: parseView(params.get("kart")),
+    full: params.get("visning") === "full",
   };
 }
 
@@ -84,6 +87,7 @@ export function exploreSearch(state: ExploreState) {
       categories.filter((value) => state.category.includes(value)).join(","),
     );
   if (state.sort !== defaultSort) params.set("sorter", state.sort);
+  if (state.full) params.set("visning", "full");
   if (state.view) {
     const [lat, lng] = state.view.center;
     params.set(

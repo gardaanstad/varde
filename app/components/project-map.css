@@ -9,7 +9,7 @@
   color: var(--color-muted) !important;
 }
 
-/* plus-lighter + a pane filter makes tiles vanish on WebKit. */
+/* plus-lighter makes tiles vanish on WebKit. */
 [data-project-map] .leaflet-container img.leaflet-tile {
   mix-blend-mode: normal;
 }
@@ -40,12 +40,13 @@
   padding-bottom: 3px !important;
 }
 
-[data-project-map][data-map-style="standard"] .leaflet-tile-pane {
-  filter: saturate(0.85);
-}
-
-[data-project-map][data-map-style="streets"] .leaflet-tile-pane {
-  filter: saturate(0.65) contrast(0.97);
+/*
+ * No filters or opacity on the tile pane or layer containers: a moving
+ * container with an effect is recomposited on every frame of a pan or zoom,
+ * which was the main source of map lag. Tile images carry their own opacity.
+ */
+[data-project-map] .project-labels img.leaflet-tile {
+  opacity: 0.8;
 }
 
 [data-project-map] .leaflet-interactive {

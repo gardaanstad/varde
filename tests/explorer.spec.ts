@@ -593,9 +593,20 @@ test.describe("desktop explorer", () => {
     const panel = page.locator("[data-project-post]");
     await expect(panel).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`/prosjekt/${id}\\?kart=`));
-    // A layer over the list, which stays mounted (and inert) beneath it.
-    await expect(page.locator("[data-project-layer]")).toBeVisible();
+    // A sidebar over the list sidebar, covering it, with the list still
+    // mounted (and inert) beneath it.
+    const layer = page.locator("[data-project-layer]");
+    await expect(layer).toBeVisible();
     await expect(list.locator("xpath=..")).toHaveAttribute("inert", "");
+    const inner = await page
+      .locator("#project-panel")
+      .evaluate((element) => element.clientWidth);
+    await expect
+      .poll(async () => {
+        const box = await layer.boundingBox();
+        return box && [Math.round(box.x), Math.round(box.width)];
+      })
+      .toEqual([0, inner]);
     await expect(
       page.getByRole("region", { name: "Prosjektkart" }).first(),
     ).toBeVisible();
@@ -629,5 +640,50 @@ test.describe("desktop explorer", () => {
       .click();
     await expect(list).toBeVisible();
     await expect(page).toHaveURL(/\/\?kart=/);
+  });
+
+  test("a project grows into a full page and back, leaving the map as it was", async ({
+    page,
+  }) => {
+    await page.goto(oslo);
+    const list = listRegion(page);
+    await expect(card(page, "Nyhavna")).toHaveCount(0);
+    await card(page, project.title).click();
+    const layer = page.locator("[data-project-layer]");
+    await expect(layer).toBeVisible();
+    await expect.poll(() => mapParam(page)).toMatch(/,15$/);
+    const panelUrl = page.url();
+    const panelView = mapParam(page);
+    await page.getByRole("button", { name: "Vis som helside", exact: true }).click();
+    await expect(page).toHaveURL(/[?&]visning=full/);
+    await expect(layer).toHaveAttribute("data-full", "true");
+    // It fills the window and uses the width: facts beside the text.
+    await expect
+      .poll(async () => Math.round((await layer.boundingBox())!.width))
+      .toBe(1280);
+    await expect(
+      page.getByRole("complementary", { name: "Prosjektfakta", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("main", { name: "Utforsk prosjekter" }),
+    ).toHaveAttribute("inert", "");
+    // Shareable: a reload stays on the full page.
+    await page.reload();
+    await expect(layer).toHaveAttribute("data-full", "true");
+    // Escape (like Back) steps down to the sidebar first, map untouched.
+    await page.keyboard.press("Escape");
+    await expect(layer).not.toHaveAttribute("data-full");
+    await expect(page).not.toHaveURL(/visning=full/);
+    expect(mapParam(page)).toBe(panelView);
+    await page.getByRole("button", { name: "Vis som helside", exact: true }).click();
+    await page.goBack();
+    await expect(layer).not.toHaveAttribute("data-full");
+    await expect(page).toHaveURL(panelUrl);
+    // From the full page, ✕ closes it all the way to the list.
+    await page.getByRole("button", { name: "Vis som helside", exact: true }).click();
+    await page.getByRole("button", { name: "Lukk prosjekt", exact: true }).click();
+    await expect(layer).toHaveCount(0);
+    await expect(list).toBeVisible();
+    await expect(page).toHaveURL(atList);
   });
 });

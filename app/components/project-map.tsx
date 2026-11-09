@@ -154,6 +154,12 @@ export type MapApi = {
 export type MapViewChange = MapView & { bounds: Bounds };
 const reducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+// Tiles load once a zoom settles, not for each step of its animation, and
+// a wider ring stays around the view so panning back needs no reload.
+const tileLoading: L.TileLayerOptions = {
+  updateWhenZooming: false,
+  keepBuffer: 4,
+};
 // Stable defaults, so drawing maps don't rebuild their layers on each render.
 const noProjects: Project[] = [];
 const noPoints: Point[] = [];
@@ -339,12 +345,20 @@ export default function ProjectMap({
           : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>',
         maxZoom: 19,
         maxNativeZoom: canvas ? 16 : 19,
+        ...tileLoading,
       },
     ).addTo(mapRef.current);
     const labels = canvas
       ? L.tileLayer(
           "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
-          { maxZoom: 19, maxNativeZoom: 16, pane: "overlayPane", opacity: 0.8 },
+          {
+            maxZoom: 19,
+            maxNativeZoom: 16,
+            pane: "overlayPane",
+            // Faded per tile in CSS, not with the layer's own opacity.
+            className: "project-labels",
+            ...tileLoading,
+          },
         ).addTo(mapRef.current)
       : null;
     let failures = 0;
@@ -352,7 +366,12 @@ export default function ProjectMap({
       if (++failures > 4)
         setMapMessage("Kartet kunne ikke lastes. Prøv et annet kartlag.");
     });
-    tiles.on("tileload", () => setMapMessage(""));
+    // Only after failures, so loading tiles doesn't touch React state.
+    tiles.on("tileload", () => {
+      if (!failures) return;
+      failures = 0;
+      setMapMessage("");
+    });
     return () => {
       tiles.remove();
       labels?.remove();

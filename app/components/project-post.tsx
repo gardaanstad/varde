@@ -67,6 +67,7 @@ import {
 import EmptyState from "./empty-state";
 import ImageGallery from "./image-gallery";
 import ImagePicker from "./image-picker";
+import ProjectPlaceholder from "./project-placeholder";
 import styles from "./project-post.module.css";
 
 const ProjectMap = dynamic(() => import("./project-map"), { ssr: false });
@@ -105,6 +106,11 @@ type Props = {
   onSave: () => void;
   /** Mobile: the drawer covers the map, so it offers to show the project there. */
   onMap?: () => void;
+  /** Replaces closing on Escape, e.g. to step down from a full page first. */
+  onEscape?: () => void;
+  /** Desktop: shown as a full page, with a control to switch back and forth. */
+  full?: boolean;
+  onToggleFull?: () => void;
   comments: Comment[];
   onNotify: (message: string) => void;
 };
@@ -371,6 +377,43 @@ function ProjectMeta({ project }: { project: Project }) {
   );
 }
 
+/** A full page has room for the whole description at once. */
+function WideIntro({ project }: { project: Project }) {
+  return (
+    <div
+      className="max-w-170 space-y-3 text-body leading-[1.7] text-ink-soft [&>p]:whitespace-pre-wrap [&>p]:wrap-anywhere"
+      data-project-header-hero=""
+    >
+      {project.description.split("\n\n").map((paragraph, index) => (
+        <p key={index}>{paragraph}</p>
+      ))}
+    </div>
+  );
+}
+
+/** The full page's side column: photos, then the facts. */
+function ProjectAside({ project }: { project: Project }) {
+  const photos = projectPhotos(project);
+  return (
+    <aside className="sticky top-0 pt-4 pb-10" aria-label="Prosjektfakta">
+      {photos.length > 0 ? (
+        <ImageGallery
+          images={photos}
+          label={`Bilder av ${project.title}`}
+          sizes="300px"
+          className={cover}
+        />
+      ) : (
+        <div className={cover}>
+          <ProjectPlaceholder category={project.category} />
+        </div>
+      )}
+      <ProjectFacts project={project} />
+      <p className={note}>Sist redigert {formatDateYear(project.updated)}</p>
+    </aside>
+  );
+}
+
 /**
  * Two lines of the description above the image. "Les mer" grows the text and
  * reveals the facts.
@@ -498,6 +541,8 @@ function ProjectIntro({ project }: { project: Project }) {
         type="button"
         className={cn(
           stickyToggle,
+          // The same gap above and below the pill, photo or text above it.
+          "mt-2 mb-0",
           open && "sticky",
           "aria-expanded:[&>svg]:rotate-180",
         )}
@@ -816,6 +861,9 @@ export default function ProjectPost({
   initialUpdateId,
   closeOnEscape = false,
   onClose,
+  onEscape: escape,
+  full = false,
+  onToggleFull,
   feedback,
   saved,
   onSave,
@@ -824,7 +872,19 @@ export default function ProjectPost({
   onNotify,
 }: Props) {
   const contentRef = useRef<HTMLDivElement>(null);
+  const articleRef = useRef<HTMLElement>(null);
   const tabScroll = useRef<Record<string, number>>({});
+  // Given the room (a full page), facts and photos move into a side column.
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const article = articleRef.current;
+    if (!article) return;
+    const observer = new ResizeObserver(([entry]) =>
+      setWide(entry.contentRect.width >= 900),
+    );
+    observer.observe(article);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     const root = contentRef.current;
     if (!root) return;
@@ -955,7 +1015,8 @@ export default function ProjectPost({
     )
       return;
     event.preventDefault();
-    close();
+    if (!draft && escape) escape();
+    else close();
   });
   useEffect(() => {
     if (!closeOnEscape) return;
@@ -1015,13 +1076,18 @@ export default function ProjectPost({
   const content = (
     <ProjectEditContext value={edit}>
       <article
+        ref={articleRef}
         className="relative flex h-full min-h-0 flex-col bg-surface"
         data-project-post=""
+        data-wide={wide || undefined}
       >
         <ProjectPostHeader
           project={project}
           scrollRootRef={contentRef}
           onClose={close}
+          wide={wide}
+          full={full}
+          onToggleFull={onToggleFull}
           actions={<ProjectActions {...actions} />}
         />
         <div
@@ -1030,9 +1096,15 @@ export default function ProjectPost({
           data-project-scroll=""
           data-drawer-scroll
         >
-          <div>
+          <div
+            className={cn(
+              wide &&
+                "mx-auto grid w-full max-w-[1120px] grid-cols-[minmax(0,1fr)_300px] items-start gap-x-12 px-10",
+            )}
+          >
+           <div className="min-w-0">
             <section
-              className="px-4.5 pt-2 pb-3.5 md:px-6"
+              className={cn(wide ? "pt-3 pb-5" : "px-4.5 pt-2 pb-2 md:px-6")}
               aria-label="Om prosjektet"
             >
               {draft ? (
@@ -1044,12 +1116,19 @@ export default function ProjectPost({
               ) : (
                 <>
                   <ProjectMeta project={project} />
-                  <ProjectIntro project={project} />
+                  {wide ? (
+                    <WideIntro project={project} />
+                  ) : (
+                    <ProjectIntro project={project} />
+                  )}
                 </>
               )}
             </section>
             <nav
-              className="mx-4.5 border-b border-border md:mx-6"
+              className={cn(
+                "border-b border-border",
+                !wide && "mx-4.5 md:mx-6",
+              )}
               hidden={Boolean(draft)}
               id="project-sections"
               aria-label="Prosjektinnhold"
@@ -1075,7 +1154,9 @@ export default function ProjectPost({
                 ))}
               </div>
             </nav>
-            <div className="px-4.5 pt-4.5 pb-8 md:px-6 md:pt-5">
+            <div
+              className={cn(wide ? "pt-6 pb-10" : "px-4.5 pt-4.5 pb-8 md:px-6 md:pt-5")}
+            >
               <div className="min-w-0" hidden={Boolean(draft)}>
                 <div
                   id="project-panel-discussion"
@@ -1216,6 +1297,8 @@ export default function ProjectPost({
                 </section>
               </div>
             </div>
+           </div>
+            {wide && !draft && <ProjectAside project={project} />}
           </div>
           {draft && (
             <EditBar

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import Image from "next/image";
 import { Megaphone, MessageCircle } from "lucide-react";
 import {
@@ -17,7 +18,8 @@ import ProjectPlaceholder from "./project-placeholder";
 const cardStat = "relative z-1 inline-flex items-center gap-1.25 tabular-nums";
 
 /** One project in the results list; the whole card opens the project. */
-export default function ProjectCard({
+/** Memoized with stable callbacks, so a list change only renders new cards. */
+export default memo(function ProjectCard({
   project,
   commentCount,
   onOpen,
@@ -25,9 +27,9 @@ export default function ProjectCard({
 }: {
   project: Project;
   commentCount: number;
-  onOpen: () => void;
+  onOpen: (id: string) => void;
   /** Pointer or keyboard focus entering (true) or leaving the card. */
-  onHover?: (hovering: boolean) => void;
+  onHover?: (id: string, hovering: boolean) => void;
 }) {
   const updates = getProjectUpdates(project);
   return (
@@ -41,14 +43,14 @@ export default function ProjectCard({
       )}
       data-card-id={project.id}
       onPointerEnter={(event) => {
-        if (event.pointerType === "mouse") onHover?.(true);
+        if (event.pointerType === "mouse") onHover?.(project.id, true);
       }}
       onPointerLeave={(event) => {
-        if (event.pointerType === "mouse") onHover?.(false);
+        if (event.pointerType === "mouse") onHover?.(project.id, false);
       }}
-      onFocus={() => onHover?.(true)}
+      onFocus={() => onHover?.(project.id, true)}
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) onHover?.(false);
+        if (!event.currentTarget.contains(event.relatedTarget)) onHover?.(project.id, false);
       }}
     >
       <div className="min-w-0 flex-1">
@@ -68,7 +70,7 @@ export default function ProjectCard({
               "focus-visible:after:outline-2 focus-visible:after:outline-focus",
             )}
             aria-label={`${project.title} · ${project.category} · ${project.city}`}
-            onClick={onOpen}
+            onClick={() => onOpen(project.id)}
           >
             {project.title}
           </button>
@@ -79,7 +81,7 @@ export default function ProjectCard({
         {/* Stats sit above the card link for their tooltips; forward clicks. */}
         <div
           className="mt-3 flex min-h-4.5 cursor-pointer items-center gap-x-4 gap-y-1 text-xs leading-normal text-muted max-md:mt-2.25 max-md:gap-x-3 max-md:leading-4.5"
-          onClick={onOpen}
+          onClick={() => onOpen(project.id)}
         >
           <span className="inline-flex items-center gap-1.5 font-medium whitespace-nowrap text-ink">
             <i
@@ -128,4 +130,4 @@ export default function ProjectCard({
       </div>
     </li>
   );
-}
+});
