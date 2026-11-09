@@ -69,9 +69,12 @@ const removePointStyles = cn(
 export default function ProjectEditor({
   onClose,
   onSave,
+  suggest = false,
 }: {
   onClose: () => void;
   onSave: (project: Project) => Promise<void>;
+  /** A member's suggestion, which waits for a moderator. */
+  suggest?: boolean;
 }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -156,7 +159,7 @@ export default function ProjectEditor({
   }
   return (
     <Dialog
-      title="Legg til prosjekt"
+      title={suggest ? "Foreslå prosjekt" : "Legg til prosjekt"}
       onClose={close}
       className={cn("w-157.5", step === 2 && "w-255")}
     >
@@ -167,7 +170,7 @@ export default function ProjectEditor({
       )}
       <div className="px-8.25 pt-8.25 pb-4 max-sm:px-5.5 max-sm:pt-7.5">
         <h1 className="my-2 text-[26px] leading-tight font-semibold tracking-[-0.6px] max-sm:max-w-65 max-sm:text-[25px]">
-          Nytt prosjekt
+          {suggest ? "Foreslå prosjekt" : "Nytt prosjekt"}
         </h1>
         <div
           className={cn(
@@ -373,7 +376,7 @@ export default function ProjectEditor({
           </div>
           <div className="mt-1.25 flex items-center justify-between gap-3.75 border-t border-border pt-4.75 max-sm:gap-3">
             <span className="text-xs text-muted max-sm:text-[8px]">
-              Publiseres for alle
+              {suggest ? "Til moderering" : "Publiseres for alle"}
             </span>
             <button
               className={cn(
@@ -534,7 +537,7 @@ export default function ProjectEditor({
               disabled={saving || uploading || !enoughPoints}
               onClick={() => void save()}
             >
-              Legg til prosjekt
+              {suggest ? "Send forslag" : "Legg til prosjekt"}
               <Check size={16} />
             </button>
           </div>

@@ -33,6 +33,9 @@ Deployment: see [Deploy to Vercel](docs/google-auth.md#deploy-to-vercel). Valida
 - The "Følger" list: one row per followed project with status and what is new since the user last opened it ("3 nye kommentarer · 1 oppdatering · 1 svar til deg"), projects with news first, then by latest activity (or alphabetically). A row opens its project at the first unread comment or update; each row can unfollow, with undo. Opening a followed project from anywhere marks that project read. A filled badge on the bell in the panel header (and the "Følger" entry in the profile menu) counts followed projects with news, the same rows that carry a dot.
 - A privacy page at `/personvern`, linked from login.
 - Moderator tools: add project details, draw an area or alignment, undo points, enter coordinates, and publish project updates or status changes.
+- Suggestions from signed-in members: a new project (the same editor, with details, drawing and photos), a correction (the project's edit mode; changed fields plus an optional note), or a tip (text, a required HTTPS source and an optional photo). Members follow their pending, approved and rejected suggestions at `/forslag`, linked from their profile; reviews they haven't seen show as a badge on their account entry and a dot on their avatar.
+- Moderation queue at `/forslag`, with a pending count in the moderator navigation. Each suggestion is one compact row (kind icon, project, then "N endringer", the category or the tip's first line, and the date); one row opens at a time, animating in place, and `j`/`k` or the arrow keys move between rows. Opened, a correction shows each changed field under its name: long text in full as a unified diff with a + / − gutter and added and removed words marked, short fields as old → new chips, and drawings as an old/new overlay with a point count and how far the centre moved. Fields changed since the suggestion was sent are flagged, and each field's ⋯ menu can leave it out of the approval ("Ikke ta med denne endringen", undone with "Ta med igjen"). The suggester's note is quoted under the changes. Approve (✓) and reject (✕, with an optional reason) sit at the bottom of the opened row; new projects and tips can be edited before approval, and tips get a headline. Moderators' own edits stay direct.
+- Credits: approved suggestions credit their member quietly, as "via @username" in an update's date line and at the end of a project's facts, linked to their profile. Photo credits (`@username`) stay as before. Credits are read from approved suggestions (`app/lib/server/credits.ts`), never stored on the project, so renamed or deleted accounts follow.
 - Responsive layouts, native modal focus management, keyboard dismissal, a search shortcut, and reduced-motion styling.
 
 ## Accounts and persistence
@@ -41,8 +44,9 @@ Deployment: see [Deploy to Vercel](docs/google-auth.md#deploy-to-vercel). Valida
 - Unique public usernames with immediate availability feedback, Norwegian characters, and database-enforced uniqueness.
 - Persistent sessions, optional profile bio/location, sign-out on other devices, and account deletion with recent authentication.
 - Comments use the verified account identity; votes and followed projects persist across devices.
+- Suggestions are stored in the `suggestion` table (migrations `0005_suggestions` and `0006_suggestion_seen`) and authorized on the server: members submit, only moderators review, and each suggestion is applied once. Members may send 10 suggestions an hour with at most 20 pending, and upload 30 photos an hour.
 - Moderator access is configured with verified emails in `MODERATOR_EMAILS` and enforced on the server.
-- Moderators upload project and update photos; browsers downscale them to 2000px before upload and they are stored in the database (`upload` table) and served from `/api/uploads/[id]`. Projects without a photo show a category placeholder. The bundled `/images/*.jpg` photos are only used by example (seed/sample) projects.
+- Moderators and members upload project and update photos; browsers downscale them to 2000px before upload and they are stored in the database (`upload` table) and served from `/api/uploads/[id]`. Members' photos are served only to them and to moderators until a suggestion using them is approved. Projects without a photo show a category placeholder. The bundled `/images/*.jpg` photos are only used by example (seed/sample) projects.
 - Local SQLite for development, with hosted Turso support using `DATABASE_URL` and `DATABASE_AUTH_TOKEN`.
 
 `bun run setup` generates a local session secret, applies the committed Drizzle migrations, and seeds illustrative projects/comments. `bun run db:migrate` only applies migrations; `bun run db:seed` adds the illustrative content idempotently and refuses to run against a hosted database, so production starts empty. `bun run db:sample` adds fictional sample projects (areas, alignments, photos, updates and threaded comments) for local development; pass `--worktrees` to write them to every worktree's `local.db`. Use `bun run db:generate` after schema changes.
@@ -58,7 +62,9 @@ Map tiles load from Esri's Light Gray Canvas service, with an OpenStreetMap stre
 - `app/components/project-map.tsx`: Leaflet map, project overlays, and geometry drawing.
 - `app/components/project-post.tsx`: project reference page and update timeline.
 - `app/components/project-discussion.tsx` and `app/lib/discussion.ts`: shared project discussion, optional references, and activity-aware filtering.
-- `app/components/project-editor.tsx`: project creation workflow.
+- `app/components/project-editor.tsx`: project creation workflow, also used for suggested projects.
+- `app/components/suggestion-list.tsx`, `app/lib/suggestions.ts` and `app/lib/server/suggestions.ts`: the `/forslag` page, suggestion rules, and the moderation queue's server side.
+- `app/lib/diff.ts`: paragraph and word diffs, and geometry change summaries and overlays, for reviewing suggestions (tested in `tests/diff.spec.ts`). The diff colours are `--color-diff-*` tokens in `app/globals.css`.
 - `app/lib/data.ts`: data types, shared project helpers (place, links, statuses), and illustrative project content.
 - `app/lib/auth-config.ts`: Google OAuth, database sessions, and account configuration.
 - `app/lib/db/` and `drizzle/`: database schema, connection, and migrations.

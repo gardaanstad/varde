@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Bell,
   ChevronRight,
+  Inbox,
   LoaderCircle,
   LogOut,
   Settings,
@@ -36,12 +37,18 @@ export default function AccountPanel({
   onBack,
   onFollowing,
   followingCount = 0,
+  suggestionCount = 0,
+  reviewedCount = 0,
   next = "/",
 }: {
   onBack?: () => void;
   /** Opens the followed projects, where the app has no other entry to them. */
   onFollowing?: () => void;
   followingCount?: number;
+  /** Pending suggestions: one's own, or the whole queue for moderators. */
+  suggestionCount?: number;
+  /** One's own suggestions reviewed since last looked; shown as a badge. */
+  reviewedCount?: number;
   next?: string;
 }) {
   const { user, pending } = useAuth();
@@ -235,25 +242,49 @@ export default function AccountPanel({
                 </button>
               }
               links={
-                onFollowing && (
-                  <button
-                    type="button"
-                    className={cn(
-                      accountAction,
-                      "mt-4 min-h-12 rounded-lg border-border",
-                    )}
-                    onClick={onFollowing}
+                <div className="mt-4">
+                  {onFollowing && (
+                    <button
+                      type="button"
+                      className={cn(accountAction, "min-h-12 rounded-lg")}
+                      onClick={onFollowing}
+                    >
+                      <Bell size={18} aria-hidden="true" />
+                      <span className="flex-1 text-sm">Følger</span>
+                      {followingCount > 0 && (
+                        <span className="text-xs tabular-nums text-muted">
+                          {followingCount}
+                        </span>
+                      )}
+                      <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                  )}
+                  <Link
+                    href="/forslag"
+                    // Opening the page marks reviews as seen; never prefetch it.
+                    prefetch={false}
+                    className={cn(accountAction, "min-h-12 rounded-lg")}
                   >
-                    <Bell size={18} aria-hidden="true" />
-                    <span className="flex-1 text-sm">Følger</span>
-                    {followingCount > 0 && (
-                      <span className="text-xs tabular-nums text-muted">
-                        {followingCount}
+                    <Inbox size={18} aria-hidden="true" />
+                    <span className="flex-1 text-sm">Forslag</span>
+                    {reviewedCount > 0 ? (
+                      <span
+                        className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums"
+                        data-reviewed
+                      >
+                        {reviewedCount}
+                        <span className="sr-only"> behandlet</span>
                       </span>
+                    ) : (
+                      suggestionCount > 0 && (
+                        <span className="text-xs tabular-nums text-muted">
+                          {suggestionCount}
+                        </span>
+                      )
                     )}
                     <ChevronRight size={16} aria-hidden="true" />
-                  </button>
-                )
+                  </Link>
+                </div>
               }
             />
           </div>

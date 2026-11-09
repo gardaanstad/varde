@@ -17,6 +17,7 @@ import Link from "next/link";
 import {
   ArrowDownUp,
   Bell,
+  Inbox,
   RotateCcw,
   Map as MapIcon,
   ListFilter,
@@ -147,6 +148,11 @@ const quietAction = cn(textButton, "min-h-11 text-xs");
 const compactIconAction = cn(iconButton, "rounded-lg");
 const chip =
   "inline-flex min-h-7 items-center gap-1 rounded-full bg-accent-soft pr-1.75 pl-2.5 text-xs font-[550] text-accent-strong hover:bg-accent/16";
+/** Marks the avatar when a member's suggestions have been reviewed. */
+const reviewedDot =
+  "absolute -top-0.5 -right-0.5 size-2.75 rounded-full border-2 border-surface bg-accent";
+const countBadge =
+  "inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums";
 
 function categorySummary(values: string[]) {
   return values.length === 0
@@ -283,7 +289,15 @@ export default memo(function Explorer({
   const drawerHandleRef = useRef<HTMLButtonElement>(null);
   const projectTriggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const { user, pending: authPending, canModerate, requireAccount } = useAuth();
-  const { projects, following, comments, mutate } = useCommunity();
+  const {
+    projects,
+    following,
+    comments,
+    mutate,
+    suggest,
+    suggestions,
+    reviewed,
+  } = useCommunity();
   const { following: followed, markSeen } = useFollowing();
   // The badge counts projects with something new, as the Følger rows do.
   const unread = unreadProjects(followed);
@@ -1124,6 +1138,8 @@ export default memo(function Explorer({
         onBack={isMobile ? backToExplorer : undefined}
         onFollowing={openFollowingFromProfile}
         followingCount={following.length}
+        suggestionCount={suggestions}
+        reviewedCount={reviewed}
         next={postId ? projectHref(postId) : "/"}
       />
     </div>
@@ -1338,6 +1354,10 @@ export default memo(function Explorer({
     </div>
   );
 
+  /** Members suggest projects; moderators add them directly. */
+  function openEditor() {
+    if (canModerate || requireAccount()) setEditorOpen(true);
+  }
   function openProfile() {
     setModal("profile");
     setSnapPoint(1);
@@ -1385,7 +1405,11 @@ export default memo(function Explorer({
         "inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-transparent text-xs font-semibold text-muted",
         "hover:bg-ink/[0.06] hover:text-ink active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100",
       )}
-      aria-label={user ? "Din profil" : "Logg inn"}
+      aria-label={
+        user
+          ? `Din profil${reviewed ? ` (${reviewed} behandlet)` : ""}`
+          : "Logg inn"
+      }
       aria-haspopup="dialog"
       aria-expanded={modal === "profile"}
       data-tooltip={
@@ -1400,11 +1424,36 @@ export default memo(function Explorer({
       onClick={openProfile}
     >
       {user?.username ? (
-        <ProfileAvatar name={user.username} className="size-9 text-sm" />
+        <span className="relative">
+          <ProfileAvatar name={user.username} className="size-9 text-sm" />
+          {reviewed > 0 && <span className={reviewedDot} />}
+        </span>
       ) : (
         <User size={18} />
       )}
     </button>
+  );
+  // Moderators reach the suggestion queue from the header.
+  const suggestionsLink = canModerate && (
+    <Link
+      href="/forslag"
+      prefetch={false}
+      className={cn(compactIconAction, "relative text-muted hover:text-ink")}
+      aria-label={`Forslag${suggestions ? ` (${suggestions})` : ""}`}
+      data-tooltip={isMobile ? undefined : "Forslag"}
+    >
+      <Inbox size={20} />
+      {suggestions > 0 && (
+        <span
+          className={cn(
+            countBadge,
+            "pointer-events-none absolute top-1 right-0.5 ring-2 ring-surface",
+          )}
+        >
+          {suggestions}
+        </span>
+      )}
+    </Link>
   );
   const followingButton = user?.username && (
     <button
@@ -1444,11 +1493,11 @@ export default memo(function Explorer({
           <div className="flex h-11 items-center justify-between">
             {brand}
             <div className="flex items-center gap-0.5">
+              {suggestionsLink}
               <button
                 className={cn(compactIconAction, "text-muted")}
-                aria-label="Nytt prosjekt"
-                hidden={!canModerate}
-                onClick={() => setEditorOpen(true)}
+                aria-label={canModerate ? "Nytt prosjekt" : "Foreslå prosjekt"}
+                onClick={openEditor}
               >
                 <Plus size={21} />
               </button>
@@ -1547,12 +1596,12 @@ export default memo(function Explorer({
           <header className="flex h-16 shrink-0 items-center justify-between gap-2 pr-3 pl-5">
             {brand}
             <nav className="flex items-center gap-0.5" aria-label="Konto">
+              {suggestionsLink}
               <button
                 className={cn(compactIconAction, "text-muted")}
-                aria-label="Legg til prosjekt"
-                data-tooltip="Legg til prosjekt"
-                hidden={!canModerate}
-                onClick={() => setEditorOpen(true)}
+                aria-label={canModerate ? "Legg til prosjekt" : "Foreslå prosjekt"}
+                data-tooltip={canModerate ? "Legg til prosjekt" : "Foreslå prosjekt"}
+                onClick={openEditor}
               >
                 <Plus size={20} />
               </button>
@@ -1821,6 +1870,17 @@ export default memo(function Explorer({
             onOpenProject={openFromProfile}
           />
         </Dialog>
+      )}
+      {editorOpen && user && !canModerate && (
+        <ProjectEditor
+          suggest
+          onClose={() => setEditorOpen(false)}
+          onSave={async (project) => {
+            await suggest({ kind: "project", project });
+            setEditorOpen(false);
+            notify("Forslaget er sendt");
+          }}
+        />
       )}
       {editorOpen && canModerate && (
         <ProjectEditor

@@ -185,6 +185,8 @@ type Props = {
   draw?: boolean;
   /** Small inline drawing map: no hint bar or layer menu. */
   compact?: boolean;
+  /** A preview framed on its projects; the explorer's view is left alone. */
+  frame?: boolean;
   points?: Point[];
   geometryType?: "area" | "line";
   /** Every drawing edit: added, moved, inserted or removed points. */
@@ -203,6 +205,7 @@ export default function ProjectMap({
   onSelect = noSelect,
   draw = false,
   compact = false,
+  frame = false,
   points = noPoints,
   geometryType = "area",
   onPointsChange,
@@ -308,9 +311,11 @@ export default function ProjectMap({
     L.control
       .attribution({ position: "bottomright", prefix: false })
       .addTo(map);
-    L.control
-      .scale({ imperial: false, position: "bottomleft", maxWidth: 80 })
-      .addTo(map);
+    // Previews are too small for a scale bar; it would cover place labels.
+    if (!frame)
+      L.control
+        .scale({ imperial: false, position: "bottomleft", maxWidth: 80 })
+        .addTo(map);
     mapRef.current = map;
     map.on("click", () => {
       if (!handlers.current.draw) handlers.current.onSelect(null);
@@ -331,7 +336,7 @@ export default function ProjectMap({
       map.stop();
       map.remove();
     };
-  }, [draw]);
+  }, [draw, frame]);
   useEffect(() => {
     if (!ready || !mapRef.current) return;
     const canvas = layer !== "streets";
@@ -383,7 +388,15 @@ export default function ProjectMap({
   // Drawing maps frame the shape being edited, or the place's preset view.
   useEffect(() => {
     const map = mapRef.current;
-    if (!ready || !map || !draw) return;
+    if (!ready || !map) return;
+    // Previews frame their projects; the explorer's view is left alone.
+    if (frame) {
+      const shown = projectsRef.current.flatMap((project) => project.geometry);
+      if (shown.length)
+        map.fitBounds(L.latLngBounds(shown), { padding: [32, 32], maxZoom: 15 });
+      return;
+    }
+    if (!draw) return;
     const place = city ? cities[city] : undefined;
     if (initialPoints.current.length)
       map.fitBounds(L.latLngBounds(initialPoints.current), {
@@ -392,7 +405,7 @@ export default function ProjectMap({
       });
     else if (place) map.setView(place.center, place.zoom);
     else map.fitBounds(norwayBounds);
-  }, [city, ready, draw]);
+  }, [city, ready, draw, frame]);
   // The explorer reports every view, which filters the list and fills the URL.
   useEffect(() => {
     const map = mapRef.current;

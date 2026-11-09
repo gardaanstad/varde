@@ -36,6 +36,20 @@
       "when": 1794075942850,
       "tag": "0004_project_follows",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794076000000,
+      "tag": "0005_suggestions",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794076030630,
+      "tag": "0006_suggestion_seen",
+      "breakpoints": true
     }
   ]
 }

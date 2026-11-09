@@ -12,15 +12,22 @@ import { useAuth } from "./auth-provider";
 import { apiRequest } from "../lib/api-client";
 import type { CommunityMutation } from "../lib/community-rules";
 import type { Comment, Project } from "../lib/data";
+import type { SuggestionInput, SuggestionMutation } from "../lib/suggestions";
 type CommunityData = {
   projects: Project[];
   comments: Comment[];
   following: string[];
   votes: Record<string, number>;
+  /** Pending suggestions: the queue for moderators, one's own otherwise. */
+  suggestions: number;
+  /** A member's suggestions reviewed since they last looked. */
+  reviewed: number;
 };
 type CommunityContext = CommunityData & {
   mutate: (mutation: CommunityMutation) => Promise<void>;
   refresh: () => Promise<void>;
+  /** Sends a member's suggestion to the moderation queue. */
+  suggest: (suggestion: SuggestionInput) => Promise<void>;
 };
 const Context = createContext<CommunityContext | null>(null);
 // Polling mostly returns what is already shown; keeping unchanged parts by
@@ -34,6 +41,8 @@ function merge(current: CommunityData, next: CommunityData): CommunityData {
     comments: reuse(current.comments, next.comments),
     following: reuse(current.following, next.following),
     votes: reuse(current.votes, next.votes),
+    suggestions: next.suggestions,
+    reviewed: next.reviewed,
   };
 }
 export function CommunityProvider({
@@ -98,6 +107,17 @@ export function CommunityProvider({
       receive(data, current);
     else if (identity.current === current) await refresh();
   }
+  async function suggest(suggestion: SuggestionInput) {
+    await apiRequest("/api/suggestions", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "submit",
+        suggestion,
+      } satisfies SuggestionMutation),
+    });
+    // The pending count is part of the community read.
+    void refresh().catch(() => {});
+  }
   const personal = state.userId === user?.id && !!user;
   return (
     <Context.Provider
@@ -105,8 +125,11 @@ export function CommunityProvider({
         ...state.data,
         following: personal ? state.data.following : [],
         votes: personal ? state.data.votes : {},
+        suggestions: personal ? state.data.suggestions : 0,
+        reviewed: personal ? state.data.reviewed : 0,
         mutate,
         refresh,
+        suggest,
       }}
     >
       {children}

@@ -24,6 +24,14 @@
   --color-danger-strong: #88332e;
   --color-danger-soft: #fbf0ee;
   --color-warning: #9a681e;
+  /*
+   * Suggestion diffs. Mixed from the surface and the danger / accent
+   * colours, so they follow any dark palette without their own values.
+   */
+  --color-diff-remove: color-mix(in srgb, var(--color-danger) 13%, var(--color-surface));
+  --color-diff-remove-ink: color-mix(in srgb, var(--color-danger) 88%, var(--color-ink));
+  --color-diff-add: color-mix(in srgb, #2f8a4f 15%, var(--color-surface));
+  --color-diff-add-ink: color-mix(in srgb, #2f8a4f 62%, var(--color-ink));
   --color-status-planned: #7383ba;
   --color-status-planned-ink: #596999;
   --color-status-construction: #d59a42;

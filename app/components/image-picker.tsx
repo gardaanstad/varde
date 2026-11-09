@@ -63,6 +63,9 @@ export default function ImagePicker({
               alt={`Bilde ${index + 1}`}
               fill
               sizes="180px"
+              // Members' photos are private until approved; the optimizer
+              // fetches without the viewer's session.
+              unoptimized
               className="object-cover"
             />
             <button

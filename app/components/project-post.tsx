@@ -50,6 +50,9 @@ import ProjectPostHeader, { ProjectActions } from "./project-post-header";
 import ProjectDiscussion from "./project-discussion";
 import CategoryIcon from "./category-icon";
 import RelativeTime from "./relative-time";
+import Link from "next/link";
+import { profileHref } from "../lib/profiles";
+import { openProfile } from "../lib/profile-overlay";
 import {
   changedFields,
   changesToSave,
@@ -180,7 +183,40 @@ function ProjectFacts({
           </dd>
         </div>
       )}
+      {!!project.contributors?.length && (
+        <div className="pt-2.5 text-right text-xs leading-normal text-muted">
+          <dt className="sr-only">Forslag fra</dt>
+          <dd>
+            via{" "}
+            {project.contributors.map((username, index) => (
+              <span key={username}>
+                {index > 0 && ", "}
+                <Credit username={username} />
+              </span>
+            ))}
+          </dd>
+        </div>
+      )}
     </dl>
+  );
+}
+
+/** A suggester's username, quietly linked to their profile. */
+function Credit({ username }: { username: string }) {
+  return (
+    <Link
+      href={profileHref(username)}
+      className="text-muted underline-offset-3 hover:text-ink hover:underline"
+      onClick={(event) => {
+        // Plain clicks open the profile over the project, like comments do.
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button)
+          return;
+        event.preventDefault();
+        openProfile(username);
+      }}
+    >
+      @{username}
+    </Link>
   );
 }
 
@@ -630,18 +666,27 @@ function CommentsDock({
   );
 }
 
-/** Moderators publish updates from a composer that opens like the comment one. */
+type Tip = { text: string; sourceUrl: string; image?: string };
+
+/**
+ * Moderators publish updates from a composer that opens like the comment one.
+ * With `onTip`, members send a tip instead: text and a source, for review.
+ */
 function UpdateComposer({
   project,
   onUpdate,
+  onTip,
   onNotify,
   onPublished,
 }: {
   project: Project;
   onUpdate: (project: Project) => Promise<void>;
+  onTip?: (tip: Tip) => Promise<void>;
   onNotify: (message: string) => void;
   onPublished: (id: string) => void;
 }) {
+  const { requireAccount } = useAuth();
+  const tip = Boolean(onTip);
   const [open, setOpen] = useState(false);
   // The pill's width, so the form can grow out of it.
   const [pillWidth, setPillWidth] = useState(0);
@@ -654,6 +699,7 @@ function UpdateComposer({
   const [picking, setPicking] = useState(false);
   const [uploading, setUploading] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
   const pillRef = useRef<HTMLButtonElement>(null);
   // Escape and Avbryt hand focus back to the pill; a blur leaves it be.
   const refocusPill = useRef(false);
@@ -669,7 +715,8 @@ function UpdateComposer({
     setStatus(project.status);
   }
   useEffect(() => {
-    if (open) titleRef.current?.focus({ preventScroll: true });
+    if (open)
+      (titleRef.current ?? bodyRef.current)?.focus({ preventScroll: true });
     else if (refocusPill.current) pillRef.current?.focus({ preventScroll: true });
     refocusPill.current = false;
   }, [open]);
@@ -677,11 +724,24 @@ function UpdateComposer({
     refocusPill.current = true;
     reset();
   }
+  const ready = tip
+    ? Boolean(body.trim() && source.trim())
+    : Boolean(title.trim() && body.trim());
   async function publish(event?: React.FormEvent) {
     event?.preventDefault();
-    if (publishing || uploading || !title.trim() || !body.trim()) return;
+    if (publishing || uploading || !ready) return;
     setPublishing(true);
     try {
+      if (onTip) {
+        await onTip({
+          text: body.trim(),
+          sourceUrl: source.trim(),
+          image: images[0],
+        });
+        reset();
+        onNotify("Tipset er sendt");
+        return;
+      }
       const date = new Date().toISOString();
       const id = crypto.randomUUID();
       await onUpdate({
@@ -704,7 +764,14 @@ function UpdateComposer({
       onPublished(id);
       onNotify("Oppdateringen er publisert");
     } catch (error) {
-      onNotify(errorMessage(error, "Kunne ikke publisere oppdateringen."));
+      onNotify(
+        errorMessage(
+          error,
+          tip
+            ? "Kunne ikke sende tipset."
+            : "Kunne ikke publisere oppdateringen.",
+        ),
+      );
     } finally {
       setPublishing(false);
     }
@@ -713,8 +780,8 @@ function UpdateComposer({
     <button
       type="submit"
       className={composerSend}
-      disabled={publishing || uploading || !title.trim() || !body.trim()}
-      aria-label="Publiser oppdatering"
+      disabled={publishing || uploading || !ready}
+      aria-label={tip ? "Send tips" : "Publiser oppdatering"}
     >
       <ArrowUp size={16} strokeWidth={2.25} />
     </button>
@@ -730,12 +797,13 @@ function UpdateComposer({
           "[&>svg]:text-muted",
         )}
         onClick={(event) => {
+          if (tip && !requireAccount()) return;
           setPillWidth(event.currentTarget.offsetWidth);
           setOpen(true);
         }}
       >
         <Plus size={16} aria-hidden="true" />
-        Skriv en oppdatering
+        {tip ? "Send tips" : "Skriv en oppdatering"}
       </button>
     );
   return (
@@ -767,35 +835,39 @@ function UpdateComposer({
         }
       }}
     >
-      <input
-        ref={titleRef}
-        className={cn(composerField, "font-semibold")}
-        aria-label="Overskrift"
-        placeholder="Overskrift"
-        required
-        maxLength={120}
-        value={title}
-        onChange={(event) => setTitle(event.target.value)}
-      />
+      {!tip && (
+        <input
+          ref={titleRef}
+          className={cn(composerField, "font-semibold")}
+          aria-label="Overskrift"
+          placeholder="Overskrift"
+          required
+          maxLength={120}
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+        />
+      )}
       {open && (
         <>
           <textarea
+            ref={bodyRef}
             className={cn(
               composerField,
               "block max-h-65 min-h-[calc(3lh+10px)] flex-none resize-none field-sizing-content",
             )}
-            aria-label="Oppdatering"
-            placeholder="Hva har skjedd siden sist?"
+            aria-label={tip ? "Tips" : "Oppdatering"}
+            placeholder={tip ? "Tips" : "Hva har skjedd siden sist?"}
             required
-            maxLength={5000}
+            maxLength={tip ? 2000 : 5000}
             rows={3}
             value={body}
             onChange={(event) => setBody(event.target.value)}
           />
           <input
             type="url"
-            aria-label="Kildelenke (valgfritt)"
-            placeholder="Kildelenke (valgfritt)"
+            aria-label={tip ? "Kildelenke" : "Kildelenke (valgfritt)"}
+            placeholder={tip ? "Kildelenke (https://…)" : "Kildelenke (valgfritt)"}
+            required={tip}
             pattern="https://.*"
             maxLength={2000}
             className={composerField}
@@ -809,6 +881,7 @@ function UpdateComposer({
               value={images}
               onChange={setImages}
               onBusy={setUploading}
+              max={tip ? 1 : 10}
             />
           )}
           <div className="mt-1 flex items-center gap-1 border-t border-border pt-1">
@@ -820,12 +893,12 @@ function UpdateComposer({
               onClick={() => setPicking(!picking)}
             >
               <ImagePlus size={15} aria-hidden="true" />
-              Bilder
+              {tip ? "Bilde" : "Bilder"}
               {images.length > 0 && (
                 <small className="text-2xs tabular-nums">{images.length}</small>
               )}
             </button>
-            <label className={composerTool}>
+            <label className={composerTool} hidden={tip}>
               <i
                 className={cn("size-2 rounded-full", statusTone[status].dot)}
                 aria-hidden="true"
@@ -901,8 +974,8 @@ export default function ProjectPost({
     measure();
     return () => observer.disconnect();
   }, []);
-  const { canModerate } = useAuth();
-  const { mutate } = useCommunity();
+  const { canModerate, requireAccount } = useAuth();
+  const { mutate, suggest } = useCommunity();
   const onUpdate = (next: Project) =>
     mutate({ action: "project", project: next, create: false });
   const [tab, setTab] = useState(initialUpdateId ? "updates" : "discussion");
@@ -914,6 +987,8 @@ export default function ProjectPost({
   const [draft, setDraft] = useState<Project | null>(null);
   const [stage, setStage] = useState<EditStage>("edit");
   const [savingEdit, setSavingEdit] = useState(false);
+  // Members' edits become a suggestion, with an optional note.
+  const [note, setNote] = useState("");
   const changed = draft ? changedFields(draft, project) : [];
   const dirty = changed.length > 0;
   const edit = draft && {
@@ -942,7 +1017,9 @@ export default function ProjectPost({
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
   function startEditing() {
+    if (!canModerate && !requireAccount()) return;
     setDraft(toDraft(project));
+    setNote("");
     setStage("edit");
     contentRef.current?.scrollTo({ top: 0 });
   }
@@ -951,7 +1028,9 @@ export default function ProjectPost({
     setStage("edit");
     requestAnimationFrame(() =>
       document
-        .querySelector<HTMLElement>('[aria-label="Rediger prosjekt"]')
+        .querySelector<HTMLElement>(
+          '[aria-label="Rediger prosjekt"], [aria-label="Foreslå endring"]',
+        )
         ?.focus({ preventScroll: true }),
     );
   }
@@ -966,15 +1045,38 @@ export default function ProjectPost({
     if (!draft || !dirty || savingEdit) return;
     setSavingEdit(true);
     try {
-      await onUpdate({ ...project, ...changesToSave(draft, changed) });
-      stopEditing();
-      onNotify(
-        changed.length === 1
-          ? "Endringen er lagret"
-          : `${changed.length} endringer er lagret`,
-      );
+      const changes = changesToSave(draft, changed);
+      if (canModerate) {
+        await onUpdate({ ...project, ...changes });
+        stopEditing();
+        onNotify(
+          changed.length === 1
+            ? "Endringen er lagret"
+            : `${changed.length} endringer er lagret`,
+        );
+      } else {
+        await suggest({
+          kind: "correction",
+          projectId: project.id,
+          // A removed link travels as an empty one.
+          changes:
+            "website" in changes
+              ? { ...changes, website: changes.website ?? "" }
+              : changes,
+          note,
+        });
+        stopEditing();
+        onNotify("Forslaget er sendt");
+      }
     } catch (error) {
-      onNotify(errorMessage(error, "Kunne ikke lagre endringene."));
+      onNotify(
+        errorMessage(
+          error,
+          canModerate
+            ? "Kunne ikke lagre endringene."
+            : "Kunne ikke sende forslaget.",
+        ),
+      );
     } finally {
       setSavingEdit(false);
     }
@@ -1069,7 +1171,8 @@ export default function ProjectPost({
     }
   }
   const actions = {
-    onEdit: canModerate ? startEditing : undefined,
+    onEdit: startEditing,
+    suggest: !canModerate,
     copied,
     following,
     onFollow,
@@ -1179,14 +1282,23 @@ export default function ProjectPost({
                   hidden={tab !== "updates"}
                   aria-label="Prosjektoppdateringer"
                 >
-                  {canModerate && (
-                    <UpdateComposer
-                      project={project}
-                      onUpdate={onUpdate}
-                      onNotify={onNotify}
-                      onPublished={readUpdate}
-                    />
-                  )}
+                  <UpdateComposer
+                    key={canModerate ? "update" : "tip"}
+                    project={project}
+                    onUpdate={onUpdate}
+                    onTip={
+                      canModerate
+                        ? undefined
+                        : (tip) =>
+                            suggest({
+                              kind: "update",
+                              projectId: project.id,
+                              ...tip,
+                            })
+                    }
+                    onNotify={onNotify}
+                    onPublished={readUpdate}
+                  />
                   {updates.length ? (
                     <div className={styles.timeline}>
                       {updates.map((update) => (
@@ -1196,12 +1308,19 @@ export default function ProjectPost({
                           className={styles.entry}
                           data-highlighted={highlightId === update.id}
                         >
-                          <RelativeTime
-                            date={update.date}
-                            mode="suffix"
-                            withYear
-                            className="text-xs leading-normal font-medium text-muted"
-                          />
+                          <p className="text-xs leading-normal font-medium text-muted">
+                            <RelativeTime
+                              date={update.date}
+                              mode="suffix"
+                              withYear
+                            />
+                            {update.via && (
+                              <>
+                                {" · via "}
+                                <Credit username={update.via} />
+                              </>
+                            )}
+                          </p>
                           <h3 className="mt-1 mb-2.5 text-lg leading-normal font-[620] tracking-[-0.3px] max-sm:mt-0.5 max-sm:mb-2 max-sm:text-[17px]">
                             {update.title}
                           </h3>
@@ -1311,6 +1430,9 @@ export default function ProjectPost({
               onStage={setStage}
               onConfirm={() => void saveEdits()}
               onDiscard={stopEditing}
+              suggestion={
+                canModerate ? undefined : { note, onNote: setNote }
+              }
             />
           )}
         </div>

@@ -1,13 +1,28 @@
 import "server-only";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
-import { comment, follow, project, rateLimit, user, vote } from "../db/schema";
+import {
+  comment,
+  follow,
+  project,
+  rateLimit,
+  suggestion,
+  user,
+  vote,
+} from "../db/schema";
 import { getProjectUpdates, type Comment, type Project } from "../data";
 import { HttpError } from "./http";
+import { credit, readCredits } from "./credits";
 
-export async function readCommunity(userId?: string) {
+/**
+ * Everything the explorer shows. `suggestions` counts pending suggestions:
+ * the whole queue for moderators, the viewer's own for everyone else.
+ * Approved suggestions credit their members on projects and updates.
+ */
+export async function readCommunity(userId?: string, moderator = false) {
   const db = getDb();
-  const [projects, rows, followed, votes] = await Promise.all([
+  const [projects, rows, followed, votes, [pending], [reviewed], credits] =
+    await Promise.all([
     db.select().from(project),
     db
       .select({
@@ -32,6 +47,30 @@ export async function readCommunity(userId?: string) {
           .where(and(eq(follow.userId, userId), eq(follow.following, true)))
       : [],
     userId ? db.select().from(vote).where(eq(vote.userId, userId)) : [],
+    userId
+      ? db
+          .select({ count: sql<number>`count(*)` })
+          .from(suggestion)
+          .where(
+            and(
+              eq(suggestion.status, "pending"),
+              moderator ? undefined : eq(suggestion.userId, userId),
+            ),
+          )
+      : [{ count: 0 }],
+    userId && !moderator
+      ? db
+          .select({ count: sql<number>`count(*)` })
+          .from(suggestion)
+          .where(
+            and(
+              eq(suggestion.userId, userId),
+              isNotNull(suggestion.reviewedAt),
+              isNull(suggestion.seenAt),
+            ),
+          )
+      : [{ count: 0 }],
+    readCredits(),
   ]);
   const ids = new Set(rows.map((row) => row.id));
   const updateIds = new Map(
@@ -48,21 +87,32 @@ export async function readCommunity(userId?: string) {
     parentId: row.parentId && ids.has(row.parentId) ? row.parentId : undefined,
   }));
   return {
-    projects: projects.map((row) => row.data),
+    projects: projects.map((row) => credit(row.data, credits)),
     comments,
     following: followed.map((row) => row.projectId),
     votes: Object.fromEntries(votes.map((row) => [row.commentId, row.value])),
+    suggestions: pending?.count ?? 0,
+    /** The member's suggestions reviewed since they last looked. */
+    reviewed: reviewed?.count ?? 0,
   };
 }
 
-const throttleWindow = 60_000;
-const throttleLimit = 40;
-/** Atomic per-account throttling that works across server instances. */
-export async function throttle(userId: string) {
-  const key = `community:${userId}`;
+/**
+ * Atomic per-key throttling that works across server instances: at most
+ * `limit` requests per `window` milliseconds.
+ */
+export async function throttle(
+  userId: string,
+  {
+    key = `community:${userId}`,
+    limit = 40,
+    window = 60_000,
+    message = "Litt mange endringer på kort tid. Vent et minutt og prøv igjen.",
+  } = {},
+) {
   const now = Date.now();
-  const expired = sql`${rateLimit.lastRequest} < ${now - throttleWindow}`;
-  const [limit] = await getDb()
+  const expired = sql`${rateLimit.lastRequest} < ${now - window}`;
+  const [row] = await getDb()
     .insert(rateLimit)
     .values({ id: key, key, count: 1, lastRequest: now })
     .onConflictDoUpdate({
@@ -73,14 +123,10 @@ export async function throttle(userId: string) {
       },
     })
     .returning();
-  if (limit.count > throttleLimit)
-    throw new HttpError(
-      429,
-      "Litt mange endringer på kort tid. Vent et minutt og prøv igjen.",
-    );
+  if (row.count > limit) throw new HttpError(429, message);
 }
 
-async function findProject(id: string) {
+export async function findProject(id: string) {
   const [row] = await getDb()
     .select({ data: project.data })
     .from(project)
