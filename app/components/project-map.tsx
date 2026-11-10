@@ -42,10 +42,36 @@ const shapeStyle = (line: boolean, selected: boolean) => ({
 const dotRadius = (selected: boolean) => (selected ? 8 : 6);
 // Below this zoom areas collapse to dots and nearby projects group together.
 const clusterZoom = 12;
+// Below this zoom alignments collapse to dots too: wider than a county,
+// even long lines are short scribbles, so every project reads as a point.
+const lineDotZoom = 8;
 // Screen distance within which projects join a group.
 const clusterRadius = 44;
 // Alignments only group once they're this short on screen.
 const clusterLineExtent = 64;
+
+/** The point halfway along a line, so its dot sits on the alignment. */
+function lineMidpoint(points: Point[]): Point {
+  if (points.length < 2) return points[0];
+  // Longitude shrinks with latitude; this keeps lengths roughly true.
+  const scale = Math.cos((points[0][0] * Math.PI) / 180);
+  const lengths = points
+    .slice(1)
+    .map(([lat, lng], index) =>
+      Math.hypot(lat - points[index][0], (lng - points[index][1]) * scale),
+    );
+  let remaining = lengths.reduce((sum, length) => sum + length, 0) / 2;
+  for (const [index, length] of lengths.entries()) {
+    if (remaining <= length && length > 0) {
+      const [lat, lng] = points[index];
+      const [nextLat, nextLng] = points[index + 1];
+      const t = remaining / length;
+      return [lat + (nextLat - lat) * t, lng + (nextLng - lng) * t];
+    }
+    remaining -= length;
+  }
+  return points[points.length - 1];
+}
 
 function clusterIcon(count: number) {
   const size = count < 10 ? 32 : count < 50 ? 38 : 44;
@@ -596,21 +622,50 @@ export default function ProjectMap({
         });
       }
       if (!line) shape.bindTooltip(projectTooltip(project), tooltipOptions);
-      // Areas are only a few pixels wide at regional zoom; alignments stay visible.
-      if (line) continue;
-      const dot = L.circleMarker(project.center, {
-        radius: dotRadius(selected),
-        color: "#fff",
-        weight: 2,
-        fillColor: color,
-        fillOpacity: 1,
-        bubblingMouseEvents: false,
-      })
+      // Zoomed out, areas are a few pixels wide and alignments a scribble.
+      const dot = L.circleMarker(
+        line ? lineMidpoint(project.geometry) : project.center,
+        {
+          className: "project-dot",
+          radius: dotRadius(selected),
+          color: "#fff",
+          weight: 2,
+          fillColor: color,
+          fillOpacity: 1,
+          bubblingMouseEvents: false,
+        },
+      )
         .on("click", (event) => {
           L.DomEvent.stopPropagation(event);
           handlers.current.onSelect(project.id);
         })
         .bindTooltip(projectTooltip(project), tooltipOptions);
+      // Each add draws a new element, which picks up the current selection.
+      dot.on("add", () => {
+        const element = dot.getElement();
+        if (!(element instanceof SVGElement)) return;
+        element.classList.toggle(
+          "is-selected",
+          project.id === selectedRef.current,
+        );
+        // An alignment's line is hidden while it's a dot, so the dot takes focus.
+        if (line && !draw) {
+          element.setAttribute("tabindex", "0");
+          element.setAttribute("role", "button");
+          element.setAttribute(
+            "aria-label",
+            `${project.title}, ${statuses[project.status].label}`,
+          );
+          element.setAttribute("data-project-dot", project.id);
+          element.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              event.stopPropagation();
+              handlers.current.onSelect(project.id);
+            }
+          });
+        }
+      });
       dotsRef.current.set(project.id, dot);
     }
     const shapes = shapesRef.current;
@@ -637,13 +692,17 @@ export default function ProjectMap({
           const bounds = lineBounds.get(project.id);
           if (
             bounds &&
+            zoom >= lineDotZoom &&
             map
               .project(bounds.getNorthWest(), zoom)
               .distanceTo(map.project(bounds.getSouthEast(), zoom)) >
               clusterLineExtent
           )
             return [];
-          return [{ project, at: map.project(project.center, zoom) }];
+          const anchor = bounds
+            ? dotMarkers.get(project.id)!.getLatLng()
+            : project.center;
+          return [{ project, at: map.project(anchor, zoom) }];
         });
         for (const seed of candidates) {
           if (grouped.has(seed.project.id)) continue;
@@ -685,7 +744,11 @@ export default function ProjectMap({
         }
       }
       for (const project of projects) {
-        const shown = !grouped.has(project.id);
+        const line = project.geometryType === "line";
+        const ungrouped = !grouped.has(project.id);
+        const dotted = zoom < (line ? lineDotZoom : clusterZoom);
+        // Areas keep their outline under the dot; alignments give way to it.
+        const shown = ungrouped && !(line && dotted);
         for (const layer of [
           shapes.get(project.id),
           casings.get(project.id),
@@ -697,7 +760,7 @@ export default function ProjectMap({
           if (!shown) layer?.closeTooltip();
         }
         const dot = dotMarkers.get(project.id);
-        if (dot && shown && zoom < clusterZoom) dots.addLayer(dot);
+        if (dot && ungrouped && dotted) dots.addLayer(dot);
         else if (dot) dots.removeLayer(dot);
       }
     };

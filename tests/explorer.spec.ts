@@ -534,6 +534,23 @@ test.describe("desktop explorer", () => {
     expect(await list.evaluate((element) => element.scrollTop)).toBe(top);
   });
 
+  test("zoomed out, an alignment becomes a dot that still opens it", async ({
+    page,
+  }) => {
+    const line = page.locator('path[data-project-id="rogfast"]');
+    const dot = page.locator('path[data-project-dot="rogfast"]');
+    await page.goto("/?kart=59.1200,5.5000,8");
+    await expect(line).toBeVisible();
+    await expect(dot).toHaveCount(0);
+    await page.goto("/?kart=59.1200,5.5000,7.5");
+    await expect(dot).toBeVisible();
+    await expect(line).toBeHidden();
+    await dot.hover();
+    await expect(page.locator(".project-tooltip")).toContainText("E39 Rogfast");
+    await dot.click();
+    await expect(page).toHaveURL(/\/prosjekt\/rogfast\?/);
+  });
+
   test("the list panel resizes by pointer and keyboard, and remembers it", async ({
     page,
   }) => {
