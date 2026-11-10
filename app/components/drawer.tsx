@@ -16,6 +16,91 @@ type DrawerContextProps = {
 
 const DrawerContext = React.createContext<DrawerContextProps | null>(null);
 
+/** Where a drawer is, read from the variables Base UI moves it with. */
+type DrawerMotion = {
+  /** Pixels of the popup that show above the screen's bottom edge. */
+  visible: number;
+  /** True while a finger or pointer drags it; otherwise it eases to a stop. */
+  swiping: boolean;
+};
+
+// The popup's own transition; whatever follows it uses the same.
+const drawerDuration = 450;
+const drawerEasing = "cubic-bezier(0.22,1,0.36,1)";
+
+/**
+ * Follows a drawer's popup without touching layout while it moves. Base UI
+ * writes the snap offset and drag movement straight onto the popup's style;
+ * a MutationObserver hears each write in the same frame, so anything driven
+ * from `onMotion` moves in step with it.
+ *
+ * With `restOffset`, the content is sized to the settled snap point through
+ * `--drawer-rest-offset` (so its end can be scrolled to), rather than to every
+ * frame of a drag: full height while dragged or growing, and shrunk only once
+ * the drawer has come to rest.
+ */
+function useDrawerMotion(
+  content: HTMLElement | null,
+  restOffset: boolean,
+  onMotion?: (motion: DrawerMotion) => void,
+) {
+  const report = React.useEffectEvent((motion: DrawerMotion) =>
+    onMotion?.(motion),
+  );
+  const tracking = restOffset || Boolean(onMotion);
+  React.useEffect(() => {
+    const popup = content?.closest<HTMLElement>("[data-slot=drawer-popup]");
+    if (!content || !popup || !tracking) return;
+    let height = popup.offsetHeight;
+    let rest = -1;
+    let pending = -1;
+    let timer = 0;
+    const settle = (offset: number) => {
+      window.clearTimeout(timer);
+      pending = -1;
+      if (offset === rest) return;
+      rest = offset;
+      content.style.setProperty("--drawer-rest-offset", `${offset}px`);
+    };
+    const read = () => {
+      const style = popup.style;
+      const offset =
+        Number.parseFloat(style.getPropertyValue("--drawer-snap-point-offset")) ||
+        0;
+      const movement =
+        Number.parseFloat(style.getPropertyValue("--drawer-swipe-movement-y")) ||
+        0;
+      const swiping = popup.hasAttribute("data-swiping");
+      report({ visible: height - offset - movement, swiping });
+      if (!restOffset) return;
+      const target = swiping ? 0 : Math.max(0, offset);
+      if (rest < 0 || target <= rest) settle(target);
+      else if (target !== pending) {
+        // Shrinking early would bare the drawer below the content as it slides.
+        window.clearTimeout(timer);
+        pending = target;
+        timer = window.setTimeout(() => settle(target), drawerDuration + 30);
+      }
+    };
+    const mutations = new MutationObserver(read);
+    mutations.observe(popup, {
+      attributes: true,
+      attributeFilter: ["style", "data-swiping"],
+    });
+    const resize = new ResizeObserver(() => {
+      height = popup.offsetHeight;
+      read();
+    });
+    resize.observe(popup);
+    read();
+    return () => {
+      mutations.disconnect();
+      resize.disconnect();
+      window.clearTimeout(timer);
+    };
+  }, [content, tracking, restOffset]);
+}
+
 function useDrawer() {
   const context = React.useContext(DrawerContext);
 
@@ -97,13 +182,20 @@ function DrawerContent({
   contentClassName,
   handle,
   viewportClassName,
+  restOffset = false,
+  onMotion,
   ...props
 }: Omit<DrawerPrimitive.Popup.Props, "className"> & { className?: string } & {
   contentClassName?: string;
   handle?: React.ReactNode;
   viewportClassName?: string;
+  /** Size the content to the settled snap point; see `useDrawerMotion`. */
+  restOffset?: boolean;
+  onMotion?: (motion: DrawerMotion) => void;
 }) {
   const { hasSnapPoints, modal, showSwipeHandle, swipeDirection } = useDrawer();
+  const [content, setContent] = React.useState<HTMLDivElement | null>(null);
+  useDrawerMotion(content, restOffset, onMotion);
   const swipeAxis =
     swipeDirection === "down" || swipeDirection === "up" ? "y" : "x";
 
@@ -156,6 +248,7 @@ function DrawerContent({
           {handle}
           {showSwipeHandle && <DrawerSwipeHandle />}
           <DrawerPrimitive.Content
+            ref={setContent}
             data-slot="drawer-content"
             className={cn(
               "flex min-h-0 flex-1 flex-col overflow-hidden overscroll-contain rounded-[inherit] transition-opacity duration-300 ease-[cubic-bezier(0.45,1.005,0,1.005)] select-text motion-reduce:transition-none group-data-nested-drawer-open/drawer-popup:opacity-0 group-data-nested-drawer-swiping/drawer-popup:opacity-100 group-data-swiping/drawer-popup:select-none",
@@ -208,4 +301,5 @@ export {
   DrawerVirtualKeyboardProvider,
 };
 
-export type { DrawerSnapPoint };
+export { drawerDuration, drawerEasing };
+export type { DrawerMotion, DrawerSnapPoint };

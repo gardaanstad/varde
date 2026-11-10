@@ -140,6 +140,54 @@
   }
 }
 
+/*
+ * The drawer's per-frame variables (see drawer.tsx) stay on the element that
+ * declares them. Inherited, every pointermove would restyle the whole list or
+ * project inside; Base UI registers its own swipe variables the same way.
+ */
+@property --translate-x {
+  syntax: "<length-percentage>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --translate-y {
+  syntax: "<length-percentage>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --stack-progress {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+@property --stack-scale {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 1;
+}
+@property --stack-shrink {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+@property --stack-peek-offset {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+/* The snap offset a drawer's content is sized for, set once it settles. */
+@property --drawer-rest-offset {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+/* How much of the mobile explorer drawer shows; the map controls ride on it. */
+@property --drawer-visible {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 136px;
+}
+
 /* next/font sets these variables on <html>. */
 @theme inline {
   --font-sans: var(--font-geist-sans);

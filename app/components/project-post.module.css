@@ -69,7 +69,6 @@
     color: var(--color-ink-soft);
     font-size: var(--text-sm);
     line-height: 1.6;
-    transition: height 320ms var(--ease-out-soft);
 
     & > p {
       white-space: pre-wrap;
@@ -114,10 +113,6 @@
       &[data-overflows="true"] {
         mask-image: linear-gradient(to bottom, #000 35%, transparent);
       }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      transition: none;
     }
   }
 }
