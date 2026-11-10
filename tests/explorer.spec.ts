@@ -706,12 +706,29 @@ test.describe("desktop explorer", () => {
     await expect(page).not.toHaveURL(/visning=full/);
     expect(mapParam(page)).toBe(panelView);
     expect(await top()).toBe(0);
-    // The mode belongs to the sidebar: closing a maximized project leaves
-    // the list maximized.
+    // Closing returns to the mode the project opened in: beside the map.
+    await page.getByRole("button", { name: "Lukk prosjekt", exact: true }).click();
+    await expect(layer).toHaveCount(0);
+    await card(page, project.title).click();
     await page.getByRole("button", { name: "Vis som helside", exact: true }).click();
+    await expect(layer).toHaveAttribute("data-full", "true");
     await page.getByRole("button", { name: "Lukk prosjekt", exact: true }).click();
     await expect(layer).toHaveCount(0);
     await expect(list).toBeVisible();
+    await expect(page.locator("#project-panel")).toHaveAttribute(
+      "data-sidebar-mode",
+      "normal",
+    );
+    // Opened from the maximized list, it closes back to it.
+    await page.getByRole("button", { name: "Vis som helside", exact: true }).click();
+    await expect(page.locator("#project-panel")).toHaveAttribute(
+      "data-sidebar-mode",
+      "maximized",
+    );
+    await card(page, project.title).click();
+    await expect(layer).toHaveAttribute("data-full", "true");
+    await page.getByRole("button", { name: "Lukk prosjekt", exact: true }).click();
+    await expect(layer).toHaveCount(0);
     await expect(page.locator("#project-panel")).toHaveAttribute(
       "data-sidebar-mode",
       "maximized",
@@ -917,7 +934,7 @@ test.describe("desktop sidebar panels", () => {
     const account = page.locator('[data-sidebar-panel="account"]');
     await expect(account).toBeVisible();
     await expect(account.locator("[data-account-panel]")).toBeVisible();
-    // Maximized, closing a panel leaves the explorer maximized too.
+    // Maximized, panels opened over it stay maximized.
     await account.getByRole("button", { name: "Vis som helside", exact: true }).click();
     await expect.poll(() => box("account")).toEqual([0, 0, 1280, 800]);
     // From the profile, Forslag opens over it and leads back to it.
@@ -926,8 +943,10 @@ test.describe("desktop sidebar panels", () => {
     await expect.poll(() => box("suggestions")).toEqual([0, 0, 1280, 800]);
     await suggestions.getByRole("button", { name: "Tilbake", exact: true }).click();
     await expect(account).toBeVisible();
+    // Closing returns to the mode the profile opened in.
     await account.getByRole("button", { name: "Lukk", exact: true }).click();
-    await expect(sidebar).toHaveAttribute("data-sidebar-mode", "maximized");
+    await expect(account).toHaveCount(0);
+    await expect(sidebar).toHaveAttribute("data-sidebar-mode", "normal");
     await expect(list).toBeVisible();
   });
 });

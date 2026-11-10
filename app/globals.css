@@ -80,10 +80,16 @@
   --animate-highlight: highlight 2.4s ease-out;
   /* A project sidebar sliding out from the left edge, and back. */
   --animate-panel-in: panel-slide 320ms var(--ease-out-soft);
-  /* Reversed, an ease-out curve accelerates away. */
-  --animate-panel-out: panel-slide 220ms cubic-bezier(0, 0, 0.6, 1) reverse
-    forwards;
 
+  /* A panel opening over a maximized sidebar, in place. */
+  --animate-panel-fade-in: panel-fade 200ms var(--ease-out-soft);
+
+  @keyframes panel-fade {
+    from {
+      opacity: 0;
+      transform: scale(0.985);
+    }
+  }
   @keyframes panel-slide {
     from {
       transform: translateX(-100%);

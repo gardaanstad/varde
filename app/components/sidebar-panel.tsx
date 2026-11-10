@@ -14,9 +14,10 @@ export type SidebarMode = "collapsed" | "normal" | "maximized";
 
 /**
  * Every sidebar change of size shares one transition: the timing of the
- * panels' slide (`--animate-panel-in`), on clip-path, so nothing lays out
- * per frame. Layers take their widest size for the duration and are
- * clipped from the visible width before to the one after.
+ * panels' slide (`--animate-panel-in`). Layers are clipped from the visible
+ * width before to the one after. The layer in view also changes its width
+ * when given `widths`, so its content moves along with the edge; layers
+ * under it keep their widest size, so nothing lays out there per frame.
  */
 export const sidebarTiming = {
   duration: 320,
@@ -26,15 +27,45 @@ export function animateVisibleWidth(
   element: HTMLElement,
   from: number,
   to: number,
+  widths?: [from: number, to: number],
 ) {
-  const width = element.offsetWidth;
-  const clip = (visible: number) =>
-    `inset(0 ${Math.max(0, width - visible)}px 0 0)`;
+  const frame = (visible: number, width?: number) => ({
+    clipPath: `inset(0 ${Math.max(0, (width ?? element.offsetWidth) - visible)}px 0 0)`,
+    ...(width !== undefined && { width: `${width}px` }),
+  });
   // Held at the end until the layout settles, so the clip never lifts early.
-  return element.animate([{ clipPath: clip(from) }, { clipPath: clip(to) }], {
+  return element.animate([frame(from, widths?.[0]), frame(to, widths?.[1])], {
     ...sidebarTiming,
     fill: "forwards",
   });
+}
+
+/** How a closing panel leaves: sliding back out, or fading where it is. */
+export function animatePanelOut(element: HTMLElement, fade: boolean) {
+  const { transform, opacity } = getComputedStyle(element);
+  return element.animate(
+    fade
+      ? [{ opacity, transform }, { opacity: 0, transform: "scale(0.985)" }]
+      : [{ transform }, { transform: "translateX(-100%)" }],
+    {
+      duration: fade ? 160 : 220,
+      easing: fade ? "ease-out" : "cubic-bezier(0, 0, 0.6, 1)",
+      fill: "forwards",
+    },
+  );
+}
+
+/** A panel opened again while closing returns from where it got to. */
+export function animatePanelBack(element: HTMLElement, exit: Animation) {
+  const { transform, opacity } = getComputedStyle(element);
+  exit.cancel();
+  return element.animate(
+    [
+      { transform, opacity },
+      { transform: "none", opacity: 1 },
+    ],
+    sidebarTiming,
+  );
 }
 
 const controlButton = cn(

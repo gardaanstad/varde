@@ -90,6 +90,8 @@ import { openProfileEvent } from "../lib/profile-overlay";
 import ProfileOverlay from "./profile-overlay";
 import SuggestionList from "./suggestion-list";
 import {
+  animatePanelBack,
+  animatePanelOut,
   animateVisibleWidth,
   MaximizeButton,
   SidebarPanel,
@@ -669,26 +671,19 @@ export default memo(function Explorer({
   const listedProjects = searched;
 
   // Mobile shows the project its drawer holds, also while that drawer closes.
-  // Desktop: the project layer stays while it slides back out.
+  // Desktop: the project and profile panels keep theirs while sliding away.
   const [panelPostId, setPanelPostId] = useState(postId);
   if (postId && postId !== panelPostId) setPanelPostId(postId);
-  const panelClosing = !postId && panelPostId !== null;
-  useEffect(() => {
-    if (!panelClosing) return;
-    // Normally the slide's end clears it; this covers reduced motion.
-    const reduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    const timer = setTimeout(() => setPanelPostId(null), reduced ? 0 : 400);
-    return () => clearTimeout(timer);
-  }, [panelClosing]);
+  const [panelProfileName, setPanelProfileName] = useState(profileName);
+  if (profileName && profileName !== panelProfileName)
+    setPanelProfileName(profileName);
   const post = projects.find(
     (project) => project.id === (isMobile ? shown.postId : panelPostId),
   );
 
   // Desktop: the sidebar's panel stack over the explorer, bottom to top. A
   // header page (Følger, Forslag, your profile) can hold a project, which
-  // can hold a profile. A closing project stays until it has slid away.
+  // can hold a profile.
   type Layer = "following" | "suggestions" | "account" | "project" | "profile";
   const section: Layer | null = suggestionsOpen
     ? "suggestions"
@@ -697,15 +692,66 @@ export default memo(function Explorer({
       : followingOnly
         ? "following"
         : null;
-  const layers: Layer[] = isMobile
+  const liveLayers: Layer[] = isMobile
     ? []
     : [
         ...(section ? [section] : []),
-        ...(panelPostId ? ["project" as const] : []),
+        ...(postId ? ["project" as const] : []),
         ...(profileName ? ["profile" as const] : []),
       ];
-  const liveLayers = layers.filter((layer) => layer !== "project" || postId);
   const topLayer = liveLayers.at(-1) ?? null;
+  // Closed panels stay until they have animated away. A panel replaced by
+  // another in the same step (Følger for the profile, say) goes at once.
+  const [exitingState, setExiting] = useState<Layer[]>([]);
+  let exiting = exitingState;
+  // Whether each panel opened over a maximized sidebar: it then fades in
+  // where it is, and closing it keeps the sidebar maximized. One opened
+  // beside the map takes the sidebar back there when it closes.
+  const [openedMaximized, setOpenedMaximized] = useState<
+    Partial<Record<Layer, boolean>>
+  >(() =>
+    Object.fromEntries(liveLayers.map((layer) => [layer, maximized])),
+  );
+  const [restoreAfterClose, setRestoreAfterClose] = useState(false);
+  const [previousLayers, setPreviousLayers] = useState(liveLayers);
+  if (previousLayers.join() !== liveLayers.join()) {
+    const added = liveLayers.filter((layer) => !previousLayers.includes(layer));
+    const removed = previousLayers.filter(
+      (layer) => !liveLayers.includes(layer),
+    );
+    setPreviousLayers(liveLayers);
+    exiting = [
+      ...exiting.filter((layer) => !liveLayers.includes(layer)),
+      ...(added.length ? [] : removed),
+    ];
+    setExiting(exiting);
+    const opened = { ...openedMaximized };
+    for (const layer of added)
+      opened[layer] =
+        removed.length > 0 ? openedMaximized[removed[0]] : maximized;
+    setOpenedMaximized(opened);
+    if (
+      !added.length &&
+      maximized &&
+      removed.some((layer) => openedMaximized[layer] === false)
+    )
+      setRestoreAfterClose(true);
+  }
+  const layerOrder: Layer[] = [
+    "following",
+    "suggestions",
+    "account",
+    "project",
+    "profile",
+  ];
+  const layers = layerOrder.filter(
+    (layer) => liveLayers.includes(layer) || exiting.includes(layer),
+  );
+  const panelClosing = !postId && exiting.includes("project");
+  if (!postId && !panelClosing && panelPostId)
+    setPanelPostId(null);
+  if (!profileName && !exiting.includes("profile") && panelProfileName)
+    setPanelProfileName(null);
   // Closing a panel returns focus to what opened it (projects do their own).
   const layerTriggers = useRef(new Map<Layer, HTMLElement>());
   const shownLayers = useRef<Layer[]>([]);
@@ -934,19 +980,30 @@ export default memo(function Explorer({
         : mode === "collapsed" && explorer
           ? 0
           : sidebar;
-    const animations = Array.from(
+    const width = (mode: SidebarMode) =>
+      mode === "maximized" ? window.innerWidth : sidebar;
+    const elements = Array.from(
       aside.querySelectorAll<HTMLElement>(
         "[data-explorer-layer], [data-sidebar-layer]",
       ),
-      (element) => {
-        const explorer = element.hasAttribute("data-explorer-layer");
-        return animateVisibleWidth(
-          element,
-          visible(modeFrom, explorer),
-          visible(sidebarMode, explorer),
-        );
-      },
     );
+    // Only the layer in view lays out along the way; maximizing or
+    // restoring, its content moves with the edge instead of jumping after.
+    const inView = elements.findLast(
+      (element) => !element.hasAttribute("data-exiting"),
+    );
+    const resizes = modeFrom === "maximized" || sidebarMode === "maximized";
+    const animations = elements.map((element) => {
+      const explorer = element.hasAttribute("data-explorer-layer");
+      return animateVisibleWidth(
+        element,
+        visible(modeFrom, explorer),
+        visible(sidebarMode, explorer),
+        resizes && element === inView
+          ? [width(modeFrom), width(sidebarMode)]
+          : undefined,
+      );
+    });
     Promise.all(animations.map((animation) => animation.finished)).then(
       () => setModeFrom(null),
       () => {
@@ -955,6 +1012,54 @@ export default memo(function Explorer({
     );
     return () => animations.forEach((animation) => animation.cancel());
   }, [modeFrom, sidebarMode]);
+  // Closing a panel opened beside the map takes the sidebar back there.
+  const restoreMode = useEffectEvent(() => minimize());
+  useLayoutEffect(() => {
+    if (!restoreAfterClose) return;
+    setRestoreAfterClose(false);
+    restoreMode();
+  }, [restoreAfterClose]);
+  // Closed panels animate away, then leave; opened again on the way, they
+  // come back from where they got to.
+  const exits = useRef(new Map<Layer, Animation>());
+  useLayoutEffect(() => {
+    const aside = panelRef.current;
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    for (const [layer, exit] of exits.current) {
+      if (exiting.includes(layer)) continue;
+      exits.current.delete(layer);
+      const element = aside?.querySelector<HTMLElement>(
+        `[data-sidebar-layer="${layer}"]`,
+      );
+      if (element && previousLayers.includes(layer) && !reduced)
+        animatePanelBack(element, exit);
+      else exit.cancel();
+    }
+    for (const layer of exiting) {
+      if (exits.current.has(layer)) continue;
+      const element = aside?.querySelector<HTMLElement>(
+        `[data-sidebar-layer="${layer}"]`,
+      );
+      if (!element || reduced) {
+        setExiting((current) => current.filter((item) => item !== layer));
+        continue;
+      }
+      const exit = animatePanelOut(element, element.hasAttribute("data-full"));
+      exits.current.set(layer, exit);
+      exit.finished.then(
+        () => {
+          if (exits.current.get(layer) !== exit) return;
+          exits.current.delete(layer);
+          setExiting((current) => current.filter((item) => item !== layer));
+        },
+        () => {
+          /* Opened again. */
+        },
+      );
+    }
+  }, [exiting, previousLayers]);
   useEffect(() => {
     if (isMobile || !mapApi.current) return;
     mapApi.current.syncSize();
@@ -1271,7 +1376,7 @@ export default memo(function Explorer({
       options={sortOptions}
     />
   );
-  const placeFilter = wide && (
+  const placeFilter = sidebarMode === "maximized" && (
     <ChoiceSelect
       label="Sted"
       value={place}
@@ -1749,8 +1854,8 @@ export default memo(function Explorer({
             onClose={closeProfile}
           >
             <ProfileOverlay
-              key={profileName}
-              username={profileName!}
+              key={panelProfileName}
+              username={panelProfileName!}
               embedded
               onOpenProject={openFromProfile}
             />
@@ -1946,8 +2051,16 @@ export default memo(function Explorer({
           data-sidebar-mode={sidebarMode}
         >
           {(sidebarMode === "collapsed" || modeFrom === "collapsed") && (
-            // Where the header has them, so the toggle never moves.
-            <div className="absolute top-1.5 left-1 z-30 flex h-13 items-center gap-1 rounded-xl bg-surface pr-4 pl-1 shadow-float">
+            // Where the header has them, so the toggle never moves: a tab
+            // in the corner of the page, its shadow fading with the list.
+            <div
+              className={cn(
+                "absolute top-0 left-0 z-30 flex h-16 items-center gap-1 rounded-br-2xl bg-surface pr-4 pl-2",
+                "transition-shadow duration-320 ease-out-soft starting:shadow-none",
+                sidebarMode === "collapsed" && "shadow-[2px_2px_16px_rgb(20_28_24/0.12)]",
+              )}
+              data-sidebar-tab=""
+            >
               {sidebarToggle}
               {brand}
             </div>
@@ -2022,23 +2135,17 @@ export default memo(function Explorer({
                         ? "w-(--sidebar-width) border-r border-border"
                         : "w-full",
                     ),
-                layer === "project" && !postId
-                  ? "animate-panel-out"
+                // Over a maximized sidebar a panel appears where it is.
+                openedMaximized[layer]
+                  ? "animate-panel-fade-in"
                   : "animate-panel-in",
               )}
               style={{ zIndex: 40 + index }}
               data-sidebar-layer={layer}
               data-project-layer={layer === "project" ? "" : undefined}
               data-full={wide || undefined}
+              data-exiting={exiting.includes(layer) || undefined}
               inert={layer !== topLayer}
-              onAnimationEnd={(event) => {
-                if (
-                  layer === "project" &&
-                  !postId &&
-                  event.target === event.currentTarget
-                )
-                  setPanelPostId(null);
-              }}
             >
               {layerContent(layer)}
             </div>
