@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type CSSProperties,
   memo,
   useCallback,
   useEffect,
@@ -22,6 +23,8 @@ import {
   Map as MapIcon,
   ListFilter,
   MapPin,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   User,
@@ -47,6 +50,9 @@ import {
   parseExploreState,
   sameValues,
   sortOptions,
+  storeCollapsed,
+  storedCollapsed,
+  subscribeCollapsed,
 } from "../lib/explore-state";
 import type { MapApi, MapViewChange } from "./project-map";
 import { errorMessage } from "../lib/api-client";
@@ -55,7 +61,6 @@ import { useAuth } from "./auth-provider";
 import { useCommunity } from "./community-provider";
 import AccountPanel from "./account-panel";
 import ProfileAvatar from "./profile-avatar";
-import Dialog from "./dialog";
 import ChoiceSelect from "./choice-select";
 import ProjectEditor from "./project-editor";
 import ProjectPost from "./project-post";
@@ -80,6 +85,12 @@ import {
 import { cn } from "../lib/cn";
 import { openProfileEvent } from "../lib/profile-overlay";
 import ProfileOverlay from "./profile-overlay";
+import SuggestionList from "./suggestion-list";
+import {
+  MaximizeButton,
+  SidebarPanel,
+  type SidebarMode,
+} from "./sidebar-panel";
 import {
   iconButton,
   primaryButton,
@@ -257,11 +268,14 @@ const ProjectMap = dynamic(() => import("./project-map"), {
 export default memo(function Explorer({
   initialProjectId,
   initialProfile,
+  initialPanel,
   initialSearch = "",
   mobileHint = false,
 }: {
   initialProjectId?: string;
   initialProfile?: string;
+  /** A sidebar panel with a route of its own, such as `/forslag`. */
+  initialPanel?: "suggestions";
   /** The query string the page was opened with: filters and map position. */
   initialSearch?: string;
   /** From the request's user agent, so phones render mobile on the server. */
@@ -294,6 +308,7 @@ export default memo(function Explorer({
     following,
     comments,
     mutate,
+    refresh,
     suggest,
     suggestions,
     reviewed,
@@ -311,18 +326,36 @@ export default memo(function Explorer({
   const [category, setCategory] = useState<string[]>(initial.category);
   const [sort, setSort] = useState(initial.sort);
   const [followingOnly, setFollowingOnly] = useState(false);
-  // Where the followed projects were opened from, to return there.
-  const followingFrom = useRef<"profile" | "explorer">("explorer");
+  // Where Følger or Forslag was opened from, to return there.
+  const [sectionFrom, setSectionFrom] = useState<"profile" | "explorer">(
+    "explorer",
+  );
+  // Desktop: the suggestion list as a sidebar panel (`/forslag`).
+  const [suggestionsOpen, setSuggestionsOpen] = useState(
+    initialPanel === "suggestions",
+  );
   const [selectedId, setSelectedId] = useState<string | null>(
     initialProjectId || null,
   );
   // Where in the project to open: an update, or a comment in the discussion.
   const [postTarget, setPostTarget] = useState<FollowedTarget>({});
   const [postId, setPostId] = useState<string | null>(initialProjectId || null);
-  // Desktop: the open project fills the window, over the map.
-  const [fullPage, setFullPage] = useState(
-    Boolean(initialProjectId && initial.full),
+  // Desktop: the sidebar, and every panel on it, fills the window.
+  const [maximized, setMaximized] = useState(Boolean(initial.full));
+  // Desktop: the explorer list hidden, the map at full width. Panels still
+  // open at normal width over the map, and closing them returns here.
+  const collapsedPref = useSyncExternalStore(
+    subscribeCollapsed,
+    storedCollapsed,
+    () => false,
   );
+  const sidebarMode: SidebarMode = maximized
+    ? "maximized"
+    : collapsedPref
+      ? "collapsed"
+      : "normal";
+  // Maximized, the map no longer filters the list; a place does instead.
+  const [place, setPlace] = useState(initial.full ? initial.place ?? "" : "");
   const [profileName, setProfileName] = useState<string | null>(
     initialProfile || null,
   );
@@ -361,9 +394,6 @@ export default memo(function Explorer({
   // replacing the URL mid-step makes Next.js reload the page.
   const afterPop = useRef<(() => void) | null>(null);
   const steppingBack = useRef(false);
-  // Closing a project that was linked to directly, from its full page:
-  // one step back reaches its panel, which is then swapped for the list.
-  const backToList = useRef(false);
   function stepBack(steps = 1) {
     steppingBack.current = true;
     window.history.go(-steps);
@@ -372,11 +402,14 @@ export default memo(function Explorer({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const openSearch = useCallback(() => {
-    if (postId || profileName || modal || followingOnly) return;
+    if (postId || profileName || modal || followingOnly || suggestionsOpen)
+      return;
     // Focus during the tap so mobile browsers also open the keyboard.
     if (isMobile) flushSync(() => setMobileSearchOpen(true));
+    // A collapsed list comes back to be searched.
+    else if (storedCollapsed()) flushSync(() => storeCollapsed(false));
     searchRef.current?.focus({ preventScroll: true });
-  }, [isMobile, modal, postId, profileName, followingOnly]);
+  }, [isMobile, modal, postId, profileName, followingOnly, suggestionsOpen]);
 
   function closeMobileSearch() {
     flushSync(() => {
@@ -390,14 +423,20 @@ export default memo(function Explorer({
   // string, for sharing and reloads. Each change replaces the entry, so
   // history only holds pages. The map's position is written once it has
   // rested, not after every move.
-  const urlState = useRef({ query, status, category, sort, full: fullPage });
+  const urlState = useRef({
+    query,
+    status,
+    category,
+    sort,
+    full: maximized,
+    place,
+  });
   const urlTimer = useRef(0);
-  /** The query string for `path`; the full-page view only on projects. */
+  /** The query string for a path in the explorer. */
   const searchFor = useCallback(
-    (path: string, full = urlState.current.full) =>
+    () =>
       exploreSearch({
         ...urlState.current,
-        full: full && path.startsWith("/prosjekt/"),
         view: mapViewRef.current ?? initial.view,
       }),
     [initial.view],
@@ -408,18 +447,18 @@ export default memo(function Explorer({
     // Mid-step the entry is changing; the step syncs the URL when it lands.
     if (steppingBack.current) return;
     const path = window.location.pathname;
-    const search = searchFor(path);
+    const search = searchFor();
     if (window.location.search !== search) replaceUrl(path + search);
   }, [searchFor]);
   useEffect(() => {
-    urlState.current = { query, status, category, sort, full: fullPage };
+    urlState.current = { query, status, category, sort, full: maximized, place };
     syncUrl();
-  }, [query, status, category, sort, fullPage, syncUrl]);
+  }, [query, status, category, sort, maximized, place, syncUrl]);
   useEffect(() => () => window.clearTimeout(urlTimer.current), []);
   /** A path in the explorer, with the current filters and map position. */
-  function withSearch(path: string, full?: boolean) {
+  function withSearch(path: string) {
     syncUrl();
-    return path + searchFor(path, full);
+    return path + searchFor();
   }
 
   function enterPostView(id: string, frame = true) {
@@ -431,7 +470,18 @@ export default memo(function Explorer({
       before: postView.current ? postView.current.before : mapViewRef.current,
     };
     const project = projects.find((item) => item.id === id);
-    if (frame && project) mapApi.current?.fit(projectPoints(project));
+    // Collapsed, the panel lies over the map's left edge.
+    if (frame && project)
+      mapApi.current?.fit(projectPoints(project), {
+        left: sidebarMode === "collapsed" ? sidebarWidth() : 0,
+      });
+  }
+  /** The width panels take beside the map. */
+  function sidebarWidth() {
+    const set = parseFloat(
+      panelRef.current?.style.getPropertyValue("--panel-width") || "",
+    );
+    return set || Math.round(Math.min(Math.max(innerWidth * 0.36, 380), 540));
   }
   function leavePostView() {
     const view = postView.current;
@@ -456,17 +506,15 @@ export default memo(function Explorer({
     steppingBack.current = true;
     const after = afterPop.current;
     afterPop.current = null;
-    const toList = backToList.current;
-    backToList.current = false;
     whenNextSettled(() => {
       steppingBack.current = false;
-      if (toList) replaceUrl("/" + searchFor("/"));
       syncUrl();
       after?.();
     });
-    const path = toList ? "/" : window.location.pathname;
-    setFullPage(
-      new URLSearchParams(window.location.search).get("visning") === "full",
+    const path = window.location.pathname;
+    // Forslag stays open under what was opened from it.
+    setSuggestionsOpen(
+      path === "/forslag" || Boolean(window.history.state?.suggestionsBelow),
     );
     const profile = routeParam(path, "/profil/");
     if (profile) {
@@ -541,14 +589,20 @@ export default memo(function Explorer({
   }, [comments]);
   const followingIds = useMemo(() => new Set(following), [following]);
 
-  // Before the map reports its view (and on the server) the list covers Norway.
-  const listBounds = frozenBounds ?? viewBounds;
-  const inView = useMemo(
-    () =>
+  // Before the map reports its view (and on the server) the list covers
+  // Norway. Maximized, the map is out of sight and the place filters instead.
+  const listBounds = maximized && !isMobile ? null : (frozenBounds ?? viewBounds);
+  const listPlace = maximized && !isMobile ? place : "";
+  const inPlace = useCallback(
+    (project: Project) =>
       listBounds
-        ? projects.filter((project) => projectInBounds(project, listBounds))
-        : projects,
-    [listBounds, projects],
+        ? projectInBounds(project, listBounds)
+        : !listPlace || project.city === listPlace,
+    [listBounds, listPlace],
+  );
+  const inView = useMemo(
+    () => projects.filter(inPlace),
+    [inPlace, projects],
   );
   const statusMatch = useCallback(
     (project: Project) =>
@@ -583,13 +637,11 @@ export default memo(function Explorer({
     [matching, needle],
   );
   const searched = useMemo(
-    () =>
-      searchHits
-        .filter((project) => !listBounds || projectInBounds(project, listBounds))
-        .sort(compareProjects),
-    [compareProjects, listBounds, searchHits],
+    () => searchHits.filter(inPlace).sort(compareProjects),
+    [compareProjects, inPlace, searchHits],
   );
-  const outsideHits = needle ? searchHits.length - searched.length : 0;
+  const outsideHits =
+    needle && listBounds ? searchHits.length - searched.length : 0;
   const listedProjects = searched;
 
   // Mobile shows the project its drawer holds, also while that drawer closes.
@@ -610,6 +662,46 @@ export default memo(function Explorer({
     (project) => project.id === (isMobile ? shown.postId : panelPostId),
   );
 
+  // Desktop: the sidebar's panel stack over the explorer, bottom to top. A
+  // header page (Følger, Forslag, your profile) can hold a project, which
+  // can hold a profile. A closing project stays until it has slid away.
+  type Layer = "following" | "suggestions" | "account" | "project" | "profile";
+  const section: Layer | null = suggestionsOpen
+    ? "suggestions"
+    : modal === "profile"
+      ? "account"
+      : followingOnly
+        ? "following"
+        : null;
+  const layers: Layer[] = isMobile
+    ? []
+    : [
+        ...(section ? [section] : []),
+        ...(panelPostId ? ["project" as const] : []),
+        ...(profileName ? ["profile" as const] : []),
+      ];
+  const liveLayers = layers.filter((layer) => layer !== "project" || postId);
+  const topLayer = liveLayers.at(-1) ?? null;
+  // Closing a panel returns focus to what opened it (projects do their own).
+  const layerTriggers = useRef(new Map<Layer, HTMLElement>());
+  const shownLayers = useRef<Layer[]>([]);
+  function rememberTrigger(layer: Layer) {
+    if (document.activeElement instanceof HTMLElement)
+      layerTriggers.current.set(layer, document.activeElement);
+  }
+  useEffect(() => {
+    const gone = shownLayers.current.filter(
+      (layer) => layer !== "project" && !liveLayers.includes(layer),
+    );
+    shownLayers.current = liveLayers;
+    for (const layer of gone) {
+      const trigger = layerTriggers.current.get(layer);
+      layerTriggers.current.delete(layer);
+      if (trigger?.isConnected)
+        requestAnimationFrame(() => trigger.focus({ preventScroll: true }));
+    }
+  });
+
   function onMapView(view: MapViewChange) {
     mapViewRef.current = view;
     const key = projects
@@ -626,6 +718,10 @@ export default memo(function Explorer({
   }
   function onMapReady(api: MapApi) {
     mapApi.current = api;
+    // A place picked before the map was ready.
+    const fit = pendingFit.current;
+    pendingFit.current = null;
+    if (fit?.length) return fitProjects(fit);
     // A project link frames its project, unless the URL already places the map.
     if (initialProjectId) enterPostView(initialProjectId, !initial.view);
   }
@@ -641,7 +737,11 @@ export default memo(function Explorer({
   function showProfile(username: string) {
     if (username === profileName) return;
     window.history[profileName ? "replaceState" : "pushState"](
-      { profileOverlay: true, profileOver: postId },
+      {
+        profileOverlay: true,
+        profileOver: postId,
+        suggestionsBelow: suggestionsOpen,
+      },
       "",
       withSearch(profileHref(username)),
     );
@@ -674,9 +774,9 @@ export default memo(function Explorer({
     setProfileName(null);
     if (id === postId && overlay) return stepBack();
     window.history.replaceState(
-      { projectOverlay: overlay },
+      { projectOverlay: overlay, suggestionsBelow: suggestionsOpen },
       "",
-      withSearch(projectHref(id), false),
+      withSearch(projectHref(id)),
     );
     setPostTarget({});
     setPostId(id);
@@ -733,16 +833,16 @@ export default memo(function Explorer({
       document.activeElement instanceof SVGElement
         ? document.activeElement
         : null;
-    setModal(null);
+    // On desktop the panel it was opened from stays under it.
+    if (isMobile) setModal(null);
     setPostId(id);
     setSelectedId(id);
-    setFullPage(false);
     setHoveredId(null);
     enterPostView(id);
     window.history.pushState(
-      { projectOverlay: true },
+      { projectOverlay: true, suggestionsBelow: suggestionsOpen },
       "",
-      withSearch(projectHref(id), false),
+      withSearch(projectHref(id)),
     );
   }
 
@@ -757,7 +857,6 @@ export default memo(function Explorer({
     const state = window.history.state ?? {};
     setPostId(null);
     setSelectedId(null);
-    setFullPage(false);
     requestAnimationFrame(() => {
       const trigger = projectTriggerRef.current;
       if (trigger?.isConnected && focusTrigger)
@@ -765,34 +864,51 @@ export default memo(function Explorer({
       else if (isMobile) drawerHandleRef.current?.focus({ preventScroll: true });
       else searchRef.current?.focus({ preventScroll: true });
     });
-    if (state.projectOverlay || state.fullPage) {
-      // The history step leaves the map view as well (see onPopState). From
-      // a full page it is two steps: past the full page, then the panel.
+    if (state.projectOverlay) {
+      // The history step leaves the map view as well (see onPopState).
       afterPop.current = after ?? null;
-      backToList.current = !state.projectOverlay;
-      stepBack(state.projectOverlay && state.fullPage ? 2 : 1);
+      stepBack();
     } else {
-      window.history.replaceState({}, "", withSearch("/"));
+      window.history.replaceState(
+        {},
+        "",
+        withSearch(suggestionsOpen ? "/forslag" : "/"),
+      );
       leavePostView();
       after?.();
     }
   }
 
-  /** Desktop: the project grows over the map; Back returns to the panel. */
-  function maximizePost() {
-    if (!postId || fullPage || isMobile) return;
-    setFullPage(true);
-    window.history.pushState(
-      { projectOverlay: window.history.state?.projectOverlay, fullPage: true },
-      "",
-      withSearch(projectHref(postId), true),
-    );
+  // Desktop: one mode for the whole sidebar, whichever panel is on top.
+  // The map keeps its size throughout, except when collapsing frees its
+  // left edge (see the effect below).
+  const pendingFit = useRef<Project[] | null>(null);
+  function maximize() {
+    if (isMobile) return;
+    setMaximized(true);
   }
-  function minimizePost() {
-    if (!fullPage) return;
-    setFullPage(false);
-    if (window.history.state?.fullPage) stepBack();
+  /** Back beside the map, which now shows the place picked while maximized. */
+  function minimize() {
+    if (!maximized) return;
+    setMaximized(false);
+    if (place) {
+      pendingFit.current = projects.filter((project) => project.city === place);
+      setPlace("");
+    }
   }
+  function toggleCollapsed() {
+    if (sidebarMode === "collapsed") return storeCollapsed(false);
+    minimize();
+    storeCollapsed(true);
+  }
+  useEffect(() => {
+    if (isMobile || !mapApi.current) return;
+    mapApi.current.syncSize();
+    const fit = pendingFit.current;
+    pendingFit.current = null;
+    if (fit?.length) fitProjects(fit);
+    // Runs on each mode change, once the sidebar has its new width.
+  }, [sidebarMode, isMobile]);
 
   /** Mobile: the project drawer covers the map, so step down to show it. */
   function showPostOnMap(project: Project) {
@@ -864,9 +980,11 @@ export default memo(function Explorer({
   }, [user?.id, user?.username]);
 
   const statusChanged = !sameValues(status, defaultStatus);
-  const filtersChanged = statusChanged || category.length > 0 || !!needle;
+  const filtersChanged =
+    statusChanged || category.length > 0 || !!needle || !!listPlace;
   function resetFilters() {
     setQuery("");
+    setPlace("");
     setMobileSearchOpen(false);
     setStatus(defaultStatus);
     setCategory([]);
@@ -999,6 +1117,21 @@ export default memo(function Explorer({
       ).length,
     }),
   }));
+  // Places in Norway with projects, counted by the other filters.
+  const placeOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const project of matching)
+      counts.set(project.city, (counts.get(project.city) ?? 0) + 1);
+    const cities = [...new Set(projects.map((project) => project.city))]
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, "nb"));
+    // Cleared by its chip, like the categories.
+    return cities.map((city) => ({
+      value: city,
+      label: city,
+      count: counts.get(city) ?? 0,
+    }));
+  }, [matching, projects]);
   const statusFilter = (
     <ChoiceSelect
       label="Status"
@@ -1083,10 +1216,22 @@ export default memo(function Explorer({
       options={sortOptions}
     />
   );
+  const placeFilter = sidebarMode === "maximized" && (
+    <ChoiceSelect
+      label="Sted"
+      value={place}
+      onChange={setPlace}
+      triggerLabel={place || "Velg sted"}
+      icon={<MapPin size={15} aria-hidden="true" />}
+      className={cn(panelChoiceClasses, place && panelChoiceActive)}
+      options={placeOptions}
+    />
+  );
   const desktopFilters = (
     <section className="pb-1" aria-label="Filtrer prosjekter">
       {search}
       <div className="mt-2 flex min-w-0 items-center gap-1.5">
+        {placeFilter}
         <ChoiceSelect
           label="Kategori"
           multiple
@@ -1156,6 +1301,9 @@ export default memo(function Explorer({
           },
         ]
       : []),
+    ...(listPlace
+      ? [{ key: "place", label: listPlace, clear: () => setPlace("") }]
+      : []),
     ...(statusChanged
       ? [
           {
@@ -1192,7 +1340,8 @@ export default memo(function Explorer({
         </button>
       ) : (
         matching.length > 0 &&
-        !needle && (
+        !needle &&
+        listBounds && (
           <button
             className={secondaryAction}
             onClick={() => mapApi.current?.showNorway()}
@@ -1229,8 +1378,13 @@ export default memo(function Explorer({
       className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain bg-surface scrollbar-thin max-md:bg-transparent"
       aria-label="Prosjektliste"
     >
-      <div className="px-5 pb-8 max-md:px-4.5 max-md:pt-0 max-md:pb-6">
-        {followingOnly ? (
+      <div
+        className={cn(
+          "px-5 pb-8 max-md:px-4.5 max-md:pt-0 max-md:pb-6",
+          sidebarMode === "maximized" && "mx-auto w-full max-w-[880px]",
+        )}
+      >
+        {followingOnly && isMobile ? (
           <FollowedProjects
             projects={projects}
             followingIds={following}
@@ -1323,16 +1477,14 @@ export default memo(function Explorer({
       project={post}
       initialUpdateId={postTarget.updateId}
       initialCommentId={postTarget.commentId}
-      closeOnEscape={!isMobile && !panelClosing}
+      closeOnEscape={!isMobile && !panelClosing && topLayer === "project"}
       onClose={() => {
         if (!panelClosing) closePost();
       }}
-      // Escape and Back step down from the full page before closing.
-      onEscape={fullPage ? minimizePost : undefined}
-      full={fullPage}
-      onToggleFull={
-        isMobile ? undefined : fullPage ? minimizePost : maximizePost
-      }
+      // Escape steps down from the full page before closing.
+      onEscape={maximized ? minimize : undefined}
+      full={!isMobile && maximized}
+      onToggleFull={isMobile ? undefined : maximized ? minimize : maximize}
       feedback={isMobile ? feedback : undefined}
       following={followingIds.has(post.id)}
       onFollow={() => toggleFollow(post.id)}
@@ -1359,13 +1511,15 @@ export default memo(function Explorer({
     if (canModerate || requireAccount()) setEditorOpen(true);
   }
   function openProfile() {
+    if (!isMobile) rememberTrigger("account");
     setModal("profile");
     setSnapPoint(1);
   }
   /** The header bell toggles the followed projects in place of the list. */
   function showFollowing() {
     if (!requireAccount()) return;
-    followingFrom.current = "explorer";
+    setSectionFrom("explorer");
+    if (!isMobile) rememberTrigger("following");
     if (postId) closePost();
     setModal(null);
     setFollowingOnly(true);
@@ -1374,11 +1528,31 @@ export default memo(function Explorer({
   /** The profile also links to them, and they lead back there. */
   function openFollowingFromProfile() {
     showFollowing();
-    followingFrom.current = "profile";
+    setSectionFrom("profile");
   }
   function leaveFollowing() {
     setFollowingOnly(false);
-    if (followingFrom.current === "profile") openProfile();
+    if (sectionFrom === "profile") openProfile();
+  }
+  /** Desktop: Forslag opens as a panel, on its own URL. */
+  function openSuggestions(from: "profile" | "explorer" = "explorer") {
+    setSectionFrom(from);
+    rememberTrigger("suggestions");
+    setModal(null);
+    setFollowingOnly(false);
+    setSuggestionsOpen(true);
+    window.history.pushState(
+      { suggestionsOverlay: true },
+      "",
+      withSearch("/forslag"),
+    );
+  }
+  /** Closes Forslag; `back` returns to the profile it was opened from. */
+  function closeSuggestions(back = false) {
+    setSuggestionsOpen(false);
+    if (window.history.state?.suggestionsOverlay) stepBack();
+    else window.history.replaceState({}, "", withSearch("/"));
+    if (back && sectionFrom === "profile") openProfile();
   }
   function backToExplorer() {
     if (postId) closePost();
@@ -1441,6 +1615,13 @@ export default memo(function Explorer({
       className={cn(compactIconAction, "relative text-muted hover:text-ink")}
       aria-label={`Forslag${suggestions ? ` (${suggestions})` : ""}`}
       data-tooltip={isMobile ? undefined : "Forslag"}
+      onClick={(event) => {
+        // Desktop: a panel over the explorer, not a page of its own.
+        if (isMobile || event.metaKey || event.ctrlKey || event.shiftKey)
+          return;
+        event.preventDefault();
+        openSuggestions();
+      }}
     >
       <Inbox size={20} />
       {suggestions > 0 && (
@@ -1472,6 +1653,110 @@ export default memo(function Explorer({
       )}
     </button>
   );
+  const sidebarToggle = (
+    <button
+      type="button"
+      className={cn(compactIconAction, "text-muted hover:text-ink")}
+      aria-label={
+        sidebarMode === "collapsed" ? "Vis prosjektlisten" : "Skjul prosjektlisten"
+      }
+      data-tooltip={
+        sidebarMode === "collapsed" ? "Vis prosjektlisten" : "Skjul prosjektlisten"
+      }
+      aria-expanded={sidebarMode !== "collapsed"}
+      aria-controls="project-panel"
+      data-sidebar-toggle=""
+      onClick={toggleCollapsed}
+    >
+      {sidebarMode === "collapsed" ? (
+        <PanelLeftOpen size={20} />
+      ) : (
+        <PanelLeftClose size={20} />
+      )}
+    </button>
+  );
+  /** A desktop panel's content, in the sidebar's current mode. */
+  function layerContent(layer: Layer) {
+    const frame = {
+      maximized: sidebarMode === "maximized",
+      active: topLayer === layer,
+      onToggleMaximized: maximized ? minimize : maximize,
+    };
+    switch (layer) {
+      case "project":
+        return projectPost || missingProject;
+      case "profile":
+        return (
+          <SidebarPanel
+            {...frame}
+            name="profile"
+            closeLabel="Lukk profil"
+            onClose={closeProfile}
+          >
+            <ProfileOverlay
+              key={profileName}
+              username={profileName!}
+              embedded
+              onOpenProject={openFromProfile}
+            />
+          </SidebarPanel>
+        );
+      case "account":
+        return (
+          <SidebarPanel {...frame} name="account" onClose={() => setModal(null)}>
+            <AccountPanel
+              onFollowing={openFollowingFromProfile}
+              onSuggestions={() => openSuggestions("profile")}
+              followingCount={following.length}
+              suggestionCount={suggestions}
+              reviewedCount={reviewed}
+              next={postId ? projectHref(postId) : "/"}
+            />
+          </SidebarPanel>
+        );
+      case "following":
+        return (
+          <SidebarPanel
+            {...frame}
+            name="following"
+            onClose={() => setFollowingOnly(false)}
+            onBack={sectionFrom === "profile" ? leaveFollowing : undefined}
+          >
+            <div
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-8 scrollbar-thin"
+              data-followed-scroll=""
+            >
+              <FollowedProjects
+                projects={projects}
+                followingIds={following}
+                following={followed}
+                onOpen={openPost}
+                onUnfollow={(id) => void toggleFollow(id)}
+              />
+            </div>
+          </SidebarPanel>
+        );
+      case "suggestions":
+        return (
+          <SidebarPanel
+            {...frame}
+            name="suggestions"
+            onClose={() => closeSuggestions()}
+            onBack={
+              sectionFrom === "profile" ? () => closeSuggestions(true) : undefined
+            }
+          >
+            <SuggestionList
+              embedded
+              moderator={canModerate}
+              onOpenProject={(id) => openPost(id)}
+              onClose={() => closeSuggestions()}
+              onChange={() => void refresh().catch(() => {})}
+            />
+          </SidebarPanel>
+        );
+    }
+  }
   const drawerBody = (
     <>
       {modal === "profile" && (
@@ -1590,75 +1875,133 @@ export default memo(function Explorer({
         <aside
           ref={panelRef}
           id="project-panel"
-          className="relative z-10 flex h-full w-[var(--panel-width,clamp(380px,36vw,540px))] shrink-0 flex-col border-r border-border bg-surface shadow-[1px_0_12px_rgb(20_28_24/0.05)]"
+          className={cn(
+            "relative z-10 flex h-full shrink-0 flex-col bg-surface",
+            // Collapsed, it leaves the map the whole width; panels lie over it.
+            collapsedPref
+              ? "w-0"
+              : "w-(--sidebar-width) border-r border-border shadow-[1px_0_12px_rgb(20_28_24/0.05)]",
+          )}
+          style={
+            {
+              "--sidebar-width": "var(--panel-width,clamp(380px,36vw,540px))",
+            } as CSSProperties
+          }
           aria-label="Prosjekter"
+          data-sidebar-mode={sidebarMode}
         >
-          <header className="flex h-16 shrink-0 items-center justify-between gap-2 pr-3 pl-5">
-            {brand}
-            <nav className="flex items-center gap-0.5" aria-label="Konto">
-              {suggestionsLink}
-              <button
-                className={cn(compactIconAction, "text-muted")}
-                aria-label={canModerate ? "Legg til prosjekt" : "Foreslå prosjekt"}
-                data-tooltip={canModerate ? "Legg til prosjekt" : "Foreslå prosjekt"}
-                onClick={openEditor}
-              >
-                <Plus size={20} />
-              </button>
-              {followingButton}
-              {profileButton}
-            </nav>
-          </header>
-          <div className="relative min-h-0 flex-1">
-            {/* Stays mounted under a project, so it keeps its scroll. */}
-            <div
-              className="absolute inset-0 flex flex-col"
-              // Live again as soon as the project starts sliding away, so
-              // focus can return to the card it was opened from.
-              inert={Boolean(postId)}
-            >
-              {projectResults}
+          {sidebarMode === "collapsed" && (
+            // Where the header has them, so the toggle never moves.
+            <div className="absolute top-1.5 left-1 z-30 flex h-13 items-center gap-1 rounded-xl bg-surface pr-4 pl-1 shadow-float">
+              {sidebarToggle}
+              {brand}
+            </div>
+          )}
+          {/* The base layer: stays mounted under panels, so it keeps its scroll. */}
+          <div
+            className={cn(
+              "absolute inset-y-0 left-0 flex flex-col bg-surface",
+              sidebarMode === "maximized" ? "z-30 w-screen" : "w-full",
+              sidebarMode === "collapsed" && "invisible",
+            )}
+            data-explorer-layer=""
+            // Live again as soon as a panel starts sliding away, so focus
+            // can return to the card it was opened from.
+            inert={sidebarMode === "collapsed" || liveLayers.length > 0}
+            aria-hidden={liveLayers.length > 0 || undefined}
+          >
+            <header className="flex h-16 shrink-0 items-center justify-between gap-2 pr-3 pl-2">
+              <div className="flex min-w-0 items-center gap-1">
+                {sidebarToggle}
+                {brand}
+              </div>
+              <nav className="flex items-center gap-0.5" aria-label="Konto">
+                {suggestionsLink}
+                <button
+                  className={cn(compactIconAction, "text-muted")}
+                  aria-label={
+                    canModerate ? "Legg til prosjekt" : "Foreslå prosjekt"
+                  }
+                  data-tooltip={
+                    canModerate ? "Legg til prosjekt" : "Foreslå prosjekt"
+                  }
+                  onClick={openEditor}
+                >
+                  <Plus size={20} />
+                </button>
+                {followingButton}
+                {profileButton}
+                <span
+                  aria-hidden="true"
+                  className="mx-1.5 h-5 w-px shrink-0 bg-border"
+                />
+                <MaximizeButton
+                  maximized={sidebarMode === "maximized"}
+                  onToggle={sidebarMode === "maximized" ? minimize : maximize}
+                  labels={["Vis som helside", "Vis kart"]}
+                />
+              </nav>
+            </header>
+            <div className="relative min-h-0 flex-1">
+              <div className="absolute inset-0 flex flex-col">
+                {projectResults}
+              </div>
             </div>
           </div>
-          {panelPostId && (
-            // A sidebar over the list sidebar, sliding out from the left
-            // edge. As a full page it grows over the header and the map.
+          {layers.map((layer, index) => (
+            // Panels cover the whole sidebar, header included, and slide
+            // out from its left edge. Maximized, they cover the map too.
             <div
+              key={layer === "project" ? `project-${panelPostId}` : layer}
               className={cn(
-                "absolute bottom-0 left-0 z-40 flex flex-col overflow-hidden bg-surface",
-                "transition-[top,width,box-shadow] duration-320 ease-out-soft",
-                fullPage
-                  ? "top-0 w-screen"
-                  : "top-16 w-full border-t border-border shadow-[10px_0_30px_rgb(20_28_24/0.10)]",
-                postId ? "animate-panel-in" : "animate-panel-out",
+                "absolute inset-y-0 left-0 flex flex-col overflow-hidden bg-surface",
+                sidebarMode === "maximized"
+                  ? "w-screen"
+                  : cn(
+                      "shadow-[10px_0_30px_rgb(20_28_24/0.10)]",
+                      sidebarMode === "collapsed"
+                        ? "w-(--sidebar-width) border-r border-border"
+                        : "w-full",
+                    ),
+                layer === "project" && !postId
+                  ? "animate-panel-out"
+                  : "animate-panel-in",
               )}
-              data-project-layer=""
-              data-full={fullPage || undefined}
-              inert={!postId}
+              style={{ zIndex: 40 + index }}
+              data-sidebar-layer={layer}
+              data-project-layer={layer === "project" ? "" : undefined}
+              data-full={sidebarMode === "maximized" || undefined}
+              inert={layer !== topLayer}
               onAnimationEnd={(event) => {
-                if (!postId && event.target === event.currentTarget)
+                if (
+                  layer === "project" &&
+                  !postId &&
+                  event.target === event.currentTarget
+                )
                   setPanelPostId(null);
               }}
             >
-              {projectPost || missingProject}
+              {layerContent(layer)}
             </div>
+          ))}
+          {sidebarMode === "normal" && (
+            <PanelResizer
+              panel={panelRef}
+              root={rootRef}
+              controls="project-panel"
+              onResizeStart={() => mapApi.current?.beginResize()}
+              onResize={() => mapApi.current?.syncSize()}
+              onResizeEnd={() => mapApi.current?.endResize()}
+            />
           )}
-          <PanelResizer
-            panel={panelRef}
-            root={rootRef}
-            controls="project-panel"
-            onResizeStart={() => mapApi.current?.beginResize()}
-            onResize={() => mapApi.current?.syncSize()}
-            onResizeEnd={() => mapApi.current?.endResize()}
-          />
         </aside>
       )}
 
       <main
         className="relative isolate flex min-h-0 min-w-0 flex-1 overflow-hidden bg-surface"
         aria-label="Utforsk prosjekter"
-        // Under a full-page project the map is out of reach, but untouched.
-        inert={!isMobile && fullPage && Boolean(postId)}
+        // Under a maximized sidebar the map is out of reach, but untouched.
+        inert={!isMobile && maximized}
       >
         <section
           className={cn(
@@ -1857,20 +2200,6 @@ export default memo(function Explorer({
         </Drawer>
       )}
       {projectDrawerShell}
-      {!isMobile && profileName && (
-        <Dialog
-          key={profileName}
-          title={`Profilen til ${profileName}`}
-          onClose={closeProfile}
-          className="w-[600px] overflow-hidden rounded-2xl [&>button:first-child]:hidden"
-        >
-          <ProfileOverlay
-            username={profileName}
-            onClose={closeProfile}
-            onOpenProject={openFromProfile}
-          />
-        </Dialog>
-      )}
       {editorOpen && user && !canModerate && (
         <ProjectEditor
           suggest
@@ -1900,15 +2229,6 @@ export default memo(function Explorer({
         />
       )}
 
-      {!isMobile && modal === "profile" && (
-        <Dialog
-          title="Din profil"
-          onClose={() => setModal(null)}
-          className="max-h-[calc(100dvh-32px)] overflow-hidden rounded-panel border-border shadow-panel"
-        >
-          {profileContent}
-        </Dialog>
-      )}
       {(!isMobile || !post) && feedback}
     </div>
   );

@@ -167,9 +167,15 @@ for (const [viewport, project, direct] of [
     // The server renders the entry, so a click can land before hydration.
     await expect(async () => {
       await entry.click();
-      await expect(entry).toHaveAttribute("aria-pressed", "true", {
-        timeout: 1000,
-      });
+      // Desktop: a panel over the explorer, header included.
+      if (mobile)
+        await expect(entry).toHaveAttribute("aria-pressed", "true", {
+          timeout: 1000,
+        });
+      else
+        await expect(
+          page.locator('[data-sidebar-panel="following"]'),
+        ).toBeVisible({ timeout: 1000 });
     }).toPass();
 
     const row = page.locator(`[data-followed-project="${project.id}"]`);
@@ -196,7 +202,12 @@ for (const [viewport, project, direct] of [
       .click();
     await expect(row).not.toHaveAttribute("data-unread");
     await expect(row).not.toContainText("kommentar");
-    await expect(badge).toHaveAccessibleName("1 med nytt");
+    // Desktop: the header is covered by the panel, which counts the same.
+    await expect(
+      mobile
+        ? badge
+        : page.locator('[data-sidebar-panel="following"] [data-unread-badge]'),
+    ).toHaveAccessibleName("1 med nytt");
 
     // Opening a followed project any other way reads it too.
     await page.goto(`/prosjekt/${direct.id}`);

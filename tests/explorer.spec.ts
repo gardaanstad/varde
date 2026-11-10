@@ -595,7 +595,20 @@ test.describe("desktop explorer", () => {
     // mounted (and inert) beneath it.
     const layer = page.locator("[data-project-layer]");
     await expect(layer).toBeVisible();
-    await expect(list.locator("xpath=..")).toHaveAttribute("inert", "");
+    await expect(page.locator("[data-explorer-layer]")).toHaveAttribute(
+      "inert",
+      "",
+    );
+    // It takes the sidebar's whole height, header included.
+    await expect
+      .poll(async () => {
+        const box = await layer.boundingBox();
+        return box && [Math.round(box.y), Math.round(box.height)];
+      })
+      .toEqual([0, 800]);
+    await expect(
+      page.getByRole("link", { name: "Varde hjem", exact: true }),
+    ).toHaveCount(0);
     const inner = await page
       .locator("#project-panel")
       .evaluate((element) => element.clientWidth);
@@ -650,15 +663,17 @@ test.describe("desktop explorer", () => {
     const layer = page.locator("[data-project-layer]");
     await expect(layer).toBeVisible();
     await expect.poll(() => mapParam(page)).toMatch(/,15$/);
-    const panelUrl = page.url();
     const panelView = mapParam(page);
+    const top = async () => Math.round((await layer.boundingBox())!.y);
     await page.getByRole("button", { name: "Vis som helside", exact: true }).click();
     await expect(page).toHaveURL(/[?&]visning=full/);
     await expect(layer).toHaveAttribute("data-full", "true");
-    // It fills the window and uses the width: facts beside the text.
+    // It fills the window and uses the width: facts beside the text. It
+    // only grows sideways.
     await expect
       .poll(async () => Math.round((await layer.boundingBox())!.width))
       .toBe(1280);
+    expect(await top()).toBe(0);
     await expect(
       page.getByRole("complementary", { name: "Prosjektfakta", exact: true }),
     ).toBeVisible();
@@ -668,20 +683,208 @@ test.describe("desktop explorer", () => {
     // Shareable: a reload stays on the full page.
     await page.reload();
     await expect(layer).toHaveAttribute("data-full", "true");
-    // Escape (like Back) steps down to the sidebar first, map untouched.
+    // Escape steps down to the sidebar first, map untouched.
     await page.keyboard.press("Escape");
     await expect(layer).not.toHaveAttribute("data-full");
     await expect(page).not.toHaveURL(/visning=full/);
     expect(mapParam(page)).toBe(panelView);
-    await page.getByRole("button", { name: "Vis som helside", exact: true }).click();
-    await page.goBack();
-    await expect(layer).not.toHaveAttribute("data-full");
-    await expect(page).toHaveURL(panelUrl);
-    // From the full page, ✕ closes it all the way to the list.
+    expect(await top()).toBe(0);
+    // The mode belongs to the sidebar: closing a maximized project leaves
+    // the list maximized.
     await page.getByRole("button", { name: "Vis som helside", exact: true }).click();
     await page.getByRole("button", { name: "Lukk prosjekt", exact: true }).click();
     await expect(layer).toHaveCount(0);
     await expect(list).toBeVisible();
+    await expect(page.locator("#project-panel")).toHaveAttribute(
+      "data-sidebar-mode",
+      "maximized",
+    );
+    await page.getByRole("button", { name: "Vis kart", exact: true }).click();
+    await expect(page.locator("#project-panel")).toHaveAttribute(
+      "data-sidebar-mode",
+      "normal",
+    );
     await expect(page).toHaveURL(atList);
+  });
+
+  test("the list collapses to the map, and projects still open beside it", async ({
+    page,
+  }) => {
+    await page.goto(oslo);
+    const panel = page.locator("#project-panel");
+    const toggle = page.getByRole("button", {
+      name: "Skjul prosjektlisten",
+      exact: true,
+    });
+    const before = await toggle.boundingBox();
+    const mapWidth = async () =>
+      Math.round(
+        (await page.getByRole("region", { name: "Prosjektkart" }).first().boundingBox())!
+          .width,
+      );
+    const narrow = await mapWidth();
+    await toggle.click();
+    await expect(panel).toHaveAttribute("data-sidebar-mode", "collapsed");
+    await expect(listRegion(page)).toBeHidden();
+    await expect.poll(mapWidth).toBe(1280);
+    expect(narrow).toBeLessThan(1280);
+    // The toggle and the logo stay, exactly where they were.
+    const expand = page.getByRole("button", {
+      name: "Vis prosjektlisten",
+      exact: true,
+    });
+    expect(await expand.boundingBox()).toEqual(before);
+    await expect(
+      page.getByRole("link", { name: "Varde hjem", exact: true }),
+    ).toBeVisible();
+    // A project picked on the map opens as the usual sidebar panel...
+    // Other tests' projects can lie on top of it, so no pointer here.
+    await page
+      .locator(`path[data-project-id="${project.id}"]`)
+      .first()
+      .dispatchEvent("click");
+    const layer = page.locator("[data-project-layer]");
+    await expect(layer).toBeVisible();
+    await expect
+      .poll(async () => {
+        const box = await layer.boundingBox();
+        return box && [Math.round(box.x), Math.round(box.y), box.width < 700];
+      })
+      .toEqual([0, 0, true]);
+    // ...and closing it returns to the collapsed list, also after a reload.
+    await page.getByRole("button", { name: "Lukk prosjekt", exact: true }).click();
+    await expect(layer).toHaveCount(0);
+    await expect(panel).toHaveAttribute("data-sidebar-mode", "collapsed");
+    await expect(listRegion(page)).toBeHidden();
+    await page.reload();
+    await expect(panel).toHaveAttribute("data-sidebar-mode", "collapsed");
+    await expect(expand).toBeVisible();
+    await expand.click();
+    await expect(listRegion(page)).toBeVisible();
+    await expect.poll(mapWidth).toBe(narrow);
+  });
+
+  test("maximized, the list filters by place and the map follows it back", async ({
+    page,
+  }) => {
+    await page.goto(oslo);
+    await expect(card(page, "Nyhavna")).toHaveCount(0);
+    const filters = page.getByRole("region", {
+      name: "Filtrer prosjekter",
+      exact: true,
+    });
+    await expect(filters.getByRole("button", { name: /^Sted/ })).toHaveCount(0);
+    await page.getByRole("button", { name: "Vis som helside", exact: true }).click();
+    await expect(page.locator("#project-panel")).toHaveAttribute(
+      "data-sidebar-mode",
+      "maximized",
+    );
+    await expect(
+      page.getByRole("main", { name: "Utforsk prosjekter" }),
+    ).toHaveAttribute("inert", "");
+    // The map no longer narrows the list; a place can instead.
+    await expect(card(page, "Nyhavna")).toBeVisible();
+    const place = filters.getByRole("button", { name: "Sted", exact: true });
+    await expect(place).toHaveText("Velg sted");
+    await place.click();
+    await page
+      .getByRole("listbox", { name: "Sted", exact: true })
+      .getByRole("option", { name: /^Bergen/ })
+      .click();
+    await expect(
+      filters.getByRole("button", { name: "Sted: Bergen", exact: true }),
+    ).toBeVisible();
+    await expect(card(page, "Bybanen til Åsane")).toBeVisible();
+    await expect(card(page, "Nyhavna")).toHaveCount(0);
+    await expect(card(page, project.title)).toHaveCount(0);
+    await expect(page).toHaveURL(/visning=full&sted=Bergen/);
+    await page.reload();
+    await expect(card(page, "Bybanen til Åsane")).toBeVisible();
+    await expect(card(page, "Nyhavna")).toHaveCount(0);
+    // Back beside the map, it shows the place picked.
+    await page.getByRole("button", { name: "Vis kart", exact: true }).click();
+    await expect.poll(() => mapParam(page)).toMatch(/^60\./);
+    await expect(page).not.toHaveURL(/sted=/);
+    await expect(card(page, "Bybanen til Åsane")).toBeVisible();
+    await expect(card(page, project.title)).toHaveCount(0);
+  });
+});
+
+test.describe("desktop sidebar panels", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test("header pages open as panels over the explorer, in the sidebar's mode", async ({
+    page,
+    context,
+  }) => {
+    const moderator = await member({
+      username: `panel_${randomUUID().slice(0, 8)}`,
+      email: "panel-moderator@example.test",
+    });
+    await signIn(context, moderator);
+    await page.goto("/?kart=59.9100,10.7500,13");
+    const list = page.getByRole("region", { name: "Prosjektliste", exact: true });
+    await expect(list).toBeVisible();
+    const sidebar = page.locator("#project-panel");
+    const inner = await sidebar.evaluate((element) => element.clientWidth);
+    const box = async (name: string) => {
+      const found = await page
+        .locator(`[data-sidebar-layer="${name}"]`)
+        .boundingBox();
+      return found && [found.x, found.y, Math.round(found.width), found.height];
+    };
+
+    // Forslag: a panel on its own URL, covering the whole sidebar.
+    await page.getByRole("link", { name: /^Forslag/ }).click();
+    const suggestions = page.locator('[data-sidebar-panel="suggestions"]');
+    await expect(suggestions).toBeVisible();
+    await expect(page).toHaveURL(/\/forslag\?kart=/);
+    await expect(
+      suggestions.getByRole("heading", { name: "Forslag", exact: true }),
+    ).toBeVisible();
+    await expect.poll(() => box("suggestions")).toEqual([0, 0, inner, 800]);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    // The same maximize control as a project.
+    await suggestions
+      .getByRole("button", { name: "Vis som helside", exact: true })
+      .click();
+    await expect.poll(() => box("suggestions")).toEqual([0, 0, 1280, 800]);
+    await expect(page).toHaveURL(/visning=full/);
+    await suggestions
+      .getByRole("button", { name: "Vis i sidepanel", exact: true })
+      .click();
+    await expect.poll(() => box("suggestions")).toEqual([0, 0, inner, 800]);
+    // A direct link opens the explorer with the panel on it.
+    await page.reload();
+    await expect(suggestions).toBeVisible();
+    await expect(list).toBeHidden();
+    await suggestions.getByRole("button", { name: "Lukk", exact: true }).click();
+    await expect(suggestions).toHaveCount(0);
+    await expect(list).toBeVisible();
+    await expect(page).toHaveURL(atList);
+
+    // Følger and the profile open the same way.
+    await page.getByRole("button", { name: /^Følger/ }).click();
+    const followed = page.locator('[data-sidebar-panel="following"]');
+    await expect(followed).toBeVisible();
+    await expect.poll(() => box("following")).toEqual([0, 0, inner, 800]);
+    await page.keyboard.press("Escape");
+    await expect(followed).toHaveCount(0);
+    await page.getByRole("button", { name: "Din profil", exact: true }).click();
+    const account = page.locator('[data-sidebar-panel="account"]');
+    await expect(account).toBeVisible();
+    await expect(account.locator("[data-account-panel]")).toBeVisible();
+    // Maximized, closing a panel leaves the explorer maximized too.
+    await account.getByRole("button", { name: "Vis som helside", exact: true }).click();
+    await expect.poll(() => box("account")).toEqual([0, 0, 1280, 800]);
+    // From the profile, Forslag opens over it and leads back to it.
+    await account.getByRole("button", { name: /^Forslag/ }).click();
+    await expect(suggestions).toBeVisible();
+    await expect.poll(() => box("suggestions")).toEqual([0, 0, 1280, 800]);
+    await suggestions.getByRole("button", { name: "Tilbake", exact: true }).click();
+    await expect(account).toBeVisible();
+    await account.getByRole("button", { name: "Lukk", exact: true }).click();
+    await expect(sidebar).toHaveAttribute("data-sidebar-mode", "maximized");
+    await expect(list).toBeVisible();
   });
 });

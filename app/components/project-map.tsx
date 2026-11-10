@@ -139,8 +139,14 @@ const midpointIcon = L.divIcon({
 
 /** Moves the explorer map from outside, e.g. to frame an opened project. */
 export type MapApi = {
-  /** Frames the points; `bottom` keeps room for a sheet over the map. */
-  fit: (points: Point[], options?: { bottom?: number; maxZoom?: number }) => void;
+  /**
+   * Frames the points; `bottom` keeps room for a sheet over the map, `left`
+   * for a panel over its left edge.
+   */
+  fit: (
+    points: Point[],
+    options?: { bottom?: number; left?: number; maxZoom?: number },
+  ) => void;
   show: (view: MapView) => void;
   showNorway: () => void;
   /**
@@ -467,11 +473,11 @@ export default function ProjectMap({
     };
     let pending = () => {};
     handlers.current.onReady?.({
-      fit(points, { bottom = inset(), maxZoom = 15 } = {}) {
+      fit(points, { bottom = inset(), left = 0, maxZoom = 15 } = {}) {
         if (!points.length) return;
         settled(() =>
           map.fitBounds(L.latLngBounds(points), {
-            paddingTopLeft: [64, 64],
+            paddingTopLeft: [64 + left, 64],
             paddingBottomRight: [80, 64 + bottom],
             maxZoom,
             animate: !reducedMotion(),

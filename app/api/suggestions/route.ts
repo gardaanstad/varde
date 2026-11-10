@@ -10,6 +10,7 @@ import {
 } from "@/app/lib/server/http";
 import {
   approveSuggestion,
+  markSeen,
   readSuggestions,
   rejectSuggestion,
   submitSuggestion,
@@ -18,7 +19,11 @@ import {
 export function GET(request: Request) {
   return api(async () => {
     const member = await requireUser(request);
-    return json(await readSuggestions(member.id, isModerator(member)));
+    const lists = await readSuggestions(member.id, isModerator(member));
+    // Opening the list marks reviews as seen, after reading them as new.
+    if (new URL(request.url).searchParams.has("seen"))
+      await markSeen(member.id);
+    return json(lists);
   });
 }
 

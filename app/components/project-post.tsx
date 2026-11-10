@@ -453,7 +453,7 @@ function ProjectAside({ project }: { project: Project }) {
 }
 
 /**
- * Two lines of the description above the image. "Les mer" grows the text and
+ * A few lines of the description above the image (more on desktop). "Les mer" grows the text and
  * reveals the facts.
  */
 function ProjectIntro({ project }: { project: Project }) {
@@ -515,8 +515,10 @@ function ProjectIntro({ project }: { project: Project }) {
         ?.scrollTo({ top: 0, behavior: still ? "auto" : "smooth" });
       setOpen(false);
       if (still) return setClamped(true);
+      const style = getComputedStyle(copy);
       const lines =
-        parseFloat(getComputedStyle(copy).lineHeight) * (photo ? 2 : 3);
+        parseFloat(style.lineHeight) *
+        (Number(style.getPropertyValue("--intro-lines")) || 2);
       const target = Math.min(lines, copy.scrollHeight);
       slide(copy, "height", copy.offsetHeight, target, () => setClamped(true));
       more.dataset.expanded = "false";

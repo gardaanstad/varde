@@ -9,8 +9,10 @@ export type ExploreState = {
   category: string[];
   sort: string;
   view: MapView | null;
-  /** A project shown as a full page over the map (`visning=full`). */
+  /** Desktop: the sidebar maximized over the map (`visning=full`). */
   full?: boolean;
+  /** The place filter of the maximized sidebar, where the map can't filter. */
+  place?: string;
 };
 
 // Most people follow what is coming, so finished projects start hidden.
@@ -67,6 +69,7 @@ export function parseExploreState(
       : defaultSort,
     view: parseView(params.get("kart")),
     full: params.get("visning") === "full",
+    place: params.get("sted") ?? "",
   };
 }
 
@@ -88,6 +91,7 @@ export function exploreSearch(state: ExploreState) {
     );
   if (state.sort !== defaultSort) params.set("sorter", state.sort);
   if (state.full) params.set("visning", "full");
+  if (state.full && state.place) params.set("sted", state.place);
   if (state.view) {
     const [lat, lng] = state.view.center;
     params.set(
@@ -117,4 +121,38 @@ export function storeMapView(view: MapView) {
   } catch {
     /* The map still works without browser storage. */
   }
+}
+
+const collapsedKey = "varde-sidebar-collapsed";
+const collapsedEvent = "varde-sidebar-collapsed";
+// Without browser storage, collapsing still lasts for this visit.
+let collapsedFallback = false;
+
+/** Desktop: whether the explorer sidebar is collapsed, kept in this browser. */
+export function storedCollapsed() {
+  try {
+    return localStorage.getItem(collapsedKey) === "1";
+  } catch {
+    return collapsedFallback;
+  }
+}
+
+export function storeCollapsed(collapsed: boolean) {
+  collapsedFallback = collapsed;
+  try {
+    if (collapsed) localStorage.setItem(collapsedKey, "1");
+    else localStorage.removeItem(collapsedKey);
+  } catch {
+    /* The fallback above holds it. */
+  }
+  window.dispatchEvent(new Event(collapsedEvent));
+}
+
+export function subscribeCollapsed(callback: () => void) {
+  window.addEventListener(collapsedEvent, callback);
+  window.addEventListener("storage", callback);
+  return () => {
+    window.removeEventListener(collapsedEvent, callback);
+    window.removeEventListener("storage", callback);
+  };
 }

@@ -80,11 +80,26 @@
       margin-top: 10px;
     }
 
-    /* Two lines with an ellipsis; paragraphs run together while clamped. */
+    /*
+     * Lines shown before "Les mer", read by the collapse animation too. The
+     * desktop sidebar has the height for more.
+     */
+    --intro-lines: 2;
+    &[data-photo="false"] {
+      --intro-lines: 3;
+    }
+    @variant md {
+      --intro-lines: 5;
+      &[data-photo="false"] {
+        --intro-lines: 7;
+      }
+    }
+
+    /* A few lines with an ellipsis; paragraphs run together while clamped. */
     &[data-clamped="true"] {
       display: -webkit-box;
       -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
+      -webkit-line-clamp: var(--intro-lines);
 
       & > p {
         display: inline;
@@ -99,7 +114,7 @@
     /* No photo: three lines that fade out when there is more. */
     &[data-clamped="true"][data-photo="false"] {
       display: block;
-      max-height: 4.8em;
+      max-height: calc(var(--intro-lines) * 1.6em);
       -webkit-line-clamp: none;
 
       & > p {

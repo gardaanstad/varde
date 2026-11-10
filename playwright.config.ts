@@ -39,6 +39,7 @@ export default defineConfig({
           "suggestion-api-moderator@example.test",
           "suggestion-moderator@example.test",
           "suggestion-project-moderator@example.test",
+          "panel-moderator@example.test",
         ].join(","),
     },
   },

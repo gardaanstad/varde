@@ -13,6 +13,7 @@ export default function ExplorerShell({ mobileHint }: { mobileHint: boolean }) {
     <Explorer
       initialProjectId={routeParam(pathname, "/prosjekt/")}
       initialProfile={routeParam(pathname, "/profil/")}
+      initialPanel={pathname === "/forslag" ? "suggestions" : undefined}
       initialSearch={initialSearch}
       mobileHint={mobileHint}
     />

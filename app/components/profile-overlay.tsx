@@ -23,7 +23,8 @@ export default function ProfileOverlay({
 }: {
   username: string;
   embedded?: boolean;
-  onClose: () => void;
+  /** Without it there is no close button: the sidebar panel has its own. */
+  onClose?: () => void;
   onOpenProject: (projectId: string) => void;
 }) {
   const { user } = useAuth();
@@ -61,19 +62,24 @@ export default function ProfileOverlay({
       )}
       data-profile-overlay=""
     >
-      <button
-        type="button"
-        className={cn(
-          iconButton,
-          "absolute top-3 right-[11px] z-10 rounded-lg max-sm:top-0 max-sm:right-1.5",
-        )}
-        onClick={onClose}
-        aria-label="Lukk profil"
-      >
-        <X size={20} />
-      </button>
+      {onClose && (
+        <button
+          type="button"
+          className={cn(
+            iconButton,
+            "absolute top-3 right-[11px] z-10 rounded-lg max-sm:top-0 max-sm:right-1.5",
+          )}
+          onClick={onClose}
+          aria-label="Lukk profil"
+        >
+          <X size={20} />
+        </button>
+      )}
       <div
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-7 pt-7 pb-8 scrollbar-thin max-sm:px-4.5 max-sm:pt-1"
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto overscroll-contain px-7 pb-8 scrollbar-thin max-sm:px-4.5 max-sm:pt-1",
+          onClose ? "pt-7" : "pt-1",
+        )}
         data-drawer-scroll
       >
         {profile ? (

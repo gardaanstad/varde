@@ -36,6 +36,7 @@ import {
 export default function AccountPanel({
   onBack,
   onFollowing,
+  onSuggestions,
   followingCount = 0,
   suggestionCount = 0,
   reviewedCount = 0,
@@ -44,6 +45,8 @@ export default function AccountPanel({
   onBack?: () => void;
   /** Opens the followed projects, where the app has no other entry to them. */
   onFollowing?: () => void;
+  /** Opens the suggestions in place; otherwise they are a link. */
+  onSuggestions?: () => void;
   followingCount?: number;
   /** Pending suggestions: one's own, or the whole queue for moderators. */
   suggestionCount?: number;
@@ -259,7 +262,33 @@ export default function AccountPanel({
                       <ChevronRight size={16} aria-hidden="true" />
                     </button>
                   )}
-                  <Link
+{onSuggestions ? (
+                    <button
+                      type="button"
+                      className={cn(accountAction, "min-h-12 rounded-lg")}
+                      onClick={onSuggestions}
+                    >
+                    <Inbox size={18} aria-hidden="true" />
+                    <span className="flex-1 text-sm">Forslag</span>
+                    {reviewedCount > 0 ? (
+                      <span
+                        className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums"
+                        data-reviewed
+                      >
+                        {reviewedCount}
+                        <span className="sr-only"> behandlet</span>
+                      </span>
+                    ) : (
+                      suggestionCount > 0 && (
+                        <span className="text-xs tabular-nums text-muted">
+                          {suggestionCount}
+                        </span>
+                      )
+                    )}
+                    <ChevronRight size={16} aria-hidden="true" />
+                  </button>
+                  ) : (
+                                    <Link
                     href="/forslag"
                     // Opening the page marks reviews as seen; never prefetch it.
                     prefetch={false}
@@ -284,6 +313,7 @@ export default function AccountPanel({
                     )}
                     <ChevronRight size={16} aria-hidden="true" />
                   </Link>
+                  )}
                 </div>
               }
             />

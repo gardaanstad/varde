@@ -1,5 +1,7 @@
 "use client";
 import {
+  createContext,
+  use,
   useEffect,
   useId,
   useMemo,
@@ -16,6 +18,7 @@ import {
   Check,
   ChevronDown,
   CircleSlash,
+  LoaderCircle,
   Ellipsis,
   Inbox,
   Lightbulb,
@@ -68,6 +71,21 @@ import RelativeTime from "./relative-time";
 import Toast, { type ToastMessage } from "./toast";
 
 const ProjectMap = dynamic(() => import("./project-map"), { ssr: false });
+const openLink =
+  "inline-flex min-h-8 items-center gap-1 text-ui font-medium text-accent hover:underline hover:underline-offset-4";
+// Loading marks reviews as seen, so a remount mid-load (as in development's
+// strict mode) shares the one request rather than finding nothing new.
+let loading: Promise<SuggestionLists> | null = null;
+function loadSuggestions() {
+  loading ??= apiRequest<SuggestionLists>("/api/suggestions?seen").finally(
+    () => {
+      loading = null;
+    },
+  );
+  return loading;
+}
+/** In the explorer's sidebar, projects open in place instead of by link. */
+const OpenProject = createContext<((projectId: string) => void) | null>(null);
 
 type Tab = "queue" | "handled" | "mine";
 type Review = (mutation: SuggestionMutation) => Promise<void>;
@@ -661,6 +679,7 @@ function SuggestionRow({
   onReview: Review;
 }) {
   const bodyId = useId();
+  const openProject = use(OpenProject);
   const queue = tab === "queue";
   // The body mounts on first open and stays, so closing can animate.
   const [mounted, setMounted] = useState(expanded);
@@ -876,15 +895,23 @@ function SuggestionRow({
                     {editing ? "Ferdig" : "Rediger"}
                   </button>
                 )}
-                {linked && (
-                  <Link
-                    href={projectHref(suggestion.projectId!)}
-                    className="inline-flex min-h-8 items-center gap-1 text-ui font-medium text-accent hover:underline hover:underline-offset-4"
-                  >
-                    Åpne prosjekt
-                    <ArrowRight size={14} aria-hidden="true" />
-                  </Link>
-                )}
+                {linked &&
+                  (openProject ? (
+                    <button
+                      type="button"
+                      className={openLink}
+                      onClick={() => openProject(suggestion.projectId!)}
+                    >
+                      Åpne prosjekt
+                      <ArrowRight size={14} aria-hidden="true" />
+                    </button>
+                  ) : (
+                    // A full load: the explorer opens projects from their URL.
+                    <a href={projectHref(suggestion.projectId!)} className={openLink}>
+                      Åpne prosjekt
+                      <ArrowRight size={14} aria-hidden="true" />
+                    </a>
+                  ))}
                 {queue && (
                   <div className="ml-auto flex items-center gap-2">
                     <button
@@ -952,11 +979,42 @@ function moveFocus(event: KeyboardEvent<HTMLElement>) {
 export default function SuggestionList({
   initial,
   moderator,
+  embedded = false,
+  onOpenProject,
+  onClose,
+  onChange,
 }: {
-  initial: SuggestionLists;
+  /** Without it, the list loads itself (and marks reviews as seen). */
+  initial?: SuggestionLists;
   moderator: boolean;
+  /** A panel in the explorer's sidebar rather than a page of its own. */
+  embedded?: boolean;
+  onOpenProject?: (projectId: string) => void;
+  onClose?: () => void;
+  /** After a review, which changes what the explorer shows. */
+  onChange?: () => void;
 }) {
-  const [lists, setLists] = useState(initial);
+  const [lists, setLists] = useState<SuggestionLists | null>(initial ?? null);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    if (initial) return;
+    let current = true;
+    loadSuggestions()
+      .then((next) => {
+        if (!current) return;
+        setLists(next);
+        onChange?.();
+      })
+      .catch((error) => {
+        if (current)
+          setLoadError(errorMessage(error, "Kunne ikke hente forslagene."));
+      });
+    return () => {
+      current = false;
+    };
+    // Loads once, when the panel opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [tab, setTab] = useState<Tab>(moderator ? "queue" : "mine");
   const [toast, setToast] = useState<ToastMessage | null>(null);
   // One row open at a time.
@@ -967,17 +1025,18 @@ export default function SuggestionList({
     const timer = setTimeout(() => setToast(null), 6000);
     return () => clearTimeout(timer);
   }, [toast]);
-  const queue = lists.queue ?? [];
-  const handled = lists.handled ?? [];
+  const queue = lists?.queue ?? [];
+  const handled = lists?.handled ?? [];
+  const mine = lists?.mine ?? [];
   const tabs: { id: Tab; label: string; count?: number }[] = moderator
     ? [
         { id: "queue", label: "Til behandling", count: queue.length },
         { id: "handled", label: "Behandlet" },
-        ...(lists.mine.length ? [{ id: "mine" as const, label: "Mine" }] : []),
+        ...(mine.length ? [{ id: "mine" as const, label: "Mine" }] : []),
       ]
     : [];
   const items =
-    tab === "queue" ? queue : tab === "handled" ? handled : lists.mine;
+    tab === "queue" ? queue : tab === "handled" ? handled : mine;
 
   async function review(mutation: SuggestionMutation) {
     const toggles = Array.from(
@@ -991,6 +1050,7 @@ export default function SuggestionList({
       body: JSON.stringify(mutation),
     });
     setLists(next);
+    onChange?.();
     setToast({
       message: mutation.action === "approve" ? "Godkjent" : "Avvist",
     });
@@ -1003,17 +1063,31 @@ export default function SuggestionList({
     });
   }
 
+  const Root = embedded ? "div" : "main";
   return (
-    <main className="min-h-dvh bg-canvas px-5 py-5 sm:px-10 sm:py-8 max-sm:px-3">
+    <OpenProject value={onOpenProject ?? null}>
+    <Root
+      className={
+        embedded
+          ? "min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-8 scrollbar-thin"
+          : "min-h-dvh bg-canvas px-5 py-5 sm:px-10 sm:py-8 max-sm:px-3"
+      }
+      data-suggestion-list=""
+    >
       <div className="mx-auto w-full max-w-200">
-        <BackLink href="/" />
-        <div className="mt-3 mb-4 flex items-baseline gap-3 px-1">
+        {!embedded && <BackLink href="/" />}
+        <div
+          className={cn(
+            "mb-4 flex items-baseline gap-3 px-1",
+            !embedded && "mt-3",
+          )}
+        >
           <h1 className="text-[26px] leading-tight font-semibold tracking-[-0.6px]">
             {moderator ? "Forslag" : "Mine forslag"}
           </h1>
-          {!moderator && lists.mine.length > 0 && (
+          {!moderator && mine.length > 0 && (
             <span className="text-sm text-muted tabular-nums">
-              {lists.mine.length}
+              {mine.length}
             </span>
           )}
         </div>
@@ -1049,7 +1123,23 @@ export default function SuggestionList({
           </nav>
         )}
         <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-xs">
-          {items.length ? (
+          {!lists ? (
+            <p
+              role="status"
+              className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted"
+            >
+              {loadError || (
+                <>
+                  <LoaderCircle
+                    size={18}
+                    className="animate-spin motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
+                  Henter forslag …
+                </>
+              )}
+            </p>
+          ) : items.length ? (
             <ul
               ref={listRef}
               className="list-none divide-y divide-border p-0"
@@ -1077,14 +1167,24 @@ export default function SuggestionList({
               <h2 className="text-body font-semibold">
                 {tab === "queue" ? "Ingen forslag venter" : "Ingen forslag"}
               </h2>
-              {tab === "mine" && !moderator && (
-                <Link
-                  href="/"
-                  className={cn(secondaryButton, "min-h-9 rounded-lg px-3.5 text-ui")}
-                >
-                  Til prosjektene
-                </Link>
-              )}
+              {tab === "mine" &&
+                !moderator &&
+                (onClose ? (
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className={cn(secondaryButton, "min-h-9 rounded-lg px-3.5 text-ui")}
+                  >
+                    Til prosjektene
+                  </button>
+                ) : (
+                  <Link
+                    href="/"
+                    className={cn(secondaryButton, "min-h-9 rounded-lg px-3.5 text-ui")}
+                  >
+                    Til prosjektene
+                  </Link>
+                ))}
             </div>
           )}
         </div>
@@ -1092,6 +1192,7 @@ export default function SuggestionList({
       {toast && (
         <Toast toast={toast} mobile={false} onClose={() => setToast(null)} />
       )}
-    </main>
+    </Root>
+    </OpenProject>
   );
 }
