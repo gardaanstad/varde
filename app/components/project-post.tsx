@@ -360,28 +360,54 @@ function EditDescription() {
 
 const stickyGap = 12;
 
-/** Animates `property` between two pixel values, then clears the inline value. */
-function slide(
-  element: HTMLElement,
-  property: "height" | "maxHeight",
-  from: number,
-  to: number,
-  done?: () => void,
-) {
-  // Jump to the start without a transition (sizes can animate from auto).
-  element.style.transition = "none";
-  element.style[property] = `${from}px`;
-  element.getBoundingClientRect();
-  element.style.transition = "";
-  element.style[property] = `${to}px`;
-  const finish = (event?: TransitionEvent) => {
-    if (event && event.target !== element) return;
-    element.removeEventListener("transitionend", finish);
-    element.style[property] = "";
-    done?.();
-  };
-  if (from === to) finish();
-  else element.addEventListener("transitionend", finish);
+const introMotion: KeyframeAnimationOptions = {
+  duration: 320,
+  easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+};
+
+/** What is laid out after `node` within `root`, and so moves as it grows. */
+function laterElements(node: Element, root: Element) {
+  const later: HTMLElement[] = [];
+  for (let el: Element | null = node; el && el !== root; el = el.parentElement)
+    for (let next = el.nextElementSibling; next; next = next.nextElementSibling)
+      if (next instanceof HTMLElement) later.push(next);
+  return later;
+}
+
+/**
+ * Plays a change in the size of `parts` without laying out every frame.
+ * `change` applies the end layout in one go; then what it moved slides back
+ * from where it was, and each part's clip eases from its old height to its
+ * new one. Only transforms and clips animate, so the post below the intro
+ * (images, updates, discussion) is laid out once rather than 20 times.
+ */
+function morph(
+  parts: HTMLElement[],
+  movers: HTMLElement[],
+  change: () => void,
+): Animation[] {
+  const all = [...parts, ...movers];
+  const before = all.map((el) => ({
+    top: el.getBoundingClientRect().top,
+    height: el.offsetHeight,
+  }));
+  change();
+  const animations: Animation[] = [];
+  all.forEach((el, i) => {
+    const dy = before[i].top - el.getBoundingClientRect().top;
+    // A part's clip starts at its old height: inside its new box when it
+    // grows, past it (a negative inset) when it shrinks.
+    const inset = i < parts.length ? el.offsetHeight - before[i].height : 0;
+    if (Math.abs(dy) < 0.5 && Math.abs(inset) < 0.5) return;
+    const from: Keyframe = { transform: `translateY(${dy}px)` };
+    const to: Keyframe = { transform: "translateY(0)" };
+    if (i < parts.length) {
+      from.clipPath = `inset(0 0 ${inset}px 0)`;
+      to.clipPath = "inset(0 0 0 0)";
+    }
+    animations.push(el.animate([from, to], introMotion));
+  });
+  return animations;
 }
 
 /** Category, place and status at a glance, under the title. */
@@ -468,7 +494,10 @@ function ProjectIntro({ project }: { project: Project }) {
   const body = useRef<HTMLDivElement>(null);
   const text = useRef<HTMLDivElement>(null);
   const details = useRef<HTMLDivElement>(null);
+  const gallery = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
+  // The running change: its animations and the step that ends it.
+  const running = useRef<{ animations: Animation[]; done: () => void }>(null);
 
   useLayoutEffect(() => {
     const copy = text.current;
@@ -506,36 +535,81 @@ function ProjectIntro({ project }: { project: Project }) {
   function toggle() {
     const copy = text.current;
     const more = details.current;
-    if (!copy || !more) return;
+    const intro = body.current;
+    const scroller = intro?.closest<HTMLElement>("[data-project-scroll]");
+    if (!copy || !more || !intro || !scroller) return;
+    // A second tap lands the first change before starting the next.
+    const last = running.current;
+    if (last) {
+      running.current = null;
+      last.animations.forEach((animation) => animation.cancel());
+      last.done();
+    }
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (open) {
       // Collapsing returns to the top, so reading resumes from the start.
-      more
-        .closest("[data-project-scroll]")
-        ?.scrollTo({ top: 0, behavior: still ? "auto" : "smooth" });
-      setOpen(false);
-      if (still) return setClamped(true);
+      scroller.scrollTo({ top: 0, behavior: still ? "auto" : "smooth" });
+    }
+    if (still) {
+      flushSync(() => {
+        setOpen(!open);
+        setClamped(open);
+      });
+      return;
+    }
+    const parts = [copy, more];
+    const movers = [
+      ...(gallery.current ? [gallery.current] : []),
+      ...laterElements(intro, scroller),
+    ];
+    const reset = () => {
+      for (const el of parts) {
+        el.style.height = "";
+        el.style.overflow = "";
+      }
+      scroller.style.overflowAnchor = "";
+    };
+    // Scroll anchoring would shift the post under the animation.
+    scroller.style.overflowAnchor = "none";
+    let animations: Animation[];
+    let done: () => void;
+    if (open) {
+      // The text keeps its full layout under a clip until it can clamp.
       const style = getComputedStyle(copy);
       const lines =
         parseFloat(style.lineHeight) *
         (Number(style.getPropertyValue("--intro-lines")) || 2);
       const target = Math.min(lines, copy.scrollHeight);
-      slide(copy, "height", copy.offsetHeight, target, () => setClamped(true));
-      more.dataset.expanded = "false";
-      const peek = more.offsetHeight;
-      more.dataset.expanded = "true";
-      slide(more, "maxHeight", more.offsetHeight, peek);
-      return;
+      animations = morph(parts, movers, () => {
+        copy.style.height = `${target}px`;
+        for (const el of parts) el.style.overflow = "visible";
+        flushSync(() => setOpen(false));
+      });
+      // Clamped in the same frame the inline height goes, so nothing flashes.
+      done = () => {
+        flushSync(() => setClamped(true));
+        reset();
+      };
+    } else {
+      animations = morph(parts, movers, () =>
+        flushSync(() => {
+          setClamped(false);
+          setOpen(true);
+        }),
+      );
+      done = reset;
     }
-    const from = copy.offsetHeight;
-    const peek = more.offsetHeight;
-    flushSync(() => {
-      setClamped(false);
-      setOpen(true);
-    });
-    if (still) return;
-    slide(copy, "height", from, copy.scrollHeight);
-    slide(more, "maxHeight", peek, more.scrollHeight);
+    const change = { animations, done };
+    running.current = change;
+    Promise.all(animations.map((animation) => animation.finished)).then(
+      () => {
+        if (running.current !== change) return;
+        running.current = null;
+        done();
+      },
+      // Cancelled: a newer change, or the post closed, took over.
+      () => {},
+    );
   }
   return (
     <div data-project-header-hero="">
@@ -552,7 +626,7 @@ function ProjectIntro({ project }: { project: Project }) {
           ))}
         </div>
         {photo && (
-          <div className="mt-3.5">
+          <div ref={gallery} className="mt-3.5">
             <ImageGallery
               images={photos}
               label={`Bilder av ${project.title}`}
@@ -565,7 +639,7 @@ function ProjectIntro({ project }: { project: Project }) {
         <div
           ref={details}
           className={cn(
-            "flex flex-col gap-1 overflow-hidden transition-[max-height] duration-320 ease-out-soft motion-reduce:transition-none",
+            "flex flex-col gap-1 overflow-hidden",
             "data-[expanded=false]:max-h-0 *:shrink-0",
           )}
           data-expanded={open}

@@ -80,6 +80,9 @@ import {
   DrawerTitle,
   DrawerDescription,
   DrawerVirtualKeyboardProvider,
+  drawerDuration,
+  drawerEasing,
+  type DrawerMotion,
   type DrawerSnapPoint,
 } from "./drawer";
 import { cn } from "../lib/cn";
@@ -232,7 +235,6 @@ const mobileDrawerClasses = [
 ].join(" ");
 const explorerDrawerClasses = cn(
   mobileDrawerClasses,
-  "[--explorer-snap-offset:max(0px,calc(var(--drawer-snap-point-offset,0px)+var(--drawer-swipe-movement-y,0px)))]",
   "[--drawer-content-max-height:calc(100dvh_-_12px_-_env(safe-area-inset-top))]!",
   // Under a project at full height, the explorer peeks out just above it.
   // Until the project measures, it keeps its own height rather than none.
@@ -246,10 +248,12 @@ const projectDrawerClasses = cn(
 const projectDrawerInnerClasses =
   "flex min-h-0 flex-1 flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]";
 
+// Sized to the snap point the drawer rests at, so the list's end shows; see
+// `restOffset` on DrawerContent.
 const mobileDrawerInnerClasses = [
   "min-h-0 flex-none overflow-hidden",
-  "h-[calc(100%_-_24px_-_var(--explorer-snap-offset,0px))]",
-  "pb-[env(safe-area-inset-bottom)] transition-[height] duration-450 ease-[cubic-bezier(0.22,1,0.36,1)] group-data-swiping/drawer-popup:transition-none motion-reduce:transition-none",
+  "h-[calc(100%_-_24px_-_var(--drawer-rest-offset))]",
+  "pb-[env(safe-area-inset-bottom)]",
 ].join(" ");
 
 const ProjectMap = dynamic(() => import("./project-map"), {
@@ -738,6 +742,8 @@ export default memo(function Explorer({
   }
   function onMapReady(api: MapApi) {
     mapApi.current = api;
+    // The controls can mount after the drawer has settled.
+    if (drawerMotion.current) followDrawer(drawerMotion.current);
     // A place picked before the map was ready.
     const fit = pendingFit.current;
     pendingFit.current = null;
@@ -804,47 +810,29 @@ export default memo(function Explorer({
     enterPostView(id);
   }
 
-  // Mobile: track the drawer's on-screen height so map controls can follow it
-  // through drags and snap animations. Runs only while the drawer moves.
+  // Mobile: the map controls ride on the drawer. Each of its moves sets their
+  // offset in the same frame; a drag lands at once, a snap eases as the
+  // drawer does. No layout is read or written along the way.
   const mapSectionRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const section = mapSectionRef.current;
-    if (!isMobile || !section) return;
-    let popup: HTMLElement | null = null;
-    let frame = 0;
-    let last = -1;
-    let still = 0;
-    const tick = () => {
-      // The drawer portal can mount a render after the map.
-      popup ??= drawerContentRef.current;
-      if (popup && !observing) {
-        observer.observe(popup, { attributes: true });
-        observing = true;
-      }
-      const visible = popup
-        ? Math.round(window.innerHeight - popup.getBoundingClientRect().top)
-        : last;
-      if (visible !== last) {
-        last = visible;
-        still = 0;
-        section.style.setProperty("--drawer-visible", `${visible}px`);
-      } else still += 1;
-      frame = still < 12 || !popup ? requestAnimationFrame(tick) : 0;
-    };
-    const wake = () => {
-      still = 0;
-      if (!frame) frame = requestAnimationFrame(tick);
-    };
-    let observing = false;
-    const observer = new MutationObserver(wake);
-    window.addEventListener("resize", wake);
-    wake();
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      window.removeEventListener("resize", wake);
-    };
-  }, [isMobile]);
+  const drawerMotion = useRef<DrawerMotion | null>(null);
+  const followDrawer = useCallback((motion: DrawerMotion) => {
+    drawerMotion.current = motion;
+    const controls = mapSectionRef.current?.querySelector<HTMLElement>(
+      "[data-map-controls]",
+    );
+    if (!controls) return;
+    const value = `${motion.visible.toFixed(1)}px`;
+    const current = controls.style.getPropertyValue("--drawer-visible");
+    if (current === value) return;
+    const still =
+      motion.swiping ||
+      !current ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    controls.style.transition = still
+      ? "none"
+      : `--drawer-visible ${drawerDuration}ms ${drawerEasing}`;
+    controls.style.setProperty("--drawer-visible", value);
+  }, []);
 
   function openPost(id: string, target: FollowedTarget = {}) {
     setPostTarget(target);
@@ -2082,7 +2070,8 @@ export default memo(function Explorer({
               cn(
                 "[&_.leaflet-control-attribution]:text-[8px]!",
                 // Ride on the drawer from minimized to middle, then stay.
-                "[&_[data-map-controls]]:bottom-[calc(clamp(136px,var(--drawer-visible,136px),58dvh)-124px+14px)]!",
+                // 26px clears the minimized drawer, which `followDrawer` tracks.
+                "[&_[data-map-controls]]:bottom-[26px]! [&_[data-map-controls]]:[translate:0_calc(136px-clamp(136px,var(--drawer-visible),58dvh))]",
               ),
           )}
           aria-label="Prosjektkart"
@@ -2164,6 +2153,8 @@ export default memo(function Explorer({
           <DrawerVirtualKeyboardProvider>
             <DrawerContent
               ref={drawerPopupRef}
+              restOffset
+              onMotion={followDrawer}
               data-explorer-drawer=""
               className={cn(
                 explorerDrawerClasses,
