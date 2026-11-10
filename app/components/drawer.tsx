@@ -24,15 +24,14 @@ type DrawerMotion = {
   swiping: boolean;
 };
 
-// The popup's own transition; whatever follows it uses the same.
+// The popup's own transition time.
 const drawerDuration = 450;
-const drawerEasing = "cubic-bezier(0.22,1,0.36,1)";
 
 /**
  * Follows a drawer's popup without touching layout while it moves. Base UI
- * writes the snap offset and drag movement straight onto the popup's style;
- * a MutationObserver hears each write in the same frame, so anything driven
- * from `onMotion` moves in step with it.
+ * writes the snap offset and drag movement straight onto the popup's style,
+ * and a MutationObserver hears each write. `onMotion` reports where it is
+ * headed; to move in step with it, put things on the popup via `edge`.
  *
  * With `restOffset`, the content is sized to the settled snap point through
  * `--drawer-rest-offset` (so its end can be scrolled to), rather than to every
@@ -181,6 +180,7 @@ function DrawerContent({
   children,
   contentClassName,
   handle,
+  edge,
   viewportClassName,
   restOffset = false,
   onMotion,
@@ -188,6 +188,11 @@ function DrawerContent({
 }: Omit<DrawerPrimitive.Popup.Props, "className"> & { className?: string } & {
   contentClassName?: string;
   handle?: React.ReactNode;
+  /**
+   * Rendered on the popup itself, outside its clipped content: whatever is
+   * placed past its top edge moves with it, frame for frame.
+   */
+  edge?: React.ReactNode;
   viewportClassName?: string;
   /** Size the content to the settled snap point; see `useDrawerMotion`. */
   restOffset?: boolean;
@@ -245,6 +250,7 @@ function DrawerContent({
           )}
           {...props}
         >
+          {edge}
           {handle}
           {showSwipeHandle && <DrawerSwipeHandle />}
           <DrawerPrimitive.Content
@@ -301,5 +307,4 @@ export {
   DrawerVirtualKeyboardProvider,
 };
 
-export { drawerDuration, drawerEasing };
 export type { DrawerMotion, DrawerSnapPoint };

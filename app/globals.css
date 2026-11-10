@@ -181,12 +181,6 @@
   inherits: false;
   initial-value: 0px;
 }
-/* How much of the mobile explorer drawer shows; the map controls ride on it. */
-@property --drawer-visible {
-  syntax: "<length>";
-  inherits: false;
-  initial-value: 136px;
-}
 
 /* next/font sets these variables on <html>. */
 @theme inline {

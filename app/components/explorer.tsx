@@ -80,8 +80,6 @@ import {
   DrawerTitle,
   DrawerDescription,
   DrawerVirtualKeyboardProvider,
-  drawerDuration,
-  drawerEasing,
   type DrawerMotion,
   type DrawerSnapPoint,
 } from "./drawer";
@@ -239,6 +237,8 @@ const explorerDrawerClasses = cn(
   // Under a project at full height, the explorer peeks out just above it.
   // Until the project measures, it keeps its own height rather than none.
   "[--peek:10px] [--stack-height:var(--drawer-frontmost-height,100dvh)]",
+  // The map controls stand above its top edge; its content clips itself.
+  "data-nested-drawer-open:overflow-visible",
 );
 // Projects sit a little lower, so the explorer shows behind them.
 const projectDrawerClasses = cn(
@@ -742,8 +742,6 @@ export default memo(function Explorer({
   }
   function onMapReady(api: MapApi) {
     mapApi.current = api;
-    // The controls can mount after the drawer has settled.
-    if (drawerMotion.current) followDrawer(drawerMotion.current);
     // A place picked before the map was ready.
     const fit = pendingFit.current;
     pendingFit.current = null;
@@ -810,28 +808,28 @@ export default memo(function Explorer({
     enterPostView(id);
   }
 
-  // Mobile: the map controls ride on the drawer. Each of its moves sets their
-  // offset in the same frame; a drag lands at once, a snap eases as the
-  // drawer does. No layout is read or written along the way.
-  const mapSectionRef = useRef<HTMLElement>(null);
-  const drawerMotion = useRef<DrawerMotion | null>(null);
+  // Mobile: the map controls sit on the drawer's popup, just above its top
+  // edge, so whatever moves the drawer moves them too. Above the middle stop,
+  // where the drawer would cover them, they fade out instead of riding up.
+  const [controlsSlot, setControlsSlot] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const controlsSlotRef = useRef<HTMLDivElement | null>(null);
+  const controlsSlotNode = useCallback((node: HTMLDivElement | null) => {
+    controlsSlotRef.current = node;
+    setControlsSlot(node);
+  }, []);
   const followDrawer = useCallback((motion: DrawerMotion) => {
-    drawerMotion.current = motion;
-    const controls = mapSectionRef.current?.querySelector<HTMLElement>(
-      "[data-map-controls]",
-    );
-    if (!controls) return;
-    const value = `${motion.visible.toFixed(1)}px`;
-    const current = controls.style.getPropertyValue("--drawer-visible");
-    if (current === value) return;
-    const still =
-      motion.swiping ||
-      !current ||
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    controls.style.transition = still
-      ? "none"
-      : `--drawer-visible ${drawerDuration}ms ${drawerEasing}`;
-    controls.style.setProperty("--drawer-visible", value);
+    const slot = controlsSlotRef.current;
+    if (!slot) return;
+    const covered = motion.visible > window.innerHeight * middleSnapPoint + 2;
+    if (covered === slot.hasAttribute("data-covered")) return;
+    // A snap up hides them at once, where the drawer would have slid over
+    // them; a snap down shows them as it arrives. A drag fades them.
+    slot.style.transitionDuration =
+      covered && !motion.swiping ? "0ms" : "150ms";
+    slot.style.transitionDelay = covered || motion.swiping ? "0ms" : "200ms";
+    slot.toggleAttribute("data-covered", covered);
   }, []);
 
   function openPost(id: string, target: FollowedTarget = {}) {
@@ -2066,16 +2064,9 @@ export default memo(function Explorer({
           className={cn(
             "relative isolate h-full min-h-0 w-full min-w-0 flex-1",
             "max-md:h-[calc(100%-124px)] max-md:flex-none",
-            isMobile &&
-              cn(
-                "[&_.leaflet-control-attribution]:text-[8px]!",
-                // Ride on the drawer from minimized to middle, then stay.
-                // 26px clears the minimized drawer, which `followDrawer` tracks.
-                "[&_[data-map-controls]]:bottom-[26px]! [&_[data-map-controls]]:[translate:0_calc(136px-clamp(136px,var(--drawer-visible),58dvh))]",
-              ),
+            isMobile && "[&_.leaflet-control-attribution]:text-[8px]!",
           )}
           aria-label="Prosjektkart"
-          ref={mapSectionRef}
         >
           <ProjectMap
             projects={mapProjects}
@@ -2083,6 +2074,7 @@ export default memo(function Explorer({
             onViewChange={onMapView}
             onReady={onMapReady}
             bottomInset={isMobile ? mobileMapInset : undefined}
+            controlsContainer={isMobile ? controlsSlot : undefined}
             selectedId={selectedId}
             highlightedId={hoveredId}
             onSelect={(id) => (id ? openPost(id) : setSelectedId(postId))}
@@ -2155,6 +2147,21 @@ export default memo(function Explorer({
               ref={drawerPopupRef}
               restOffset
               onMotion={followDrawer}
+              edge={
+                <div
+                  ref={controlsSlotNode}
+                  data-map-controls-slot=""
+                  className={cn(
+                    "absolute inset-x-0 bottom-full h-0",
+                    "transition-[opacity,visibility] duration-150 motion-reduce:transition-none",
+                    "data-covered:invisible data-covered:opacity-0",
+                    // A project covers the map, all but a sliver.
+                    "group-data-nested-drawer-open/drawer-popup:invisible group-data-nested-drawer-open/drawer-popup:opacity-0",
+                    // 14px clear of the drawer's top border.
+                    "[&_[data-map-controls]]:bottom-[15px]!",
+                  )}
+                />
+              }
               data-explorer-drawer=""
               className={cn(
                 explorerDrawerClasses,

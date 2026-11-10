@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./project-map.css";
@@ -224,6 +225,12 @@ type Props = {
   /** Every drawing edit: added, moved, inserted or removed points. */
   onPointsChange?: (points: Point[]) => void;
   onGeometryChange?: (type: "area" | "line") => void;
+  /**
+   * Where the zoom and layer controls go instead of over the map, such as a
+   * slot on the mobile drawer so they move with it. `null` holds them back
+   * until that slot exists.
+   */
+  controlsContainer?: HTMLElement | null;
 };
 export default function ProjectMap({
   projects = noProjects,
@@ -242,6 +249,7 @@ export default function ProjectMap({
   geometryType = "area",
   onPointsChange,
   onGeometryChange,
+  controlsContainer,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -992,6 +1000,109 @@ export default function ProjectMap({
       group.remove();
     };
   }, [points, ready, draw, geometryType]);
+  const controls = (
+    <div
+      data-map-controls=""
+      // On a drawer, a press here is not a swipe of it.
+      data-base-ui-swipe-ignore=""
+      className={cn(
+        "absolute right-4.5 z-600 flex flex-col items-end gap-2 max-lg:right-3.75 max-sm:right-3 max-sm:gap-1.5",
+        compact
+          ? "right-2 bottom-6 max-lg:right-2 max-sm:right-2 max-sm:bottom-6"
+          : draw
+            ? "bottom-22.75 max-md:bottom-19.25 max-sm:bottom-18"
+            : "bottom-10 max-sm:bottom-8",
+      )}
+    >
+      {layersOpen && !compact && (
+        <div
+          className="flex w-61 flex-col gap-0.75 rounded-xl border border-border bg-surface p-2 shadow-[0_5px_20px_rgb(20_28_24/0.13)] motion-reduce:transition-none"
+          ref={layerMenu}
+          id="map-layer-options"
+          role="group"
+          aria-label="Kartlag"
+          onBlur={(event) => {
+            if (
+              !event.currentTarget.contains(event.relatedTarget) &&
+              event.relatedTarget !== layerButton.current
+            )
+              setLayersOpen(false);
+          }}
+        >
+          <strong className="p-2 text-2xs text-muted">Kartvisning</strong>
+          {layerOptions.map(({ value, label, swatch }) => (
+            <button
+              type="button"
+              key={value}
+              className={layerOptionButton}
+              aria-pressed={layer === value}
+              onClick={() => {
+                setLayer(value);
+                setLayersOpen(false);
+                layerButton.current?.focus();
+              }}
+            >
+              <span
+                className={cn(
+                  "h-8.5 w-10.5 shrink-0 rounded-sm border border-border bg-surface",
+                  swatch,
+                )}
+                aria-hidden="true"
+              />
+              {label}
+              {layer === value && (
+                <Check
+                  className="ml-auto text-accent"
+                  size={16}
+                  aria-hidden="true"
+                />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+      <button
+        ref={layerButton}
+        type="button"
+        hidden={compact}
+        className={mapIconButton}
+        aria-label="Kartlag"
+        aria-pressed={layersOpen}
+        aria-expanded={layersOpen}
+        aria-controls={layersOpen ? "map-layer-options" : undefined}
+        data-tooltip="Kartlag"
+        onClick={() => setLayersOpen(!layersOpen)}
+      >
+        <Layers size={19} aria-hidden="true" />
+      </button>
+      <div className="flex flex-col divide-y divide-border overflow-hidden rounded-[6px] border border-border bg-surface shadow-control">
+        <button
+          type="button"
+          className={cn(
+            mapIconButton,
+            "rounded-none border-0 shadow-none hover:bg-surface-muted",
+          )}
+          aria-label="Zoom inn"
+          data-tooltip="Zoom inn"
+          onClick={() => mapRef.current?.zoomIn()}
+        >
+          <Plus size={20} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className={cn(
+            mapIconButton,
+            "rounded-none border-0 shadow-none hover:bg-surface-muted",
+          )}
+          aria-label="Zoom ut"
+          data-tooltip="Zoom ut"
+          onClick={() => mapRef.current?.zoomOut()}
+        >
+          <Minus size={20} aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+  );
   return (
     <div
       // Leaflet's pane z-indices stay inside, below the page's own layers.
@@ -1087,105 +1198,9 @@ export default function ProjectMap({
           </div>
         </>
       )}
-      <div
-        data-map-controls=""
-        className={cn(
-          "absolute right-4.5 z-600 flex flex-col items-end gap-2 max-lg:right-3.75 max-sm:right-3 max-sm:gap-1.5",
-          compact
-            ? "right-2 bottom-6 max-lg:right-2 max-sm:right-2 max-sm:bottom-6"
-            : draw
-              ? "bottom-22.75 max-md:bottom-19.25 max-sm:bottom-18"
-              : "bottom-10 max-sm:bottom-8",
-        )}
-      >
-        {layersOpen && !compact && (
-          <div
-            className="flex w-61 flex-col gap-0.75 rounded-xl border border-border bg-surface p-2 shadow-[0_5px_20px_rgb(20_28_24/0.13)] motion-reduce:transition-none"
-            ref={layerMenu}
-            id="map-layer-options"
-            role="group"
-            aria-label="Kartlag"
-            onBlur={(event) => {
-              if (
-                !event.currentTarget.contains(event.relatedTarget) &&
-                event.relatedTarget !== layerButton.current
-              )
-                setLayersOpen(false);
-            }}
-          >
-            <strong className="p-2 text-2xs text-muted">Kartvisning</strong>
-            {layerOptions.map(({ value, label, swatch }) => (
-              <button
-                type="button"
-                key={value}
-                className={layerOptionButton}
-                aria-pressed={layer === value}
-                onClick={() => {
-                  setLayer(value);
-                  setLayersOpen(false);
-                  layerButton.current?.focus();
-                }}
-              >
-                <span
-                  className={cn(
-                    "h-8.5 w-10.5 shrink-0 rounded-sm border border-border bg-surface",
-                    swatch,
-                  )}
-                  aria-hidden="true"
-                />
-                {label}
-                {layer === value && (
-                  <Check
-                    className="ml-auto text-accent"
-                    size={16}
-                    aria-hidden="true"
-                  />
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-        <button
-          ref={layerButton}
-          type="button"
-          hidden={compact}
-          className={mapIconButton}
-          aria-label="Kartlag"
-          aria-pressed={layersOpen}
-          aria-expanded={layersOpen}
-          aria-controls={layersOpen ? "map-layer-options" : undefined}
-          data-tooltip="Kartlag"
-          onClick={() => setLayersOpen(!layersOpen)}
-        >
-          <Layers size={19} aria-hidden="true" />
-        </button>
-        <div className="flex flex-col divide-y divide-border overflow-hidden rounded-[6px] border border-border bg-surface shadow-control">
-          <button
-            type="button"
-            className={cn(
-              mapIconButton,
-              "rounded-none border-0 shadow-none hover:bg-surface-muted",
-            )}
-            aria-label="Zoom inn"
-            data-tooltip="Zoom inn"
-            onClick={() => mapRef.current?.zoomIn()}
-          >
-            <Plus size={20} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className={cn(
-              mapIconButton,
-              "rounded-none border-0 shadow-none hover:bg-surface-muted",
-            )}
-            aria-label="Zoom ut"
-            data-tooltip="Zoom ut"
-            onClick={() => mapRef.current?.zoomOut()}
-          >
-            <Minus size={20} aria-hidden="true" />
-          </button>
-        </div>
-      </div>
+      {controlsContainer === undefined
+        ? controls
+        : controlsContainer && createPortal(controls, controlsContainer)}
       {mapMessage && (
         <div
           className="absolute top-18.75 left-1/2 z-650 flex w-max max-w-[85%] -translate-x-1/2 items-center gap-2.5 rounded-[7px] border border-border bg-surface px-3.5 py-3 text-2xs shadow-[0_4px_15px_rgb(20_28_24/0.10)] max-sm:top-16 max-sm:max-w-[calc(100%-28px)] max-sm:text-xs"
