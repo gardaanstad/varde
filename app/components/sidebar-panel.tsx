@@ -12,6 +12,31 @@ import { iconButton } from "../lib/ui";
  */
 export type SidebarMode = "collapsed" | "normal" | "maximized";
 
+/**
+ * Every sidebar change of size shares one transition: the timing of the
+ * panels' slide (`--animate-panel-in`), on clip-path, so nothing lays out
+ * per frame. Layers take their widest size for the duration and are
+ * clipped from the visible width before to the one after.
+ */
+export const sidebarTiming = {
+  duration: 320,
+  easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+};
+export function animateVisibleWidth(
+  element: HTMLElement,
+  from: number,
+  to: number,
+) {
+  const width = element.offsetWidth;
+  const clip = (visible: number) =>
+    `inset(0 ${Math.max(0, width - visible)}px 0 0)`;
+  // Held at the end until the layout settles, so the clip never lifts early.
+  return element.animate([{ clipPath: clip(from) }, { clipPath: clip(to) }], {
+    ...sidebarTiming,
+    fill: "forwards",
+  });
+}
+
 const controlButton = cn(
   iconButton,
   "rounded-lg active:scale-100 active:text-accent pointer-fine:active:scale-[0.97]",

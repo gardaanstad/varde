@@ -87,6 +87,7 @@ import { openProfileEvent } from "../lib/profile-overlay";
 import ProfileOverlay from "./profile-overlay";
 import SuggestionList from "./suggestion-list";
 import {
+  animateVisibleWidth,
   MaximizeButton,
   SidebarPanel,
   type SidebarMode,
@@ -530,6 +531,23 @@ export default memo(function Explorer({
     if (next && next !== postId) enterPostView(next);
     else if (!next) leavePostView();
   });
+  // Escape takes the maximized list back beside the map; panels handle
+  // their own Escape, and the search clears itself first.
+  const onEscape = useEffectEvent((event: KeyboardEvent) => {
+    if (
+      event.key !== "Escape" ||
+      event.defaultPrevented ||
+      isMobile ||
+      !maximized ||
+      liveLayers.length > 0 ||
+      document.querySelector(
+        "dialog[open], [data-slot=choice-menu][data-open=true]",
+      )
+    )
+      return;
+    event.preventDefault();
+    minimize();
+  });
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {
       if (
@@ -543,9 +561,11 @@ export default memo(function Explorer({
       }
     };
     window.addEventListener("keydown", keys);
+    window.addEventListener("keydown", onEscape);
     window.addEventListener("popstate", onPopState);
     return () => {
       window.removeEventListener("keydown", keys);
+      window.removeEventListener("keydown", onEscape);
       window.removeEventListener("popstate", onPopState);
     };
   }, [openSearch]);
@@ -883,13 +903,21 @@ export default memo(function Explorer({
   // The map keeps its size throughout, except when collapsing frees its
   // left edge (see the effect below).
   const pendingFit = useRef<Project[] | null>(null);
+  // The mode a change is animating from; the layout holds both until then.
+  const [modeFrom, setModeFrom] = useState<SidebarMode | null>(null);
+  function animateFrom() {
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+      setModeFrom(sidebarMode);
+  }
   function maximize() {
-    if (isMobile) return;
+    if (isMobile || maximized) return;
+    animateFrom();
     setMaximized(true);
   }
   /** Back beside the map, which now shows the place picked while maximized. */
   function minimize() {
     if (!maximized) return;
+    animateFrom();
     setMaximized(false);
     if (place) {
       pendingFit.current = projects.filter((project) => project.city === place);
@@ -897,18 +925,57 @@ export default memo(function Explorer({
     }
   }
   function toggleCollapsed() {
+    animateFrom();
     if (sidebarMode === "collapsed") return storeCollapsed(false);
     minimize();
     storeCollapsed(true);
   }
+  // While animating, the sidebar holds the larger of both layouts: full
+  // width while maximizing or restoring; out of the map's way while
+  // collapsing or expanding, so the map resizes once, not every frame.
+  const wide = sidebarMode === "maximized" || modeFrom === "maximized";
+  const asideCollapsed = collapsedPref || modeFrom === "collapsed";
+  const explorerHidden = sidebarMode === "collapsed" && !modeFrom;
+  useLayoutEffect(() => {
+    const aside = panelRef.current;
+    if (!modeFrom || !aside) return;
+    const sidebar = sidebarWidth();
+    const visible = (mode: SidebarMode, explorer: boolean) =>
+      mode === "maximized"
+        ? window.innerWidth
+        : mode === "collapsed" && explorer
+          ? 0
+          : sidebar;
+    const animations = Array.from(
+      aside.querySelectorAll<HTMLElement>(
+        "[data-explorer-layer], [data-sidebar-layer]",
+      ),
+      (element) => {
+        const explorer = element.hasAttribute("data-explorer-layer");
+        return animateVisibleWidth(
+          element,
+          visible(modeFrom, explorer),
+          visible(sidebarMode, explorer),
+        );
+      },
+    );
+    Promise.all(animations.map((animation) => animation.finished)).then(
+      () => setModeFrom(null),
+      () => {
+        /* Replaced by the next change. */
+      },
+    );
+    return () => animations.forEach((animation) => animation.cancel());
+  }, [modeFrom, sidebarMode]);
   useEffect(() => {
     if (isMobile || !mapApi.current) return;
     mapApi.current.syncSize();
     const fit = pendingFit.current;
     pendingFit.current = null;
     if (fit?.length) fitProjects(fit);
-    // Runs on each mode change, once the sidebar has its new width.
-  }, [sidebarMode, isMobile]);
+    // Runs once the map has its new width: at the start of collapsing, the
+    // end of expanding, and not at all when maximizing.
+  }, [asideCollapsed, sidebarMode, isMobile]);
 
   /** Mobile: the project drawer covers the map, so step down to show it. */
   function showPostOnMap(project: Project) {
@@ -1216,7 +1283,7 @@ export default memo(function Explorer({
       options={sortOptions}
     />
   );
-  const placeFilter = sidebarMode === "maximized" && (
+  const placeFilter = wide && (
     <ChoiceSelect
       label="Sted"
       value={place}
@@ -1381,7 +1448,7 @@ export default memo(function Explorer({
       <div
         className={cn(
           "px-5 pb-8 max-md:px-4.5 max-md:pt-0 max-md:pb-6",
-          sidebarMode === "maximized" && "mx-auto w-full max-w-[880px]",
+          wide && "mx-auto w-full max-w-[880px]",
         )}
       >
         {followingOnly && isMobile ? (
@@ -1483,7 +1550,7 @@ export default memo(function Explorer({
       }}
       // Escape steps down from the full page before closing.
       onEscape={maximized ? minimize : undefined}
-      full={!isMobile && maximized}
+      full={!isMobile && wide}
       onToggleFull={isMobile ? undefined : maximized ? minimize : maximize}
       feedback={isMobile ? feedback : undefined}
       following={followingIds.has(post.id)}
@@ -1678,7 +1745,7 @@ export default memo(function Explorer({
   /** A desktop panel's content, in the sidebar's current mode. */
   function layerContent(layer: Layer) {
     const frame = {
-      maximized: sidebarMode === "maximized",
+      maximized: wide,
       active: topLayer === layer,
       onToggleMaximized: maximized ? minimize : maximize,
     };
@@ -1878,7 +1945,7 @@ export default memo(function Explorer({
           className={cn(
             "relative z-10 flex h-full shrink-0 flex-col bg-surface",
             // Collapsed, it leaves the map the whole width; panels lie over it.
-            collapsedPref
+            asideCollapsed
               ? "w-0"
               : "w-(--sidebar-width) border-r border-border shadow-[1px_0_12px_rgb(20_28_24/0.05)]",
           )}
@@ -1890,7 +1957,7 @@ export default memo(function Explorer({
           aria-label="Prosjekter"
           data-sidebar-mode={sidebarMode}
         >
-          {sidebarMode === "collapsed" && (
+          {(sidebarMode === "collapsed" || modeFrom === "collapsed") && (
             // Where the header has them, so the toggle never moves.
             <div className="absolute top-1.5 left-1 z-30 flex h-13 items-center gap-1 rounded-xl bg-surface pr-4 pl-1 shadow-float">
               {sidebarToggle}
@@ -1901,8 +1968,12 @@ export default memo(function Explorer({
           <div
             className={cn(
               "absolute inset-y-0 left-0 flex flex-col bg-surface",
-              sidebarMode === "maximized" ? "z-30 w-screen" : "w-full",
-              sidebarMode === "collapsed" && "invisible",
+              wide
+                ? "z-30 w-screen"
+                : asideCollapsed
+                  ? "w-(--sidebar-width)"
+                  : "w-full",
+              explorerHidden && "invisible",
             )}
             data-explorer-layer=""
             // Live again as soon as a panel starts sliding away, so focus
@@ -1955,11 +2026,11 @@ export default memo(function Explorer({
               key={layer === "project" ? `project-${panelPostId}` : layer}
               className={cn(
                 "absolute inset-y-0 left-0 flex flex-col overflow-hidden bg-surface",
-                sidebarMode === "maximized"
+                wide
                   ? "w-screen"
                   : cn(
                       "shadow-[10px_0_30px_rgb(20_28_24/0.10)]",
-                      sidebarMode === "collapsed"
+                      asideCollapsed
                         ? "w-(--sidebar-width) border-r border-border"
                         : "w-full",
                     ),
@@ -1970,7 +2041,7 @@ export default memo(function Explorer({
               style={{ zIndex: 40 + index }}
               data-sidebar-layer={layer}
               data-project-layer={layer === "project" ? "" : undefined}
-              data-full={sidebarMode === "maximized" || undefined}
+              data-full={wide || undefined}
               inert={layer !== topLayer}
               onAnimationEnd={(event) => {
                 if (
@@ -1984,7 +2055,7 @@ export default memo(function Explorer({
               {layerContent(layer)}
             </div>
           ))}
-          {sidebarMode === "normal" && (
+          {sidebarMode === "normal" && !modeFrom && (
             <PanelResizer
               panel={panelRef}
               root={rootRef}

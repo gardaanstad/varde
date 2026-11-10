@@ -725,8 +725,9 @@ test.describe("desktop explorer", () => {
     const narrow = await mapWidth();
     await toggle.click();
     await expect(panel).toHaveAttribute("data-sidebar-mode", "collapsed");
-    await expect(listRegion(page)).toBeHidden();
+    // The list slides away over a map already at its new size.
     await expect.poll(mapWidth).toBe(1280);
+    await expect(listRegion(page)).toBeHidden();
     expect(narrow).toBeLessThan(1280);
     // The toggle and the logo stay, exactly where they were.
     const expand = page.getByRole("button", {
@@ -807,6 +808,31 @@ test.describe("desktop explorer", () => {
     await expect(page).not.toHaveURL(/sted=/);
     await expect(card(page, "Bybanen til Åsane")).toBeVisible();
     await expect(card(page, project.title)).toHaveCount(0);
+    // Both ways animate the clip, not the layout; Escape also restores.
+    const explorer = page.locator("[data-explorer-layer]");
+    const clipping = () =>
+      explorer.evaluate((element) =>
+        element
+          .getAnimations()
+          .some((animation) =>
+            (animation.effect as KeyframeEffect)
+              .getKeyframes()
+              .some((frame) => "clipPath" in frame),
+          ),
+      );
+    await page.getByRole("button", { name: "Vis som helside", exact: true }).click();
+    expect(await clipping()).toBe(true);
+    await expect.poll(clipping).toBe(false);
+    await page.keyboard.press("Escape");
+    expect(await clipping()).toBe(true);
+    await expect(page.locator("#project-panel")).toHaveAttribute(
+      "data-sidebar-mode",
+      "normal",
+    );
+    await expect.poll(clipping).toBe(false);
+    await expect(
+      page.getByRole("main", { name: "Utforsk prosjekter" }),
+    ).not.toHaveAttribute("inert");
   });
 });
 
