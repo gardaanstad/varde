@@ -58,7 +58,7 @@ import {
 import type { MapApi, MapViewChange } from "./project-map";
 import { errorMessage } from "../lib/api-client";
 import { profileHref } from "../lib/profiles";
-import { useAuth } from "./auth-provider";
+import { chooseUsernameEvent, useAuth } from "./auth-provider";
 import { useCommunity } from "./community-provider";
 import AccountPanel from "./account-panel";
 import ProfileAvatar from "./profile-avatar";
@@ -142,6 +142,29 @@ function whenNextSettled(run: () => void) {
     else requestAnimationFrame(check);
   };
   requestAnimationFrame(check);
+}
+/**
+ * Waits, briefly, for the photos newly in view to decode, so the picture a
+ * view transition takes of the new layout has them.
+ */
+function imagesReady(container: HTMLElement) {
+  const pending = Array.from(container.querySelectorAll("img")).filter(
+    (image) => {
+      const rect = image.getBoundingClientRect();
+      return rect.width > 0 && rect.top < window.innerHeight && rect.bottom > 0;
+    },
+  );
+  return Promise.race([
+    Promise.all(
+      pending.map((image) => {
+        // Lazy ones would wait for a layout pass the transition holds back;
+        // the file is usually cached from the layout before.
+        image.loading = "eager";
+        return image.decode().catch(() => {});
+      }),
+    ),
+    new Promise((resolve) => setTimeout(resolve, 80)),
+  ]);
 }
 function subscribeMobile(callback: () => void) {
   const media = window.matchMedia(mobileQuery);
@@ -333,8 +356,9 @@ export default memo(function Explorer({
     "explorer",
   );
   // Desktop: the suggestion list as a sidebar panel (`/forslag`).
+  // Guests opening its link get the login prompt over the list instead.
   const [suggestionsOpen, setSuggestionsOpen] = useState(
-    initialPanel === "suggestions",
+    initialPanel === "suggestions" && Boolean(user?.username),
   );
   const [selectedId, setSelectedId] = useState<string | null>(
     initialProjectId || null,
@@ -362,6 +386,10 @@ export default memo(function Explorer({
     initialProfile || null,
   );
   const [modal, setModal] = useState<"profile" | null>(null);
+  // The account panel opens on the profile, or on its settings.
+  const [accountStart, setAccountStart] = useState<"profile" | "settings">(
+    "profile",
+  );
   const [editorOpen, setEditorOpen] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const notify = (message: string) => setToast({ message });
@@ -810,9 +838,28 @@ export default memo(function Explorer({
   const onOpenProfile = useEffectEvent((event: Event) =>
     showProfile((event as CustomEvent<string>).detail),
   );
+  // Signed in without a username: it is chosen in the account panel.
+  const onChooseUsername = useEffectEvent((event: Event) => {
+    event.preventDefault();
+    openProfile();
+  });
   useEffect(() => {
     window.addEventListener(openProfileEvent, onOpenProfile);
-    return () => window.removeEventListener(openProfileEvent, onOpenProfile);
+    window.addEventListener(chooseUsernameEvent, onChooseUsername);
+    return () => {
+      window.removeEventListener(openProfileEvent, onOpenProfile);
+      window.removeEventListener(chooseUsernameEvent, onChooseUsername);
+    };
+  }, []);
+  // Forslag's link, opened without an account: the list, and why not.
+  const askForSuggestions = useEffectEvent(() => {
+    replaceUrl(withSearch("/"));
+    requireLogin("Du må være logget inn for å se forslag.");
+  });
+  useEffect(() => {
+    if (initialPanel === "suggestions" && !user?.username) askForSuggestions();
+    // Only for the page the explorer was opened on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /** Returns to the project or list the profile was opened over. */
@@ -930,25 +977,63 @@ export default memo(function Explorer({
     if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches)
       setModeFrom(sidebarMode);
   }
+  /**
+   * Maximizing or restoring lays the sidebar out once, at its new size, and
+   * the browser morphs the layer in view from the old picture to the new: its
+   * edge slides, its content crossfades, the logo and header controls glide
+   * to their places. Nothing lays out per frame, and content never passes
+   * through the sizes in between. Without view transitions, the clip and
+   * width animate instead (see the layout effect below).
+   */
+  function changeMode(change: () => void, to: "maximize" | "restore") {
+    const aside = panelRef.current;
+    if (
+      !aside ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
+      return change();
+    if (!document.startViewTransition) {
+      animateFrom();
+      return change();
+    }
+    const layer = Array.from(
+      aside.querySelectorAll<HTMLElement>(
+        "[data-explorer-layer], [data-sidebar-layer]",
+      ),
+    ).findLast((element) => !element.hasAttribute("data-exiting"));
+    const root = document.documentElement;
+    root.dataset.sidebarTransition = to;
+    layer?.setAttribute("data-sidebar-transition-layer", "");
+    const transition = document.startViewTransition(async () => {
+      flushSync(change);
+      if (layer) await imagesReady(layer);
+    });
+    transition.finished.finally(() => {
+      if (root.dataset.sidebarTransition === to)
+        delete root.dataset.sidebarTransition;
+      layer?.removeAttribute("data-sidebar-transition-layer");
+    });
+  }
   function maximize() {
     if (isMobile || maximized) return;
-    animateFrom();
-    setMaximized(true);
+    changeMode(() => setMaximized(true), "maximize");
   }
   /** Back beside the map, which now shows the place picked while maximized. */
-  function minimize() {
-    if (!maximized) return;
-    animateFrom();
+  function restore() {
     setMaximized(false);
     if (place) {
       pendingFit.current = projects.filter((project) => project.city === place);
       setPlace("");
     }
   }
+  function minimize() {
+    if (!maximized) return;
+    changeMode(restore, "restore");
+  }
   function toggleCollapsed() {
     animateFrom();
     if (sidebarMode === "collapsed") return storeCollapsed(false);
-    minimize();
+    if (maximized) restore();
     storeCollapsed(true);
   }
   // While animating, the sidebar holds the larger of both layouts: full
@@ -1119,6 +1204,7 @@ export default memo(function Explorer({
   useEffect(() => {
     if (!user?.username) return;
     if (takeLoginIntent("suggest-project")) setEditorOpen(true);
+    if (takeLoginIntent("account")) openProfile("settings");
     const follow = takeLoginIntent("follow");
     if (!follow) return;
     void mutate({
@@ -1510,7 +1596,11 @@ export default memo(function Explorer({
     <section
       ref={listRef}
       data-drawer-scroll
-      className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain bg-surface scrollbar-thin max-md:bg-transparent"
+      className={cn(
+        "min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain bg-surface scrollbar-thin max-md:bg-transparent",
+        // Centred on the window, like the header above it.
+        wide && "[scrollbar-gutter:stable_both-edges]",
+      )}
       aria-label="Prosjektliste"
     >
       <div
@@ -1606,6 +1696,7 @@ export default memo(function Explorer({
       // Escape steps down from the full page before closing.
       onEscape={maximized ? minimize : undefined}
       full={!isMobile && wide}
+      mobile={isMobile}
       onToggleFull={isMobile ? undefined : maximized ? minimize : maximize}
       following={followingIds.has(post.id)}
       onFollow={() => toggleFollow(post.id)}
@@ -1637,8 +1728,9 @@ export default memo(function Explorer({
     )
       setEditorOpen(true);
   }
-  function openProfile() {
+  function openProfile(start: "profile" | "settings" = "profile") {
     rememberTrigger("account");
+    setAccountStart(start);
     setModal("profile");
   }
   /** The header bell opens the followed projects. */
@@ -1707,7 +1799,7 @@ export default memo(function Explorer({
             ? `@${user.username}`
             : "Velg brukernavn"
       }
-      onClick={openProfile}
+      onClick={() => openProfile()}
     >
       {user.username ? (
         <span className="relative">
@@ -1719,16 +1811,19 @@ export default memo(function Explorer({
       )}
     </button>
   ) : (
+    // Signed out, logging in is the header's one action: a labelled button.
     <button
       type="button"
-      className={cn(compactIconAction, "text-muted hover:text-ink")}
-      aria-label="Logg inn"
+      className={cn(
+        "ml-1 inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border-strong pr-3 pl-2.5 text-ui font-semibold text-ink",
+        "transition-[background-color,border-color,transform] duration-150 hover:bg-ink/[0.04] active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100",
+      )}
       aria-haspopup="dialog"
-      data-tooltip={isMobile ? undefined : "Logg inn"}
       data-login-button=""
       onClick={() => requireLogin()}
     >
-      <LogIn size={20} />
+      <LogIn size={16} aria-hidden="true" />
+      Logg inn
     </button>
   );
   // Moderators reach the suggestion queue from the header.
@@ -1836,6 +1931,10 @@ export default memo(function Explorer({
               username={panelProfileName!}
               embedded
               onOpenProject={openFromProfile}
+              onSettings={() => {
+                closeProfile();
+                openProfile("settings");
+              }}
             />
           </Panel>
         );
@@ -1848,7 +1947,11 @@ export default memo(function Explorer({
               followingCount={following.length}
               suggestionCount={suggestions}
               reviewedCount={reviewed}
-              next={postId ? projectHref(postId) : "/"}
+              initialView={accountStart}
+              onSignedOut={() => {
+                setModal(null);
+                notify("Du er logget ut");
+              }}
             />
           </Panel>
         );
@@ -1905,13 +2008,15 @@ export default memo(function Explorer({
             {brand}
             <div className="flex items-center gap-0.5">
               {suggestionsLink}
-              <button
-                className={cn(compactIconAction, "text-muted")}
-                aria-label={canModerate ? "Nytt prosjekt" : "Foreslå prosjekt"}
-                onClick={openEditor}
-              >
-                <Plus size={21} />
-              </button>
+              {user && (
+                <button
+                  className={cn(compactIconAction, "text-muted")}
+                  aria-label={canModerate ? "Nytt prosjekt" : "Foreslå prosjekt"}
+                  onClick={openEditor}
+                >
+                  <Plus size={21} />
+                </button>
+              )}
               {followingButton}
               {profileButton}
             </div>
@@ -2042,25 +2147,58 @@ export default memo(function Explorer({
             inert={sidebarMode === "collapsed" || liveLayers.length > 0}
             aria-hidden={liveLayers.length > 0 || undefined}
           >
-            <header className="flex h-16 shrink-0 items-center justify-between gap-2 pr-3 pl-2">
+            <header
+              className={cn(
+                "flex h-16 shrink-0 items-center justify-between gap-2 pr-3 pl-2",
+
+              )}
+              // Maximized, it spans the list's column: the logo over its
+              // start, the controls over its end.
+              style={
+                wide
+                  ? {
+                      paddingLeft:
+                        "max(0.5rem, calc((100% - 880px) / 2 + 1.25rem - 48px))",
+                      paddingRight:
+                        "max(0.75rem, calc((100% - 880px) / 2 + 1.25rem - 13px))",
+                    }
+                  : undefined
+              }
+              data-explorer-header=""
+            >
               <div className="flex min-w-0 items-center gap-1">
-                {sidebarToggle}
-                {brand}
-              </div>
-              <nav className="flex items-center gap-0.5" aria-label="Konto">
-                {suggestionsLink}
-                <button
-                  className={cn(compactIconAction, "text-muted")}
-                  aria-label={
-                    canModerate ? "Legg til prosjekt" : "Foreslå prosjekt"
-                  }
-                  data-tooltip={
-                    canModerate ? "Legg til prosjekt" : "Foreslå prosjekt"
-                  }
-                  onClick={openEditor}
+                <div
+                  className={cn(
+                    "transition-opacity duration-320 ease-out-soft motion-reduce:transition-none",
+                    sidebarMode === "maximized" && "pointer-events-none opacity-0",
+                  )}
+                  inert={sidebarMode === "maximized"}
+                  data-explorer-toggle=""
                 >
-                  <Plus size={20} />
-                </button>
+                  {sidebarToggle}
+                </div>
+                <div data-explorer-brand="">{brand}</div>
+              </div>
+              <nav
+                className="flex items-center gap-0.5"
+                aria-label="Konto"
+                data-explorer-nav=""
+              >
+                {suggestionsLink}
+                {user && (
+                  <button
+                    className={cn(compactIconAction, "text-muted")}
+                    aria-label={
+                      canModerate ? "Legg til prosjekt" : "Foreslå prosjekt"
+                    }
+                    data-tooltip={
+                      canModerate ? "Legg til prosjekt" : "Foreslå prosjekt"
+                    }
+                    onClick={openEditor}
+                  >
+                    <Plus size={20} />
+                  </button>
+                )}
                 {followingButton}
                 {profileButton}
                 <span

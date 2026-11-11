@@ -29,6 +29,8 @@ const subscribeHydration = () => () => {};
 const clientHydrated = () => true;
 const serverHydrated = () => false;
 const Context = createContext<AuthContext | null>(null);
+/** Asks the explorer, if it is there, to open its account panel instead. */
+export const chooseUsernameEvent = "varde-choose-username";
 export function AuthProvider({
   initialUser,
   canModerate,
@@ -62,7 +64,13 @@ export function AuthProvider({
     }
     if (!user.username) {
       storeLoginIntent(intent);
-      navigateWithFreshSession(welcomeHref(next));
+      // The explorer picks a username in its account panel, in place.
+      if (
+        window.dispatchEvent(
+          new Event(chooseUsernameEvent, { cancelable: true }),
+        )
+      )
+        navigateWithFreshSession(welcomeHref(next));
       return false;
     }
     return true;

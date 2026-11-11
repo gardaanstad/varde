@@ -7,7 +7,13 @@ import { apiRequest, errorMessage } from "../lib/api-client";
 import { authClient } from "../lib/auth-client";
 import { cn } from "../lib/cn";
 import { fieldControl, primaryButton } from "../lib/ui";
-export default function UsernameForm({ next }: { next: string }) {
+/** Where the explorer is now, panel, filters and map included. */
+export function currentPath() {
+  return window.location.pathname + window.location.search;
+}
+
+/** Without `next`, the page reloads where it is, signed in. */
+export default function UsernameForm({ next }: { next?: string }) {
   const [username, setUsername] = useState("");
   const [check, setCheck] = useState<{
     username: string;
@@ -51,7 +57,7 @@ export default function UsernameForm({ next }: { next: string }) {
         body: JSON.stringify({ username: normalized }),
       });
       await authClient.getSession({ query: { disableCookieCache: true } });
-      navigateWithFreshSession(next);
+      navigateWithFreshSession(next ?? currentPath());
     } catch (error) {
       setError(errorMessage(error, "Prøv igjen."));
       setPending(false);

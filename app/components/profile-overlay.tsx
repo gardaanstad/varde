@@ -20,8 +20,11 @@ export default function ProfileOverlay({
   embedded = false,
   onClose,
   onOpenProject,
+  onSettings,
 }: {
   username: string;
+  /** Opens account settings in place; otherwise they are a page. */
+  onSettings?: () => void;
   embedded?: boolean;
   /** Without it there is no close button: the sidebar panel has its own. */
   onClose?: () => void;
@@ -88,14 +91,26 @@ export default function ProfileOverlay({
             embedded
             onEdit={() => setEditing(true)}
             actions={
-              <Link
-                href="/konto"
-                className={cn(secondaryButton, "size-11 px-0")}
-                aria-label="Kontoinnstillinger"
-                data-tooltip="Kontoinnstillinger"
-              >
-                <Settings size={17} aria-hidden="true" />
-              </Link>
+              onSettings ? (
+                <button
+                  type="button"
+                  className={cn(secondaryButton, "size-11 px-0")}
+                  aria-label="Kontoinnstillinger"
+                  data-tooltip="Kontoinnstillinger"
+                  onClick={onSettings}
+                >
+                  <Settings size={17} aria-hidden="true" />
+                </button>
+              ) : (
+                <Link
+                  href="/konto"
+                  className={cn(secondaryButton, "size-11 px-0")}
+                  aria-label="Kontoinnstillinger"
+                  data-tooltip="Kontoinnstillinger"
+                >
+                  <Settings size={17} aria-hidden="true" />
+                </Link>
+              )
             }
             onOpenProject={onOpenProject}
           />

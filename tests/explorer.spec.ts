@@ -157,7 +157,10 @@ for (const viewport of [
       await expectDrawerHeight(page, 1, "project");
       await page.reload();
       await expectDrawerHeight(page, 1, "project");
+      // The project's actions sit in a sheet behind one button.
+      await projectDrawer.getByRole("button", { name: "Handlinger" }).click();
       await page
+        .getByRole("dialog", { name: "Handlinger" })
         .getByRole("button", { name: "Vis i kartet", exact: true })
         .click();
       await expect(projectDrawer).toBeHidden();
@@ -846,17 +849,11 @@ test.describe("desktop explorer", () => {
     await expect(page).not.toHaveURL(/sted=/);
     await expect(card(page, "Bybanen til Åsane")).toBeVisible();
     await expect(card(page, project.title)).toHaveCount(0);
-    // Both ways animate the clip, not the layout; Escape also restores.
-    const explorer = page.locator("[data-explorer-layer]");
+    // Both ways lay out once and morph in a view transition, never per
+    // frame; Escape also restores.
     const clipping = () =>
-      explorer.evaluate((element) =>
-        element
-          .getAnimations()
-          .some((animation) =>
-            (animation.effect as KeyframeEffect)
-              .getKeyframes()
-              .some((frame) => "clipPath" in frame),
-          ),
+      page.evaluate(() =>
+        Boolean(document.documentElement.dataset.sidebarTransition),
       );
     // Drawing the base map can hold up the page while it animates.
     await expect(page.locator("[data-basemap]")).toHaveAttribute(
@@ -864,10 +861,10 @@ test.describe("desktop explorer", () => {
       "idle",
     );
     await page.getByRole("button", { name: "Vis som helside", exact: true }).click();
-    expect(await clipping()).toBe(true);
+    await expect.poll(clipping).toBe(true);
     await expect.poll(clipping).toBe(false);
     await page.keyboard.press("Escape");
-    expect(await clipping()).toBe(true);
+    await expect.poll(clipping).toBe(true);
     await expect(page.locator("#project-panel")).toHaveAttribute(
       "data-sidebar-mode",
       "normal",

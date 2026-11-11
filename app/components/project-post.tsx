@@ -46,7 +46,7 @@ import {
   composerSend,
   statusTone,
 } from "../lib/ui";
-import ProjectPostHeader, { ProjectActions } from "./project-post-header";
+import ProjectPostHeader from "./project-post-header";
 import ProjectDiscussion from "./project-discussion";
 import CategoryIcon from "./category-icon";
 import RelativeTime from "./relative-time";
@@ -116,6 +116,8 @@ type Props = {
   onEscape?: () => void;
   /** Desktop: shown as a full page, with a control to switch back and forth. */
   full?: boolean;
+  /** Phones: the header's actions sit in a sheet. */
+  mobile?: boolean;
   onToggleFull?: () => void;
   comments: Comment[];
   onNotify: (message: string) => void;
@@ -488,7 +490,8 @@ function ProjectAside({ project }: { project: Project }) {
         <ImageGallery
           images={photos}
           label={`Bilder av ${project.title}`}
-          sizes="300px"
+          // As in the narrow layout, so switching reuses the loaded file.
+          sizes="(max-width: 768px) 100vw, 560px"
           className={cover}
         />
       ) : (
@@ -1057,6 +1060,7 @@ export default function ProjectPost({
   onClose,
   onEscape: escape,
   full = false,
+  mobile = false,
   onToggleFull,
   feedback,
   following,
@@ -1083,6 +1087,12 @@ export default function ProjectPost({
     observer.observe(article);
     return () => observer.disconnect();
   }, []);
+  // Switching to or from the full page decides at once, in the same commit,
+  // so the sidebar's view transition captures the final layout.
+  useLayoutEffect(() => {
+    const article = articleRef.current;
+    if (article) setWide(article.getBoundingClientRect().width >= 900);
+  }, [full]);
   useEffect(() => {
     const root = contentRef.current;
     if (!root) return;
@@ -1315,6 +1325,7 @@ export default function ProjectPost({
     onFollow,
     onShare: share,
     onMap,
+    guest: !user,
   };
   const content = (
     <ProjectEditContext value={edit}>
@@ -1331,7 +1342,8 @@ export default function ProjectPost({
           wide={wide}
           full={full}
           onToggleFull={onToggleFull}
-          actions={<ProjectActions {...actions} />}
+          mobile={mobile}
+          actions={actions}
         />
         <div
           ref={contentRef}
