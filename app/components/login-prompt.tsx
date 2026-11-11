@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { safeReturnPath } from "../lib/account-rules";
 import { cn } from "../lib/cn";
 import { iconButton } from "../lib/ui";
+import { openedByKeyboard } from "./action-sheet";
 import GoogleSignIn from "./google-sign-in";
 
 const reduced = () =>
@@ -36,7 +37,10 @@ export default function LoginPrompt({
     const dialog = ref.current;
     trigger.current = document.activeElement;
     dialog?.showModal();
-    dialog?.querySelector<HTMLElement>("[data-login-google] button")?.focus();
+    // A tap leaves focus on the prompt itself, so nothing looks chosen.
+    if (openedByKeyboard(trigger.current))
+      dialog?.querySelector<HTMLElement>("[data-login-google] button")?.focus();
+    else dialog?.focus();
     return () => {
       dialog?.close();
       const target = trigger.current;
@@ -84,8 +88,9 @@ export default function LoginPrompt({
       aria-labelledby="login-prompt-title"
       aria-describedby={reason ? "login-prompt-reason" : undefined}
       data-login-prompt=""
+      tabIndex={-1}
       className={cn(
-        "m-auto overflow-visible border-0 bg-transparent p-0 text-ink",
+        "m-auto overflow-visible border-0 bg-transparent p-0 text-ink outline-none",
         "backdrop:bg-ink/25 motion-safe:backdrop:animate-backdrop-in",
         // Phones: a sheet along the bottom edge.
         "max-md:mb-0 max-md:w-full max-md:max-w-none",

@@ -403,6 +403,8 @@ export default memo(function Explorer({
     "profile",
   );
   const [editorOpen, setEditorOpen] = useState(false);
+  // The editor's own close, which asks before dropping a draft.
+  const editorClose = useRef<(() => void) | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const notify = (message: string) => setToast({ message });
   const searchRef = useRef<HTMLInputElement>(null);
@@ -718,7 +720,13 @@ export default memo(function Explorer({
   // The panel stack over the explorer, bottom to top: layers in the sidebar
   // on desktop, drawers on phones. A header page (Følger, Forslag, your
   // profile) can hold a project, which can hold a profile.
-  type Layer = "following" | "suggestions" | "account" | "project" | "profile";
+  type Layer =
+    | "following"
+    | "suggestions"
+    | "account"
+    | "project"
+    | "profile"
+    | "editor";
   const section: Layer | null = suggestionsOpen
     ? "suggestions"
     : modal === "profile"
@@ -730,6 +738,7 @@ export default memo(function Explorer({
     ...(section ? [section] : []),
     ...(postId ? ["project" as const] : []),
     ...(profileName ? ["profile" as const] : []),
+    ...(editorOpen && user ? ["editor" as const] : []),
   ];
   const topLayer = liveLayers.at(-1) ?? null;
   // Closed panels stay until they have animated away. A panel replaced by
@@ -780,6 +789,7 @@ export default memo(function Explorer({
     "account",
     "project",
     "profile",
+    "editor",
   ];
   const layers = layerOrder.filter(
     (layer) => liveLayers.includes(layer) || exiting.includes(layer),
@@ -1797,8 +1807,10 @@ export default memo(function Explorer({
       requireLogin("Du må være logget inn for å foreslå prosjekter.", {
         type: "suggest-project",
       })
-    )
+    ) {
+      rememberTrigger("editor");
       setEditorOpen(true);
+    }
   }
   function openProfile(start: "profile" | "settings" = "profile") {
     rememberTrigger("account");
@@ -1971,6 +1983,8 @@ export default memo(function Explorer({
     if (layer === "profile") return closeProfile();
     if (layer === "account") return setModal(null);
     if (layer === "following") return setFollowingOnly(false);
+    if (layer === "editor")
+      return editorClose.current ? editorClose.current() : setEditorOpen(false);
     closeSuggestions();
   }
   const layerTitles: Record<Layer, string> = {
@@ -1979,6 +1993,7 @@ export default memo(function Explorer({
     account: "Din profil",
     following: "Følger",
     suggestions: "Forslag",
+    editor: canModerate ? "Nytt prosjekt" : "Foreslå prosjekt",
   };
   /**
    * A panel's content, written once: a sidebar layer in its current mode on
@@ -2031,7 +2046,8 @@ export default memo(function Explorer({
         return (
           <Panel
             {...frame}
-            onBack={sectionFrom === "profile" ? leaveFollowing : undefined}
+            floatingClose
+            onBack={!isMobile && sectionFrom === "profile" ? leaveFollowing : undefined}
           >
             <div
               className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-8 scrollbar-thin max-md:px-4.5"
@@ -2042,22 +2058,67 @@ export default memo(function Explorer({
                 projects={projects}
                 followingIds={following}
                 following={followed}
+                onBack={
+                  isMobile && sectionFrom === "profile" ? leaveFollowing : undefined
+                }
                 onOpen={openPost}
                 onUnfollow={(id) => void toggleFollow(id)}
               />
             </div>
           </Panel>
         );
+      case "editor":
+        return (
+          <Panel {...frame} floatingClose>
+            {canModerate ? (
+              <ProjectEditor
+                closeRef={editorClose}
+                onClose={() => setEditorOpen(false)}
+                onSave={async (project) => {
+                  await mutate({ action: "project", project, create: true });
+                  setQuery("");
+                  setStatus([]);
+                  setCategory([]);
+                  setFollowingOnly(false);
+                  setEditorOpen(false);
+                  notify("Prosjektet er lagt til");
+                  openPost(project.id);
+                  // Not in this render's project list yet, so frame it directly.
+                  if (!isMobile) fitProjects([project]);
+                }}
+              />
+            ) : (
+              <ProjectEditor
+                suggest
+                closeRef={editorClose}
+                onClose={() => setEditorOpen(false)}
+                onSave={async (project) => {
+                  await suggest({ kind: "project", project });
+                  setEditorOpen(false);
+                  notify("Forslaget er sendt");
+                }}
+              />
+            )}
+          </Panel>
+        );
       case "suggestions":
         return (
           <Panel
             {...frame}
+            floatingClose
             onBack={
-              sectionFrom === "profile" ? () => closeSuggestions(true) : undefined
+              !isMobile && sectionFrom === "profile"
+                ? () => closeSuggestions(true)
+                : undefined
             }
           >
             <SuggestionList
               embedded
+              onBack={
+                isMobile && sectionFrom === "profile"
+                  ? () => closeSuggestions(true)
+                  : undefined
+              }
               moderator={canModerate}
               onOpenProject={(id) => openPost(id)}
               onClose={() => closeSuggestions()}
@@ -2198,10 +2259,39 @@ export default memo(function Explorer({
               )}
               data-sidebar-tab=""
             >
-              {sidebarToggle}
-              {brand}
+              {/* Where the toggle comes to rest; the logo makes way for it. */}
+              <span aria-hidden="true" className="size-11 shrink-0" />
+              <div
+                className={cn(
+                  "transition-transform duration-320 ease-out-soft motion-reduce:transition-none",
+                  sidebarMode === "collapsed"
+                    ? "starting:-translate-x-10"
+                    : "-translate-x-10",
+                )}
+              >
+                {brand}
+              </div>
             </div>
           )}
+          {/*
+            The sidebar toggle: at the header's end, where a panel has its
+            close button, and in the corner tab when collapsed. It glides
+            between the two with the sidebar's edge. Panels cover it.
+          */}
+          <div
+            className={cn(
+              "absolute top-2.5 z-[35] transition-[left,opacity] duration-320 ease-out-soft motion-reduce:transition-none",
+              "[[data-resizing]_&]:transition-none",
+              sidebarMode === "collapsed"
+                ? "left-2"
+                : "left-[calc(var(--sidebar-width)-0.75rem-2.75rem)]",
+              sidebarMode === "maximized" && "pointer-events-none opacity-0",
+            )}
+            inert={sidebarMode === "maximized"}
+            data-explorer-toggle=""
+          >
+            {sidebarToggle}
+          </div>
           {/* The base layer: stays mounted under panels, so it keeps its scroll. */}
           <div
             className={cn(
@@ -2221,7 +2311,7 @@ export default memo(function Explorer({
           >
             <header
               className={cn(
-                "flex h-16 shrink-0 items-center justify-between gap-2 pr-3 pl-2",
+                "flex h-16 shrink-0 items-center justify-between gap-2 pr-3 pl-4",
 
               )}
               // Maximized, it spans the list's column: the logo over its
@@ -2230,7 +2320,7 @@ export default memo(function Explorer({
                 wide
                   ? {
                       paddingLeft:
-                        "max(0.5rem, calc((100% - 880px) / 2 + 1.25rem - 48px))",
+                        "max(1rem, calc((100% - 880px) / 2 + 1.25rem))",
                       paddingRight:
                         "max(0.75rem, calc((100% - 880px) / 2 + 1.25rem - 13px))",
                     }
@@ -2238,19 +2328,7 @@ export default memo(function Explorer({
               }
               data-explorer-header=""
             >
-              <div className="flex min-w-0 items-center gap-1">
-                <div
-                  className={cn(
-                    "transition-opacity duration-320 ease-out-soft motion-reduce:transition-none",
-                    sidebarMode === "maximized" && "pointer-events-none opacity-0",
-                  )}
-                  inert={sidebarMode === "maximized"}
-                  data-explorer-toggle=""
-                >
-                  {sidebarToggle}
-                </div>
-                <div data-explorer-brand="">{brand}</div>
-              </div>
+              <div data-explorer-brand="">{brand}</div>
               <nav
                 className="flex items-center gap-0.5"
                 aria-label="Konto"
@@ -2282,6 +2360,10 @@ export default memo(function Explorer({
                   onToggle={sidebarMode === "maximized" ? minimize : maximize}
                   labels={["Vis som helside", "Vis kart"]}
                 />
+                {/* The sidebar toggle stands here (see below). */}
+                {sidebarMode !== "maximized" && (
+                  <span aria-hidden="true" className="size-11 shrink-0" />
+                )}
               </nav>
             </header>
             <div className="relative min-h-0 flex-1">
@@ -2506,35 +2588,6 @@ export default memo(function Explorer({
       )}
       {panelDrawers}
       {panelShell}
-      {editorOpen && user && !canModerate && (
-        <ProjectEditor
-          suggest
-          onClose={() => setEditorOpen(false)}
-          onSave={async (project) => {
-            await suggest({ kind: "project", project });
-            setEditorOpen(false);
-            notify("Forslaget er sendt");
-          }}
-        />
-      )}
-      {editorOpen && canModerate && (
-        <ProjectEditor
-          onClose={() => setEditorOpen(false)}
-          onSave={async (project) => {
-            await mutate({ action: "project", project, create: true });
-            setQuery("");
-            setStatus([]);
-            setCategory([]);
-            setFollowingOnly(false);
-            setEditorOpen(false);
-            notify("Prosjektet er lagt til");
-            openPost(project.id);
-            // Not in this render's project list yet, so frame it directly.
-            if (!isMobile) fitProjects([project]);
-          }}
-        />
-      )}
-
       {feedback}
     </div>
   );

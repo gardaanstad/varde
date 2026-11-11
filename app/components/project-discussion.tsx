@@ -542,6 +542,9 @@ export default function ProjectDiscussion({
             className={cn(
               composerField,
               "block max-h-65 resize-none max-md:placeholder:text-ui",
+              // The smaller placeholder sits at the top of the line; down to
+              // its middle, the box keeping its height.
+              "max-md:placeholder-shown:pt-2 max-md:placeholder-shown:pb-0.5",
             )}
             value={draft}
             required

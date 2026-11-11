@@ -6,6 +6,10 @@ import { cn } from "../lib/cn";
 const reduced = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/** Whether a sheet's trigger was reached by keyboard rather than a tap. */
+export const openedByKeyboard = (trigger: Element | null) =>
+  trigger instanceof HTMLElement && trigger.matches(":focus-visible");
+
 export type SheetAction = {
   id: string;
   label: string;
@@ -39,7 +43,11 @@ export default function ActionSheet({
     const dialog = ref.current;
     trigger.current = document.activeElement;
     dialog?.showModal();
-    dialog?.querySelector<HTMLElement>("[data-sheet-action]")?.focus();
+    // From the keyboard, focus goes to the first action; from a tap, to the
+    // sheet itself, so no action looks chosen before one is.
+    if (openedByKeyboard(trigger.current))
+      dialog?.querySelector<HTMLElement>("[data-sheet-action]")?.focus();
+    else dialog?.focus();
     return () => dialog?.close();
   }, []);
 
@@ -74,8 +82,9 @@ export default function ActionSheet({
       ref={ref}
       aria-label={label}
       data-action-sheet=""
+      tabIndex={-1}
       className={cn(
-        "m-auto mb-0 w-full max-w-none overflow-visible border-0 bg-transparent p-0 text-ink",
+        "m-auto mb-0 w-full max-w-none overflow-visible border-0 bg-transparent p-0 text-ink outline-none",
         "backdrop:bg-ink/25 motion-safe:backdrop:animate-backdrop-in",
       )}
       onCancel={(event) => {

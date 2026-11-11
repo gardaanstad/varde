@@ -224,7 +224,7 @@ export default function FollowedProjects({
       aria-labelledby="followed-projects-title"
       data-followed-projects=""
     >
-      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-border py-1.5 max-md:min-h-12">
+      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-border py-1.5 max-md:min-h-12 max-md:pr-9">
         <div className="flex min-w-0 items-center gap-x-3">
           {onBack && (
             <button

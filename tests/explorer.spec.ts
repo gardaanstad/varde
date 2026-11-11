@@ -885,15 +885,22 @@ test.describe("desktop explorer", () => {
     await expect.poll(mapWidth).toBe(1280);
     await expect(listRegion(page)).toBeHidden();
     expect(narrow).toBeLessThan(1280);
-    // The toggle and the logo stay, exactly where they were.
+    // The toggle glides from the header's end to just left of the logo.
     const expand = page.getByRole("button", {
       name: "Vis prosjektlisten",
       exact: true,
     });
-    expect(await expand.boundingBox()).toEqual(before);
-    await expect(
-      page.getByRole("link", { name: "Varde hjem", exact: true }),
-    ).toBeVisible();
+    const logo = page.locator("[data-sidebar-tab]").getByRole("link", {
+      name: "Varde hjem",
+      exact: true,
+    });
+    await expect(logo).toBeVisible();
+    await expect
+      .poll(async () => {
+        const [box, mark] = [await expand.boundingBox(), await logo.boundingBox()];
+        return box && mark && [box.x < before!.x, box.x + box.width <= mark.x + 1];
+      })
+      .toEqual([true, true]);
     // A project picked on the map opens as the usual sidebar panel...
     // Other tests' projects can lie on top of it, so no pointer here.
     await page

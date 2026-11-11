@@ -322,7 +322,7 @@ test.describe("desktop headers", () => {
       .evaluate((element) => Math.round(element.getBoundingClientRect().right));
     expect(Math.abs(maximizeGlyph - searchRight)).toBeLessThanOrEqual(4);
     // The sidebar toggle has faded out of the way.
-    await expect(header.locator("[data-explorer-toggle]")).toHaveCSS("opacity", "0");
+    await expect(page.locator("[data-explorer-toggle]")).toHaveCSS("opacity", "0");
     await shot(page, "maximized-header");
   });
 });

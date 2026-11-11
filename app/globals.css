@@ -234,11 +234,15 @@
 :root[data-sidebar-transition] [data-sidebar-transition-layer] {
   view-transition-name: sidebar-layer;
 }
+/* The toggle sits outside the list's layer, over it. */
+:root[data-sidebar-transition]:has(
+    [data-sidebar-transition-layer][data-explorer-layer]
+  )
+  [data-explorer-toggle] {
+  view-transition-name: sidebar-toggle;
+}
 :root[data-sidebar-transition]
   [data-sidebar-transition-layer][data-explorer-layer] {
-  & [data-explorer-toggle] {
-    view-transition-name: sidebar-toggle;
-  }
   & [data-explorer-brand] {
     view-transition-name: sidebar-brand;
   }

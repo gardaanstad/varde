@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ArrowLeft, X } from "lucide-react";
 import { cn } from "../lib/cn";
 import { iconButton } from "../lib/ui";
@@ -81,9 +81,18 @@ export function PanelDrawer({
   onClosed: () => void;
   children: ReactNode;
 }) {
+  // Mounted open, Base UI shows a drawer in place. One opened after the page
+  // has loaded mounts closed and opens on the next frame, so it slides up;
+  // one the page was opened on stands where its static copy was.
+  const [entered, setEntered] = useState(!ready);
+  useEffect(() => {
+    if (entered) return;
+    const frame = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(frame);
+  }, [entered]);
   return (
     <Drawer
-      open={open}
+      open={open && entered}
       modal={false}
       disablePointerDismissal
       onOpenChange={(next, details) => {
@@ -157,6 +166,7 @@ export function Panel({
   onClose,
   onBack,
   closeLabel = "Lukk",
+  floatingClose = false,
   children,
 }: {
   mobile: boolean;
@@ -170,6 +180,11 @@ export function Panel({
   /** Back to the panel this one was opened from. */
   onBack?: () => void;
   closeLabel?: string;
+  /**
+   * Phones: the close button sits on the content's own heading row, which
+   * then leaves room for it, instead of on a bar above it.
+   */
+  floatingClose?: boolean;
   children: ReactNode;
 }) {
   // Escape steps down from a maximized panel before closing it.
@@ -190,6 +205,30 @@ export function Panel({
         {children}
       </SidebarPanel>
     );
+  const close = (
+    <button
+      type="button"
+      className={cn(
+        mobileControl,
+        floatingClose ? "absolute top-0.5 right-1.5 z-10" : "ml-auto",
+      )}
+      onClick={onClose}
+      aria-label={closeLabel}
+      data-sidebar-close=""
+    >
+      <X size={20} />
+    </button>
+  );
+  if (floatingClose)
+    return (
+      <div
+        className="relative flex h-full min-h-0 flex-1 flex-col bg-surface"
+        data-sidebar-panel={name}
+      >
+        {close}
+        {children}
+      </div>
+    );
   return (
       <div
         className="flex h-full min-h-0 flex-1 flex-col bg-surface"
@@ -206,15 +245,7 @@ export function Panel({
               <ArrowLeft size={20} />
             </button>
           )}
-          <button
-            type="button"
-            className={cn(mobileControl, "ml-auto")}
-            onClick={onClose}
-            aria-label={closeLabel}
-            data-sidebar-close=""
-          >
-            <X size={20} />
-          </button>
+          {close}
         </div>
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       </div>

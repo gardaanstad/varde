@@ -13,6 +13,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import {
+  ArrowLeft,
   ArrowRight,
   ArrowUpRight,
   Check,
@@ -60,6 +61,7 @@ import {
 import {
   dangerButton,
   fieldControl,
+  iconButton,
   secondaryButton,
   textButton,
 } from "../lib/ui";
@@ -982,6 +984,7 @@ export default function SuggestionList({
   embedded = false,
   onOpenProject,
   onClose,
+  onBack,
   onChange,
 }: {
   /** Without it, the list loads itself (and marks reviews as seen). */
@@ -991,6 +994,8 @@ export default function SuggestionList({
   embedded?: boolean;
   onOpenProject?: (projectId: string) => void;
   onClose?: () => void;
+  /** Back to the panel it was opened from, beside the heading. */
+  onBack?: () => void;
   /** After a review, which changes what the explorer shows. */
   onChange?: () => void;
 }) {
@@ -1079,11 +1084,28 @@ export default function SuggestionList({
         {!embedded && <BackLink href="/" />}
         <div
           className={cn(
-            "mb-4 flex items-baseline gap-3 px-1",
-            !embedded && "mt-3",
+            embedded
+              ? "mb-2 flex min-h-14 items-center gap-x-3 max-md:min-h-12 max-md:pr-9"
+              : "mt-3 mb-4 flex items-baseline gap-3 px-1",
           )}
         >
-          <h1 className="text-[26px] leading-tight font-semibold tracking-[-0.6px]">
+          {onBack && (
+            <button
+              type="button"
+              className={cn(iconButton, "-mr-2 -ml-3 rounded-lg text-muted")}
+              aria-label="Tilbake"
+              onClick={onBack}
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
+          <h1
+            className={
+              embedded
+                ? "text-xl leading-normal font-[650] tracking-[-0.4px] max-md:text-lg"
+                : "text-[26px] leading-tight font-semibold tracking-[-0.6px]"
+            }
+          >
             {moderator ? "Forslag" : "Mine forslag"}
           </h1>
           {!moderator && mine.length > 0 && (

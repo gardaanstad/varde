@@ -80,7 +80,7 @@ test("moderators add photos while creating a project; without one it shows the p
 
   async function create(title: string, photo: boolean) {
     await page.getByRole("button", { name: "Legg til prosjekt" }).click();
-    const dialog = page.getByRole("dialog");
+    const dialog = page.locator("[data-project-editor]");
     await dialog.getByLabel("Prosjektnavn").fill(title);
     await dialog.getByLabel("Beskrivelse").fill("Et testprosjekt.");
     if (photo) {
