@@ -69,8 +69,8 @@ type HeaderProps = {
   mobile?: boolean;
 };
 
-/** Desktop: follow, suggest a change and share, each with its label. */
-function DesktopActions({
+/** Desktop: follow, suggest a change and share, under the intro. */
+export function DesktopActions({
   onEdit,
   suggest = false,
   copied,
@@ -79,7 +79,10 @@ function DesktopActions({
   onShare,
 }: ProjectActionsProps) {
   return (
-    <div className="flex min-w-0 items-center gap-1.5" data-project-actions="">
+    <div
+      className="@container flex min-w-0 items-center gap-1.5"
+      data-project-actions=""
+    >
       <button
         type="button"
         className={cn(
@@ -133,7 +136,6 @@ function DesktopActions({
 
 /** Phones: one button opening a sheet with every action. */
 function MobileActions({
-  title,
   onEdit,
   suggest = false,
   copied,
@@ -142,7 +144,7 @@ function MobileActions({
   onShare,
   onMap,
   guest = false,
-}: ProjectActionsProps & { title: string }) {
+}: ProjectActionsProps) {
   const [open, setOpen] = useState(false);
   const actions: SheetAction[] = [
     {
@@ -202,7 +204,7 @@ function MobileActions({
       </button>
       {open && (
         <ActionSheet
-          label={title}
+          label="Handlinger"
           actions={actions}
           onClose={() => setOpen(false)}
         />
@@ -308,17 +310,17 @@ export default function ProjectPostHeader({
         {title}
         {/* Offsets put the icon glyphs, not the hit areas, on the content edges. */}
         <div className="-mr-[15px] flex shrink-0 items-center">
-          {!edit && <MobileActions {...actions} title={project.title} />}
+          {!edit && <MobileActions {...actions} />}
           {close}
         </div>
       </header>
     );
 
-  // Desktop: a bar like every sidebar panel's, the project's actions at its
-  // start and the panel's mode and close controls where the others have them.
+  // Desktop: a bar like every sidebar panel's, the mode and close controls
+  // where the others have them. The project's actions sit under its intro.
   return (
     <header
-      className={cn("@container z-20 shrink-0 border-b bg-surface", border)}
+      className={cn("z-20 shrink-0 border-b bg-surface", border)}
       data-compact={compact}
     >
       <div
@@ -329,7 +331,6 @@ export default function ProjectPostHeader({
             : undefined
         }
       >
-        {!edit && <DesktopActions {...actions} />}
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {onToggleFull && (
             <button

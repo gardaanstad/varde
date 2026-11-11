@@ -1,6 +1,6 @@
 "use client";
 import { useLayoutEffect, useRef, type ReactNode } from "react";
-import { Lock } from "lucide-react";
+import { LogIn } from "lucide-react";
 import { cn } from "../lib/cn";
 
 const reduced = () =>
@@ -17,7 +17,7 @@ export type SheetAction = {
 };
 
 /**
- * Phones: a modal list of actions along the bottom edge, like the filter
+ * Phones: a modal list of actions, named by `label` for screen readers along the bottom edge, like the filter
  * menus and the login prompt. A choice runs once the sheet has slid away,
  * so focus is back on the trigger first.
  */
@@ -72,7 +72,7 @@ export default function ActionSheet({
   return (
     <dialog
       ref={ref}
-      aria-label="Handlinger"
+      aria-label={label}
       data-action-sheet=""
       className={cn(
         "m-auto mb-0 w-full max-w-none overflow-visible border-0 bg-transparent p-0 text-ink",
@@ -90,14 +90,8 @@ export default function ActionSheet({
         ref={sheet}
         className="rounded-t-[22px] bg-surface px-2 pb-[calc(10px+env(safe-area-inset-bottom))] shadow-bar motion-safe:animate-sheet-in"
       >
-        <div
-          aria-hidden="true"
-          className="flex flex-col items-center px-4 pt-2 pb-2"
-        >
+        <div aria-hidden="true" className="flex justify-center pt-2 pb-3">
           <span className="h-1 w-9 rounded-full bg-ink/15" />
-          <span className="mt-3 w-full truncate px-2 text-xs font-medium text-muted">
-            {label}
-          </span>
         </div>
         <ul className="flex flex-col gap-0.5">
           {actions.map((action) => (
@@ -122,7 +116,7 @@ export default function ActionSheet({
               >
                 {action.icon}
                 <span className="flex-1">{action.label}</span>
-                {action.locked && <Lock size={15} aria-hidden="true" />}
+                {action.locked && <LogIn size={16} aria-hidden="true" />}
               </button>
             </li>
           ))}

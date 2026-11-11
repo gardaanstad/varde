@@ -254,7 +254,7 @@ test.describe("mobile panels", () => {
 test.describe("desktop headers", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test("a project's actions share the panel bar with its controls", async ({
+  test("a project's actions sit between its intro and its tabs", async ({
     page,
   }) => {
     await page.goto(projectPath);
@@ -263,16 +263,21 @@ test.describe("desktop headers", () => {
     const actions = post.locator("[data-project-actions]");
     for (const name of ["Følg", "Foreslå endring", "Del"])
       await expect(actions.getByRole("button", { name, exact: true })).toBeVisible();
-    const middle = (selector: string) =>
+    const box = (selector: string) =>
       post.locator(selector).first().evaluate((element) => {
         const rect = element.getBoundingClientRect();
-        return Math.round(rect.top + rect.height / 2);
+        return { top: rect.top, bottom: rect.bottom, middle: rect.top + rect.height / 2 };
       });
-    // One bar: actions at its start, mode and close at its end, the title below.
-    const bar = await middle("[data-follow]");
-    expect(await middle("[data-project-full]")).toBe(bar);
-    expect(await middle("[data-project-close]")).toBe(bar);
-    expect(await middle("#project-card-title")).toBeGreaterThan(bar + 20);
+    // The bar keeps only the panel's controls, as on every other panel.
+    const full = await box("[data-project-full]");
+    expect(Math.round((await box("[data-project-close]")).middle)).toBe(
+      Math.round(full.middle),
+    );
+    const intro = await box('section[aria-label="Om prosjektet"]');
+    const row = await box("[data-project-actions]");
+    const tabs = await box("#project-sections");
+    expect(row.top).toBeGreaterThanOrEqual(intro.bottom - 1);
+    expect(tabs.top).toBeGreaterThanOrEqual(row.bottom);
     await shot(page, "desktop-project-header");
   });
 

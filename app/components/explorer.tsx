@@ -1815,7 +1815,7 @@ export default memo(function Explorer({
     <button
       type="button"
       className={cn(
-        "ml-1 inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border-strong pr-3 pl-2.5 text-ui font-semibold text-ink",
+        "ml-1 inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border-strong pr-3 pl-2.5 text-ui font-semibold text-ink",
         "transition-[background-color,border-color,transform] duration-150 hover:bg-ink/[0.04] active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100",
       )}
       aria-haspopup="dialog"

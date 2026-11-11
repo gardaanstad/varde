@@ -46,7 +46,7 @@ import {
   composerSend,
   statusTone,
 } from "../lib/ui";
-import ProjectPostHeader from "./project-post-header";
+import ProjectPostHeader, { DesktopActions } from "./project-post-header";
 import ProjectDiscussion from "./project-discussion";
 import CategoryIcon from "./category-icon";
 import RelativeTime from "./relative-time";
@@ -1379,6 +1379,11 @@ export default function ProjectPost({
                 </>
               )}
             </section>
+            {!mobile && !draft && (
+              <div className={cn("pb-4", !wide && "px-6")}>
+                <DesktopActions {...actions} />
+              </div>
+            )}
             <nav
               className={cn(
                 "border-b border-border",
