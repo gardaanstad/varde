@@ -1069,10 +1069,11 @@ export default function SuggestionList({
     <Root
       className={
         embedded
-          ? "min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-8 scrollbar-thin"
+          ? "min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-8 scrollbar-thin max-md:px-4.5"
           : "min-h-dvh bg-canvas px-5 py-5 sm:px-10 sm:py-8 max-sm:px-3"
       }
       data-suggestion-list=""
+      data-drawer-scroll={embedded || undefined}
     >
       <div className="mx-auto w-full max-w-200">
         {!embedded && <BackLink href="/" />}

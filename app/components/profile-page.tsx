@@ -45,7 +45,7 @@ export function ProfileEditDialog({ onClose }: { onClose: () => void }) {
           </button>
           <h2 className="text-sm font-semibold">Rediger profil</h2>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6 scrollbar-thin">
           <ProfileEditor user={user} />
         </div>
       </div>

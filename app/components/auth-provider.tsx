@@ -2,12 +2,16 @@
 import { navigateWithFreshSession } from "../lib/auth-navigation";
 import {
   createContext,
+  useCallback,
   useContext,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { authClient } from "../lib/auth-client";
-import { loginHref, safeReturnPath, welcomeHref } from "../lib/account-rules";
+import { safeReturnPath, welcomeHref } from "../lib/account-rules";
+import { storeLoginIntent, type LoginIntent } from "../lib/login-intent";
+import LoginPrompt from "./login-prompt";
 
 type User = typeof authClient.$Infer.Session.user;
 type AuthContext = {
@@ -15,7 +19,11 @@ type AuthContext = {
   pending: boolean;
   canModerate: boolean;
   googleEnabled: boolean;
-  requireAccount: () => boolean;
+  /**
+   * True for a member with a username. A guest is asked to log in, told
+   * why by `reason`; `intent` is picked up again after they return.
+   */
+  requireLogin: (reason?: string, intent?: LoginIntent) => boolean;
 };
 const subscribeHydration = () => () => {};
 const clientHydrated = () => true;
@@ -41,15 +49,19 @@ export function AuthProvider({
   const user = hydrated
     ? (data?.user ?? (isPending && !error ? initialUser : null))
     : initialUser;
-  function requireAccount() {
+  const [prompt, setPrompt] = useState<{ reason?: string } | null>(null);
+  const closePrompt = useCallback(() => setPrompt(null), []);
+  function requireLogin(reason?: string, intent?: LoginIntent) {
     const next = safeReturnPath(
       window.location.pathname + window.location.search + window.location.hash,
     );
     if (!user) {
-      navigateWithFreshSession(loginHref(next));
+      storeLoginIntent(intent);
+      setPrompt({ reason });
       return false;
     }
     if (!user.username) {
+      storeLoginIntent(intent);
       navigateWithFreshSession(welcomeHref(next));
       return false;
     }
@@ -62,10 +74,11 @@ export function AuthProvider({
         pending: hydrated && isPending && !initialUser,
         canModerate: !!user && user.id === initialUser?.id && canModerate,
         googleEnabled,
-        requireAccount,
+        requireLogin,
       }}
     >
       {children}
+      {prompt && <LoginPrompt reason={prompt.reason} onClose={closePrompt} />}
     </Context.Provider>
   );
 }

@@ -13,6 +13,7 @@ import { type Comment, type ProjectUpdate } from "../lib/data";
 import RelativeTime from "./relative-time";
 import { discussionThreads, type DiscussionSort } from "../lib/discussion";
 import { useAuth } from "./auth-provider";
+import { takeLoginIntent } from "../lib/login-intent";
 import { useCommunity } from "./community-provider";
 import { cn } from "../lib/cn";
 import { errorMessage } from "../lib/api-client";
@@ -79,7 +80,7 @@ export default function ProjectDiscussion({
   onReadUpdate: (id: string) => void;
   onNotify: (message: string) => void;
 }) {
-  const { user, requireAccount } = useAuth();
+  const { user, requireLogin } = useAuth();
   const { votes, mutate } = useCommunity();
   const [draft, setDraft] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
@@ -131,6 +132,16 @@ export default function ProjectDiscussion({
       );
   }
   const scoped = !!updateId;
+  // Back from logging in to comment: the composer is ready.
+  const member = Boolean(user?.username);
+  useEffect(() => {
+    if (!member || scoped || !takeLoginIntent("comment", projectId)) return;
+    // Not cancelled: the intent is already taken.
+    requestAnimationFrame(() => {
+      composerRef.current?.scrollIntoView({ block: "center" });
+      composerRef.current?.focus({ preventScroll: true });
+    });
+  }, [member, scoped, projectId]);
   const thread = discussionThreads(comments, sort, {
     latest: updates[0]?.date,
     updateId,
@@ -143,7 +154,14 @@ export default function ProjectDiscussion({
     element.style.height = `${Math.min(element.scrollHeight, 260)}px`;
   }
   async function addComment(parentId?: string) {
-    if (sendingRef.current || !requireAccount()) return;
+    if (
+      sendingRef.current ||
+      !requireLogin("Du må være logget inn for å kommentere.", {
+        type: "comment",
+        projectId,
+      })
+    )
+      return;
     const text = (parentId ? replyText : draft).trim();
     if (!text) return;
     sendingRef.current = true;
@@ -181,7 +199,11 @@ export default function ProjectDiscussion({
     }
   }
   async function castVote(commentId: string, value: -1 | 0 | 1) {
-    if (!requireAccount() || votingRef.current.has(commentId)) return;
+    if (
+      !requireLogin("Du må være logget inn for å stemme på kommentarer.") ||
+      votingRef.current.has(commentId)
+    )
+      return;
     votingRef.current.add(commentId);
     try {
       await mutate({ action: "vote", commentId, value });
@@ -343,7 +365,13 @@ export default function ProjectDiscussion({
               aria-expanded={replyTo === comment.id}
               aria-controls={replyFormId}
               onClick={() => {
-                if (!requireAccount()) return;
+                if (
+                  !requireLogin("Du må være logget inn for å svare.", {
+                    type: "comment",
+                    projectId,
+                  })
+                )
+                  return;
                 setReplyTo(replyTo === comment.id ? null : comment.id);
                 setReplyText("");
               }}
@@ -484,7 +512,12 @@ export default function ProjectDiscussion({
             <button
               type="button"
               className="font-medium text-ink underline decoration-ink/35 underline-offset-3 transition-[text-decoration-color] duration-150 hover:decoration-current"
-              onClick={() => requireAccount()}
+              onClick={() =>
+                requireLogin(
+                  "Du må være logget inn for å delta i diskusjonen.",
+                  { type: "comment", projectId },
+                )
+              }
             >
               {user ? "Velg brukernavn" : "Logg inn"}
             </button>{" "}

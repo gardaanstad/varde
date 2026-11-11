@@ -457,7 +457,7 @@ test("guest login is accessible on desktop and mobile and error recovery keeps t
   await page.goto("/");
   await page.getByRole("button", { name: "Logg inn", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Fortsett med Google" }),
+    page.getByRole("button", { name: "Logg inn med Google" }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(
@@ -466,7 +466,7 @@ test("guest login is accessible on desktop and mobile and error recovery keeps t
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Logg inn", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Fortsett med Google" }),
+    page.getByRole("button", { name: "Logg inn med Google" }),
   ).toBeVisible();
   await page.goto(
     `/logg-inn?error=google&next=${encodeURIComponent(`/prosjekt/${project.id}`)}`,
@@ -573,12 +573,12 @@ test("a follow intent survives login and profile settings update the public page
   await page
     .getByRole("button", { name: "Følg", exact: true })
     .click();
-  await expect(page).toHaveURL(/\/logg-inn\?next=/);
+  await expect(page.getByRole("dialog", { name: "Logg inn" })).toContainText(
+    "følge prosjekter",
+  );
   expect(
-    await page.evaluate(() =>
-      sessionStorage.getItem("varde-follow-after-login"),
-    ),
-  ).toBe(project.id);
+    await page.evaluate(() => sessionStorage.getItem("varde-login-intent")),
+  ).toBe(JSON.stringify({ type: "follow", projectId: project.id }));
   const person = await member({ username: uniqueName() });
   await signIn(context, person);
   await page.goto(

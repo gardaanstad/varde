@@ -18,11 +18,16 @@ const atList = /:\d+\/(\?|$)/;
 async function expectDrawerHeight(
   page: Page,
   fraction: number,
-  drawer: "explorer" | "project" = "explorer",
+  drawer: "explorer" | "project" | "following" = "explorer",
 ) {
+  // Panels other than projects are drawers named by `data-panel-drawer`.
+  const selector =
+    drawer === "following"
+      ? `[data-panel-drawer="${drawer}"]`
+      : `[data-${drawer}-drawer]`;
   await expect
     .poll(() =>
-      page.locator(`[data-${drawer}-drawer]`).evaluate((element) => {
+      page.locator(selector).evaluate((element) => {
         return (
           (window.innerHeight - element.getBoundingClientRect().top) /
           window.innerHeight
@@ -204,15 +209,12 @@ for (const viewport of [
       await expectDrawerHeight(page, 0.58);
       await swipeUp(page, list);
       await expectDrawerHeight(page, 1);
+      // Logging in asks in a sheet over the drawer, which stays put.
       await page.getByRole("button", { name: "Logg inn", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "Logg inn" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog", { name: "Logg inn" })).toHaveCount(0);
       await expectDrawerHeight(page, 1);
-      await page
-        .getByRole("button", { name: "Vis mer av kartet", exact: true })
-        .click();
-      await expectDrawerHeight(page, 0.58);
-      await swipeUp(page, page.locator("[data-account-panel] h3"));
-      await expectDrawerHeight(page, 1);
-      await expect(page.locator("[data-account-panel]")).toBeVisible();
       await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
     });
 
@@ -370,7 +372,9 @@ test("followed projects keep their collection and full reading height", async ({
   await expect(page.locator("[data-explorer-drawer]")).toBeVisible();
   await page.getByRole("button", { name: "Din profil", exact: true }).click();
   await page.getByRole("button", { name: /^Følger/ }).click();
-  await expectDrawerHeight(page, 1);
+  // Panels open in drawers of their own, over the explorer where it was.
+  await expectDrawerHeight(page, 1, "following");
+  await expectDrawerHeight(page, 0.58);
   await page
     .getByRole("region", { name: "Følger", exact: true })
     .getByRole("button", { name: new RegExp(project.title) })
@@ -381,9 +385,9 @@ test("followed projects keep their collection and full reading height", async ({
     .getByRole("button", { name: "Lukk prosjekt", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Følger", exact: true }),
+    page.getByRole("heading", { name: "Følger", exact: true, level: 1 }),
   ).toBeVisible();
-  await expectDrawerHeight(page, 1);
+  await expectDrawerHeight(page, 1, "following");
   await page.getByRole("button", { name: "Tilbake", exact: true }).click();
   await expect(page.locator("[data-account-panel]")).toBeVisible();
 });

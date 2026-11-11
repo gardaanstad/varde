@@ -72,6 +72,7 @@ import ImageGallery from "./image-gallery";
 import ImagePicker from "./image-picker";
 import ProjectPlaceholder from "./project-placeholder";
 import styles from "./project-post.module.css";
+import { takeLoginIntent } from "../lib/login-intent";
 
 const ProjectMap = dynamic(() => import("./project-map"), { ssr: false });
 
@@ -360,6 +361,29 @@ function EditDescription() {
 
 const stickyGap = 12;
 
+/**
+ * Runs `check` now and again once whatever animates `marker` into place
+ * has finished. Measured mid-slide, it still sits where it started, which
+ * would leave a sticky toggle unstuck until the next scroll. Returns a
+ * cancel function.
+ */
+function whenSettled(marker: Element, check: () => void) {
+  let cancelled = false;
+  const frame = requestAnimationFrame(() => {
+    const running = marker
+      .getAnimations({ subtree: false })
+      .concat(marker.parentElement?.getAnimations() ?? []);
+    check();
+    void Promise.allSettled(running.map((a) => a.finished)).then(() => {
+      if (!cancelled) check();
+    });
+  });
+  return () => {
+    cancelled = true;
+    cancelAnimationFrame(frame);
+  };
+}
+
 const introMotion: KeyframeAnimationOptions = {
   duration: 320,
   easing: "cubic-bezier(0.22, 1, 0.36, 1)",
@@ -525,7 +549,9 @@ function ProjectIntro({ project }: { project: Project }) {
     resize.observe(scroller);
     if (body.current) resize.observe(body.current);
     scroller.addEventListener("scroll", update, { passive: true });
+    const settled = whenSettled(marker, update);
     return () => {
+      settled();
       resize.disconnect();
       scroller.removeEventListener("scroll", update);
       setStuck(false);
@@ -705,7 +731,9 @@ function CommentsDock({
     resize.observe(section);
     scroller.addEventListener("scroll", update, { passive: true });
     update();
+    const settled = end.current ? whenSettled(end.current, update) : () => {};
     return () => {
+      settled();
       resize.disconnect();
       scroller.removeEventListener("scroll", update);
     };
@@ -761,7 +789,7 @@ function UpdateComposer({
   onNotify: (message: string) => void;
   onPublished: (id: string) => void;
 }) {
-  const { requireAccount } = useAuth();
+  const { requireLogin, user } = useAuth();
   const tip = Boolean(onTip);
   const [open, setOpen] = useState(false);
   // The pill's width, so the form can grow out of it.
@@ -800,6 +828,13 @@ function UpdateComposer({
     refocusPill.current = true;
     reset();
   }
+  // Back from logging in to send a tip: the composer opens again.
+  const member = Boolean(user?.username);
+  useEffect(() => {
+    if (!tip || !member || !takeLoginIntent("tip", project.id)) return;
+    setPillWidth(pillRef.current?.offsetWidth ?? 0);
+    setOpen(true);
+  }, [tip, member, project.id]);
   const ready = tip
     ? Boolean(body.trim() && source.trim())
     : Boolean(title.trim() && body.trim());
@@ -873,7 +908,14 @@ function UpdateComposer({
           "[&>svg]:text-muted",
         )}
         onClick={(event) => {
-          if (tip && !requireAccount()) return;
+          if (
+            tip &&
+            !requireLogin("Du må være logget inn for å sende tips.", {
+              type: "tip",
+              projectId: project.id,
+            })
+          )
+            return;
           setPillWidth(event.currentTarget.offsetWidth);
           setOpen(true);
         }}
@@ -1027,12 +1069,16 @@ export default function ProjectPost({
   const articleRef = useRef<HTMLElement>(null);
   const tabScroll = useRef<Record<string, number>>({});
   // Given the room (a full page), facts and photos move into a side column.
+  // Measured before the first paint, so a post opened as a full page never
+  // shows a frame of the narrow layout.
   const [wide, setWide] = useState(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const article = articleRef.current;
     if (!article) return;
+    const measure = (width: number) => setWide(width >= 900);
+    measure(article.getBoundingClientRect().width);
     const observer = new ResizeObserver(([entry]) =>
-      setWide(entry.contentRect.width >= 900),
+      measure(entry.contentRect.width),
     );
     observer.observe(article);
     return () => observer.disconnect();
@@ -1050,7 +1096,7 @@ export default function ProjectPost({
     measure();
     return () => observer.disconnect();
   }, []);
-  const { canModerate, requireAccount } = useAuth();
+  const { user, canModerate, requireLogin } = useAuth();
   const { mutate, suggest } = useCommunity();
   const onUpdate = (next: Project) =>
     mutate({ action: "project", project: next, create: false });
@@ -1093,7 +1139,14 @@ export default function ProjectPost({
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
   function startEditing() {
-    if (!canModerate && !requireAccount()) return;
+    if (
+      !canModerate &&
+      !requireLogin("Du må være logget inn for å foreslå endringer.", {
+        type: "edit",
+        projectId: project.id,
+      })
+    )
+      return;
     setDraft(toDraft(project));
     setNote("");
     setStage("edit");
@@ -1117,6 +1170,14 @@ export default function ProjectPost({
     if (dirty) setStage("discard");
     else stopEditing();
   }
+  // Back from logging in to suggest a change: edit mode again.
+  const member = Boolean(user?.username);
+  const resumeEdit = useEffectEvent(() => startEditing());
+  useEffect(() => {
+    // Not cancelled: the intent is already taken.
+    if (member && takeLoginIntent("edit", project.id))
+      requestAnimationFrame(resumeEdit);
+  }, [member, project.id]);
   async function saveEdits() {
     if (!draft || !dirty || savingEdit) return;
     setSavingEdit(true);

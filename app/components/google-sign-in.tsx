@@ -32,9 +32,11 @@ function GoogleMark() {
 export default function GoogleSignIn({
   next = "/",
   reauthenticate = false,
+  label = "Fortsett med Google",
 }: {
   next?: string;
   reauthenticate?: boolean;
+  label?: string;
 }) {
   const { googleEnabled } = useAuth();
   const [pending, setPending] = useState(false);
@@ -83,7 +85,7 @@ export default function GoogleSignIn({
         ) : (
           <GoogleMark />
         )}
-        {pending ? "Åpner Google …" : "Fortsett med Google"}
+        {pending ? "Åpner Google …" : label}
       </button>
       {!googleEnabled && (
         <p

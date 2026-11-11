@@ -157,7 +157,6 @@ for (const [viewport, project, direct] of [
     await signIn(context, reader);
     await page.goto("/");
 
-    const badge = page.locator("[data-unread-badge]").first();
     const entry = mobile
       ? page.getByRole("button", { name: "Følger, 2 med nytt" })
       : page
@@ -169,9 +168,9 @@ for (const [viewport, project, direct] of [
       await entry.click();
       // Desktop: a panel over the explorer, header included.
       if (mobile)
-        await expect(entry).toHaveAttribute("aria-pressed", "true", {
-          timeout: 1000,
-        });
+        await expect(
+          page.locator('[data-panel-drawer="following"] [data-followed-projects]'),
+        ).toBeVisible({ timeout: 1000 });
       else
         await expect(
           page.locator('[data-sidebar-panel="following"]'),
@@ -202,11 +201,9 @@ for (const [viewport, project, direct] of [
       .click();
     await expect(row).not.toHaveAttribute("data-unread");
     await expect(row).not.toContainText("kommentar");
-    // Desktop: the header is covered by the panel, which counts the same.
+    // The header is covered by the panel, which counts the same.
     await expect(
-      mobile
-        ? badge
-        : page.locator('[data-sidebar-panel="following"] [data-unread-badge]'),
+      page.locator('[data-sidebar-panel="following"] [data-unread-badge]'),
     ).toHaveAccessibleName("1 med nytt");
 
     // Opening a followed project any other way reads it too.
@@ -288,9 +285,9 @@ test("on touch screens the unfollow button stays visible", async ({
   // The server renders the entry, so a tap can land before hydration.
   await expect(async () => {
     await entry.tap();
-    await expect(entry).toHaveAttribute("aria-pressed", "true", {
-      timeout: 1000,
-    });
+    await expect(
+      page.locator('[data-panel-drawer="following"] [data-followed-projects]'),
+    ).toBeVisible({ timeout: 1000 });
   }).toPass();
   const unfollow = page
     .locator(`[data-followed-project="${listed.id}"]`)

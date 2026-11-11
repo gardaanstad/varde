@@ -45,7 +45,7 @@ export function animatePanelOut(element: HTMLElement, fade: boolean) {
   const { transform, opacity } = getComputedStyle(element);
   return element.animate(
     fade
-      ? [{ opacity, transform }, { opacity: 0, transform: "scale(0.985)" }]
+      ? [{ opacity }, { opacity: 0 }]
       : [{ transform }, { transform: "translateX(-100%)" }],
     {
       duration: fade ? 160 : 220,
@@ -100,13 +100,34 @@ export function MaximizeButton({
 }
 
 /**
- * A panel in the sidebar stack: a bar with the mode and close controls over
- * scrolling content. Escape steps down from a maximized panel before closing.
+ * Escape on the panel on top of the stack. Menus and dialogs over it take
+ * Escape first.
+ */
+export function usePanelEscape(active: boolean, onEscape: () => void) {
+  const onKey = useEffectEvent((event: KeyboardEvent) => {
+    if (
+      event.key !== "Escape" ||
+      event.defaultPrevented ||
+      document.querySelector("dialog[open], [data-slot=choice-menu][data-open=true]")
+    )
+      return;
+    event.preventDefault();
+    onEscape();
+  });
+  useEffect(() => {
+    if (!active) return;
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [active]);
+}
+
+/**
+ * Desktop: a panel in the sidebar stack, a bar with the mode and close
+ * controls over scrolling content. See `Panel`, which also handles Escape.
  */
 export function SidebarPanel({
   name,
   maximized,
-  active,
   onToggleMaximized,
   onClose,
   onBack,
@@ -116,8 +137,6 @@ export function SidebarPanel({
   /** Names the panel for tests and styling (`data-sidebar-panel`). */
   name: string;
   maximized: boolean;
-  /** The top of the stack: the one Escape acts on. */
-  active: boolean;
   onToggleMaximized: () => void;
   onClose: () => void;
   /** Back to the panel this one was opened from. */
@@ -125,23 +144,6 @@ export function SidebarPanel({
   closeLabel?: string;
   children: ReactNode;
 }) {
-  const onKey = useEffectEvent((event: KeyboardEvent) => {
-    if (
-      event.key !== "Escape" ||
-      event.defaultPrevented ||
-      document.querySelector("dialog[open], [data-slot=choice-menu][data-open=true]")
-    )
-      return;
-    event.preventDefault();
-    if (maximized) onToggleMaximized();
-    else onClose();
-  });
-  useEffect(() => {
-    if (!active) return;
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [active]);
-
   return (
     <div
       className="flex h-full min-h-0 flex-col bg-surface"

@@ -26,6 +26,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  LogIn,
   Search,
   User,
   X,
@@ -83,6 +84,14 @@ import {
   type DrawerMotion,
   type DrawerSnapPoint,
 } from "./drawer";
+import {
+  DrawerGrip,
+  mobileDrawerClasses,
+  Panel,
+  PanelDrawer,
+  PanelShell,
+} from "./panel";
+import { takeLoginIntent } from "../lib/login-intent";
 import { cn } from "../lib/cn";
 import { openProfileEvent } from "../lib/profile-overlay";
 import ProfileOverlay from "./profile-overlay";
@@ -92,7 +101,6 @@ import {
   animatePanelOut,
   animateVisibleWidth,
   MaximizeButton,
-  SidebarPanel,
   type SidebarMode,
 } from "./sidebar-panel";
 import {
@@ -228,27 +236,13 @@ const sortChoiceClasses = [
   "[&_[data-slot=choice-trigger]>svg:first-child]:max-md:hidden",
 ].join(" ");
 
-const mobileDrawerClasses = [
-  "z-[800] rounded-t-[22px] border border-b-0 border-border bg-surface text-ink shadow-[0_-4px_12px_rgb(20_28_24/0.04),0_-16px_50px_rgb(20_28_24/0.08)]",
-  "[--drawer-content-height:100dvh] [--drawer-bleed-background:var(--color-surface)]",
-  "motion-reduce:transition-none motion-reduce:[&_*]:transition-none motion-reduce:[&_*]:animate-none",
-].join(" ");
+// Panels open in drawers of their own over it (see panel.tsx); it stays
+// where it is under them, only dimmed, peeking out above them at full height.
 const explorerDrawerClasses = cn(
   mobileDrawerClasses,
   "[--drawer-content-max-height:calc(100dvh_-_12px_-_env(safe-area-inset-top))]!",
-  // Under a project at full height, the explorer peeks out just above it.
-  // Until the project measures, it keeps its own height rather than none.
-  "[--peek:10px] [--stack-height:var(--drawer-frontmost-height,100dvh)]",
-  // The map controls stand above its top edge; its content clips itself.
-  "data-nested-drawer-open:overflow-visible",
+  "data-panel-open:brightness-95",
 );
-// Projects sit a little lower, so the explorer shows behind them.
-const projectDrawerClasses = cn(
-  mobileDrawerClasses,
-  "[--drawer-content-max-height:calc(100dvh_-_22px_-_env(safe-area-inset-top))]!",
-);
-const projectDrawerInnerClasses =
-  "flex min-h-0 flex-1 flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]";
 
 // Sized to the snap point the drawer rests at, so the list's end shows; see
 // `restOffset` on DrawerContent.
@@ -297,10 +291,11 @@ export default memo(function Explorer({
   // does, a static copy in the same place shows its contents, then both swap
   // in one render so nothing shifts or flashes.
   const [drawerReady, setDrawerReady] = useState(false);
-  // Likewise for a project or profile the page was opened on.
-  const [projectDrawerReady, setProjectDrawerReady] = useState(
-    !initialProjectId && !initialProfile,
+  // Likewise for a panel the page was opened on.
+  const [panelsReady, setPanelsReady] = useState(
+    !initialProjectId && !initialProfile && !initialPanel,
   );
+  const panelReady = useCallback(() => setPanelsReady(true), []);
   // The list opens at the middle height so the map shows. Projects open in
   // their own drawer above it, so it stays where it was left.
   const [snapPoint, setSnapPoint] = useState<DrawerSnapPoint | null>(
@@ -309,7 +304,7 @@ export default memo(function Explorer({
   const drawerContentRef = useRef<HTMLDivElement>(null);
   const drawerHandleRef = useRef<HTMLButtonElement>(null);
   const projectTriggerRef = useRef<HTMLElement | SVGElement | null>(null);
-  const { user, pending: authPending, canModerate, requireAccount } = useAuth();
+  const { user, pending: authPending, canModerate, requireLogin } = useAuth();
   const {
     projects,
     following,
@@ -368,14 +363,6 @@ export default memo(function Explorer({
   );
   const [modal, setModal] = useState<"profile" | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
-  // Mobile: the project drawer keeps its contents while it slides away.
-  const projectDrawerOpen = Boolean(postId || profileName);
-  const [shown, setShown] = useState({ postId, profileName });
-  if (
-    projectDrawerOpen &&
-    (shown.postId !== postId || shown.profileName !== profileName)
-  )
-    setShown({ postId, profileName });
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const notify = (message: string) => setToast({ message });
   const searchRef = useRef<HTMLInputElement>(null);
@@ -670,20 +657,17 @@ export default memo(function Explorer({
     needle && listBounds ? searchHits.length - searched.length : 0;
   const listedProjects = searched;
 
-  // Mobile shows the project its drawer holds, also while that drawer closes.
-  // Desktop: the project and profile panels keep theirs while sliding away.
+  // The project and profile panels keep theirs while sliding away.
   const [panelPostId, setPanelPostId] = useState(postId);
   if (postId && postId !== panelPostId) setPanelPostId(postId);
   const [panelProfileName, setPanelProfileName] = useState(profileName);
   if (profileName && profileName !== panelProfileName)
     setPanelProfileName(profileName);
-  const post = projects.find(
-    (project) => project.id === (isMobile ? shown.postId : panelPostId),
-  );
+  const post = projects.find((project) => project.id === panelPostId);
 
-  // Desktop: the sidebar's panel stack over the explorer, bottom to top. A
-  // header page (Følger, Forslag, your profile) can hold a project, which
-  // can hold a profile.
+  // The panel stack over the explorer, bottom to top: layers in the sidebar
+  // on desktop, drawers on phones. A header page (Følger, Forslag, your
+  // profile) can hold a project, which can hold a profile.
   type Layer = "following" | "suggestions" | "account" | "project" | "profile";
   const section: Layer | null = suggestionsOpen
     ? "suggestions"
@@ -692,18 +676,19 @@ export default memo(function Explorer({
       : followingOnly
         ? "following"
         : null;
-  const liveLayers: Layer[] = isMobile
-    ? []
-    : [
-        ...(section ? [section] : []),
-        ...(postId ? ["project" as const] : []),
-        ...(profileName ? ["profile" as const] : []),
-      ];
+  const liveLayers: Layer[] = [
+    ...(section ? [section] : []),
+    ...(postId ? ["project" as const] : []),
+    ...(profileName ? ["profile" as const] : []),
+  ];
   const topLayer = liveLayers.at(-1) ?? null;
   // Closed panels stay until they have animated away. A panel replaced by
-  // another in the same step (Følger for the profile, say) goes at once.
+  // another in the same step (Følger for the profile, say) goes at once on
+  // desktop; a phone holds its drawer under the new one until that is up.
   const [exitingState, setExiting] = useState<Layer[]>([]);
   let exiting = exitingState;
+  const [heldState, setHeld] = useState<Layer[]>([]);
+  let held = heldState;
   // Whether each panel opened over a maximized sidebar: it then fades in
   // where it is, and closing it keeps the sidebar maximized. One opened
   // beside the map takes the sidebar back there when it closes.
@@ -725,6 +710,8 @@ export default memo(function Explorer({
       ...(added.length ? [] : removed),
     ];
     setExiting(exiting);
+    held = isMobile && added.length ? removed : [];
+    setHeld(held);
     const opened = { ...openedMaximized };
     for (const layer of added)
       opened[layer] =
@@ -747,10 +734,12 @@ export default memo(function Explorer({
   const layers = layerOrder.filter(
     (layer) => liveLayers.includes(layer) || exiting.includes(layer),
   );
-  const panelClosing = !postId && exiting.includes("project");
+  const leaving = (layer: Layer) =>
+    exiting.includes(layer) || held.includes(layer);
+  const panelClosing = !postId && leaving("project");
   if (!postId && !panelClosing && panelPostId)
     setPanelPostId(null);
-  if (!profileName && !exiting.includes("profile") && panelProfileName)
+  if (!profileName && !leaving("profile") && panelProfileName)
     setPanelProfileName(null);
   // Closing a panel returns focus to what opened it (projects do their own).
   const layerTriggers = useRef(new Map<Layer, HTMLElement>());
@@ -1019,8 +1008,10 @@ export default memo(function Explorer({
   }, [restoreAfterClose]);
   // Closed panels animate away, then leave; opened again on the way, they
   // come back from where they got to.
+  // Phones: drawers animate themselves, and report when they are gone.
   const exits = useRef(new Map<Layer, Animation>());
   useLayoutEffect(() => {
+    if (isMobile) return;
     const aside = panelRef.current;
     const reduced = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
@@ -1057,7 +1048,7 @@ export default memo(function Explorer({
         },
       );
     }
-  }, [exiting, previousLayers]);
+  }, [exiting, previousLayers, isMobile]);
   useEffect(() => {
     if (isMobile || !mapApi.current) return;
     mapApi.current.syncSize();
@@ -1068,11 +1059,17 @@ export default memo(function Explorer({
     // end of expanding, and not at all when maximizing.
   }, [asideCollapsed, sidebarMode, isMobile]);
 
-  /** Mobile: the project drawer covers the map, so step down to show it. */
+  /** Mobile: the panels cover the map, so step down to show it. */
   function showPostOnMap(project: Project) {
     // Framed above the middle drawer height, so the list can show it too.
-    closePost(false, () => mapApi.current?.fit(projectPoints(project)));
+    const fit = () => mapApi.current?.fit(projectPoints(project));
+    const below = suggestionsOpen;
+    closePost(false, () => {
+      if (below) closeSuggestions();
+      fit();
+    });
     setModal(null);
+    setFollowingOnly(false);
     setSnapPoint(compactSnapPoint);
     setSelectedId(project.id);
   }
@@ -1088,15 +1085,13 @@ export default memo(function Explorer({
 
   async function toggleFollow(id: string) {
     if (pendingFollows.current.has(id)) return;
-    if (!user?.username) {
-      try {
-        sessionStorage.setItem("varde-follow-after-login", id);
-      } catch {
-        /* Sign-in still works without browser storage. */
-      }
-      requireAccount();
+    if (
+      !requireLogin("Du må være logget inn for å følge prosjekter.", {
+        type: "follow",
+        projectId: id,
+      })
+    )
       return;
-    }
     const exists = followingIds.has(id);
     pendingFollows.current.add(id);
     try {
@@ -1120,20 +1115,20 @@ export default memo(function Explorer({
     }
   }
 
+  // Back from logging in, what was asked for goes ahead.
   useEffect(() => {
     if (!user?.username) return;
-    let id: string | null = null;
-    try {
-      id = sessionStorage.getItem("varde-follow-after-login");
-      sessionStorage.removeItem("varde-follow-after-login");
-    } catch {
-      return;
-    }
-    if (!id) return;
-    void mutate({ action: "follow", projectId: id, following: true }).catch(
-      (error) => notify(errorMessage(error, "Kunne ikke følge prosjektet.")),
+    if (takeLoginIntent("suggest-project")) setEditorOpen(true);
+    const follow = takeLoginIntent("follow");
+    if (!follow) return;
+    void mutate({
+      action: "follow",
+      projectId: follow.projectId,
+      following: true,
+    }).catch((error) =>
+      notify(errorMessage(error, "Kunne ikke følge prosjektet.")),
     );
-    // A follow intent is consumed once when the account is ready.
+    // An intent is consumed once when the account is ready.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?.username]);
 
@@ -1430,24 +1425,6 @@ export default memo(function Explorer({
       ? values.filter((item) => item !== value)
       : [...values, value];
 
-  const profileContent = (
-    <div
-      className={cn(
-        "min-h-0",
-        isMobile ? "h-full" : "h-[min(600px,calc(100dvh-48px))]",
-      )}
-    >
-      <AccountPanel
-        onBack={isMobile ? backToExplorer : undefined}
-        onFollowing={openFollowingFromProfile}
-        followingCount={following.length}
-        suggestionCount={suggestions}
-        reviewedCount={reviewed}
-        next={postId ? projectHref(postId) : "/"}
-      />
-    </div>
-  );
-
   const activeFilters = [
     // Mobile shows category inline, so only hidden filters get chips there.
     ...(isMobile && needle
@@ -1542,17 +1519,6 @@ export default memo(function Explorer({
           wide && "mx-auto w-full max-w-[880px]",
         )}
       >
-        {followingOnly && isMobile ? (
-          <FollowedProjects
-            projects={projects}
-            followingIds={following}
-            following={followed}
-            onOpen={openPost}
-            onUnfollow={(id) => void toggleFollow(id)}
-            onBack={leaveFollowing}
-          />
-        ) : (
-          <>
         {isMobile ? mobileFilters : desktopFilters}
         <div className="sticky top-0 z-10 flex min-h-12 items-center justify-between gap-3 border-b border-border bg-surface py-1.5 max-md:static max-md:bg-transparent">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
@@ -1623,8 +1589,6 @@ export default memo(function Explorer({
             ))}
           </ol>
         )}
-          </>
-        )}
       </div>
     </section>
   );
@@ -1635,7 +1599,7 @@ export default memo(function Explorer({
       project={post}
       initialUpdateId={postTarget.updateId}
       initialCommentId={postTarget.commentId}
-      closeOnEscape={!isMobile && !panelClosing && topLayer === "project"}
+      closeOnEscape={!panelClosing && topLayer === "project"}
       onClose={() => {
         if (!panelClosing) closePost();
       }}
@@ -1643,7 +1607,6 @@ export default memo(function Explorer({
       onEscape={maximized ? minimize : undefined}
       full={!isMobile && wide}
       onToggleFull={isMobile ? undefined : maximized ? minimize : maximize}
-      feedback={isMobile ? feedback : undefined}
       following={followingIds.has(post.id)}
       onFollow={() => toggleFollow(post.id)}
       comments={commentsByProject.get(post.id) ?? noComments}
@@ -1666,22 +1629,27 @@ export default memo(function Explorer({
 
   /** Members suggest projects; moderators add them directly. */
   function openEditor() {
-    if (canModerate || requireAccount()) setEditorOpen(true);
+    if (
+      canModerate ||
+      requireLogin("Du må være logget inn for å foreslå prosjekter.", {
+        type: "suggest-project",
+      })
+    )
+      setEditorOpen(true);
   }
   function openProfile() {
-    if (!isMobile) rememberTrigger("account");
+    rememberTrigger("account");
     setModal("profile");
-    setSnapPoint(1);
   }
-  /** The header bell toggles the followed projects in place of the list. */
+  /** The header bell opens the followed projects. */
   function showFollowing() {
-    if (!requireAccount()) return;
+    if (!requireLogin("Du må være logget inn for å se prosjektene du følger."))
+      return;
     setSectionFrom("explorer");
-    if (!isMobile) rememberTrigger("following");
+    rememberTrigger("following");
     if (postId) closePost();
     setModal(null);
     setFollowingOnly(true);
-    setSnapPoint(1);
   }
   /** The profile also links to them, and they lead back there. */
   function openFollowingFromProfile() {
@@ -1712,15 +1680,6 @@ export default memo(function Explorer({
     else window.history.replaceState({}, "", withSearch("/"));
     if (back && sectionFrom === "profile") openProfile();
   }
-  function backToExplorer() {
-    if (postId) closePost();
-    setModal(null);
-    setSnapPoint(1);
-    requestAnimationFrame(() =>
-      drawerHandleRef.current?.focus({ preventScroll: true }),
-    );
-  }
-
   function minimizeDrawer() {
     if (postId) closePost(false);
     setModal(null);
@@ -1731,31 +1690,26 @@ export default memo(function Explorer({
     drawerContentRef.current = node;
     if (node) setDrawerReady(true);
   };
-  const profileButton = (
+  // Signed out, the profile button is a log-in button like its neighbours.
+  const profileButton = user ? (
     <button
       className={cn(
         "inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-transparent text-xs font-semibold text-muted",
         "hover:bg-ink/[0.06] hover:text-ink active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100",
       )}
-      aria-label={
-        user
-          ? `Din profil${reviewed ? ` (${reviewed} behandlet)` : ""}`
-          : "Logg inn"
-      }
+      aria-label={`Din profil${reviewed ? ` (${reviewed} behandlet)` : ""}`}
       aria-haspopup="dialog"
       aria-expanded={modal === "profile"}
       data-tooltip={
         isMobile || authPending
           ? undefined
-          : user?.username
+          : user.username
             ? `@${user.username}`
-            : user
-              ? "Velg brukernavn"
-              : "Logg inn"
+            : "Velg brukernavn"
       }
       onClick={openProfile}
     >
-      {user?.username ? (
+      {user.username ? (
         <span className="relative">
           <ProfileAvatar name={user.username} className="size-9 text-sm" />
           {reviewed > 0 && <span className={reviewedDot} />}
@@ -1763,6 +1717,18 @@ export default memo(function Explorer({
       ) : (
         <User size={18} />
       )}
+    </button>
+  ) : (
+    <button
+      type="button"
+      className={cn(compactIconAction, "text-muted hover:text-ink")}
+      aria-label="Logg inn"
+      aria-haspopup="dialog"
+      data-tooltip={isMobile ? undefined : "Logg inn"}
+      data-login-button=""
+      onClick={() => requireLogin()}
+    >
+      <LogIn size={20} />
     </button>
   );
   // Moderators reach the suggestion queue from the header.
@@ -1774,9 +1740,8 @@ export default memo(function Explorer({
       aria-label={`Forslag${suggestions ? ` (${suggestions})` : ""}`}
       data-tooltip={isMobile ? undefined : "Forslag"}
       onClick={(event) => {
-        // Desktop: a panel over the explorer, not a page of its own.
-        if (isMobile || event.metaKey || event.ctrlKey || event.shiftKey)
-          return;
+        // A panel over the explorer, not a page of its own.
+        if (event.metaKey || event.ctrlKey || event.shiftKey) return;
         event.preventDefault();
         openSuggestions();
       }}
@@ -1833,35 +1798,50 @@ export default memo(function Explorer({
       )}
     </button>
   );
-  /** A desktop panel's content, in the sidebar's current mode. */
+  /** What closes each panel: its close button, Escape, or a swipe down. */
+  function closeLayer(layer: Layer) {
+    if (layer === "project") return closePost();
+    if (layer === "profile") return closeProfile();
+    if (layer === "account") return setModal(null);
+    if (layer === "following") return setFollowingOnly(false);
+    closeSuggestions();
+  }
+  const layerTitles: Record<Layer, string> = {
+    project: post?.title || "Prosjektet finnes ikke",
+    profile: `Profilen til ${panelProfileName ?? ""}`,
+    account: "Din profil",
+    following: "Følger",
+    suggestions: "Forslag",
+  };
+  /**
+   * A panel's content, written once: a sidebar layer in its current mode on
+   * desktop, a drawer on phones.
+   */
   function layerContent(layer: Layer) {
+    if (layer === "project") return projectPost || missingProject;
     const frame = {
-      maximized: wide,
+      mobile: isMobile,
+      name: layer,
+      maximized: !isMobile && wide,
       active: topLayer === layer,
       onToggleMaximized: maximized ? minimize : maximize,
+      onClose: () => closeLayer(layer),
     };
     switch (layer) {
-      case "project":
-        return projectPost || missingProject;
       case "profile":
         return (
-          <SidebarPanel
-            {...frame}
-            name="profile"
-            closeLabel="Lukk profil"
-            onClose={closeProfile}
-          >
+          <Panel {...frame} closeLabel="Lukk profil">
             <ProfileOverlay
               key={panelProfileName}
               username={panelProfileName!}
               embedded
               onOpenProject={openFromProfile}
             />
-          </SidebarPanel>
+          </Panel>
         );
       case "account":
         return (
-          <SidebarPanel {...frame} name="account" onClose={() => setModal(null)}>
+          <Panel {...frame}>
             <AccountPanel
               onFollowing={openFollowingFromProfile}
               onSuggestions={() => openSuggestions("profile")}
@@ -1870,19 +1850,18 @@ export default memo(function Explorer({
               reviewedCount={reviewed}
               next={postId ? projectHref(postId) : "/"}
             />
-          </SidebarPanel>
+          </Panel>
         );
       case "following":
         return (
-          <SidebarPanel
+          <Panel
             {...frame}
-            name="following"
-            onClose={() => setFollowingOnly(false)}
             onBack={sectionFrom === "profile" ? leaveFollowing : undefined}
           >
             <div
-              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-8 scrollbar-thin"
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-8 scrollbar-thin max-md:px-4.5"
               data-followed-scroll=""
+              data-drawer-scroll
             >
               <FollowedProjects
                 projects={projects}
@@ -1892,14 +1871,12 @@ export default memo(function Explorer({
                 onUnfollow={(id) => void toggleFollow(id)}
               />
             </div>
-          </SidebarPanel>
+          </Panel>
         );
       case "suggestions":
         return (
-          <SidebarPanel
+          <Panel
             {...frame}
-            name="suggestions"
-            onClose={() => closeSuggestions()}
             onBack={
               sectionFrom === "profile" ? () => closeSuggestions(true) : undefined
             }
@@ -1911,26 +1888,17 @@ export default memo(function Explorer({
               onClose={() => closeSuggestions()}
               onChange={() => void refresh().catch(() => {})}
             />
-          </SidebarPanel>
+          </Panel>
         );
     }
   }
   const drawerBody = (
     <>
-      {modal === "profile" && (
-        <div className="min-h-0 flex-1 pb-(--drawer-keyboard-inset,0px)">
-          {profileContent}
-        </div>
-      )}
       <div
-        className={cn(
-          "flex min-h-0 flex-1 flex-col",
-          modal &&
-            "invisible pointer-events-none absolute inset-x-0 top-11 bottom-0 opacity-0",
-        )}
-        // Under the project drawer it stays in place, ready to swipe back to.
-        inert={Boolean(modal || projectDrawerOpen)}
-        aria-hidden={modal || projectDrawerOpen ? true : undefined}
+        className="flex min-h-0 flex-1 flex-col"
+        // Under the panels it stays in place, ready to swipe back to.
+        inert={liveLayers.length > 0}
+        aria-hidden={liveLayers.length > 0 || undefined}
       >
         <div className="relative z-10 shrink-0 bg-surface px-4.5 pb-0.5 max-xs:px-3.5">
           <div className="flex h-11 items-center justify-between">
@@ -1953,28 +1921,6 @@ export default memo(function Explorer({
       </div>
     </>
   );
-  const projectDrawerBody = (
-    <>
-      {shown.profileName && (
-        <ProfileOverlay
-          key={shown.profileName}
-          username={shown.profileName}
-          embedded
-          onClose={closeProfile}
-          onOpenProject={openFromProfile}
-        />
-      )}
-      {shown.postId && (
-        // Kept mounted under a profile so its scroll and drafts survive.
-        <div className={shown.profileName ? "hidden" : "contents"}>
-          {projectPost || missingProject}
-        </div>
-      )}
-    </>
-  );
-  const drawerGrip = (
-    <span className="h-[3px] w-[34px] rounded bg-border-strong transition-colors group-hover/handle:bg-muted/60 motion-reduce:transition-none" />
-  );
   const drawerShell = isMobile && !drawerReady && (
     <div
       aria-hidden="true"
@@ -1987,7 +1933,7 @@ export default memo(function Explorer({
       )}
     >
       <div className="flex h-6 shrink-0 items-center justify-center">
-        {drawerGrip}
+        <DrawerGrip />
       </div>
       <div
         data-slot="drawer-content"
@@ -2000,24 +1946,40 @@ export default memo(function Explorer({
       </div>
     </div>
   );
-  const projectDrawerShell = isMobile &&
-    projectDrawerOpen &&
-    !projectDrawerReady && (
-      <div
-        aria-hidden="true"
-        className={cn(
-          projectDrawerClasses,
-          "fixed inset-x-0 bottom-0 z-[900] flex h-[calc(100dvh-22px-env(safe-area-inset-top))] flex-col",
-        )}
+  // Phones: the panel drawers, bottom to top. Ones replaced by another
+  // stay open under it until it is up.
+  const mobileLayers = [
+    ...held.filter((layer) => !layers.includes(layer)),
+    ...layers,
+  ];
+  const panelShell = isMobile && !panelsReady && topLayer && (
+    <PanelShell>{layerContent(topLayer)}</PanelShell>
+  );
+  const panelDrawers =
+    isMobile &&
+    mobileLayers.map((layer, index) => (
+      <PanelDrawer
+        key={layer === "project" ? `project-${panelPostId}` : layer}
+        name={layer}
+        title={layerTitles[layer]}
+        index={index}
+        open={liveLayers.includes(layer) || held.includes(layer)}
+        active={layer === topLayer}
+        ready={panelsReady}
+        onReady={panelReady}
+        onDismiss={() => {
+          if (liveLayers.includes(layer)) closeLayer(layer);
+        }}
+        onOpened={() => {
+          if (layer === topLayer && held.length) setHeld([]);
+        }}
+        onClosed={() =>
+          setExiting((current) => current.filter((item) => item !== layer))
+        }
       >
-        <div className="flex h-6 shrink-0 items-center justify-center">
-          {drawerGrip}
-        </div>
-        <div data-slot="drawer-content" className={projectDrawerInnerClasses}>
-          {projectDrawerBody}
-        </div>
-      </div>
-    );
+        {layerContent(layer)}
+      </PanelDrawer>
+    ));
 
   return (
     <div
@@ -2245,8 +2207,13 @@ export default memo(function Explorer({
           onOpenChange={(open, details) => {
             if (open) return;
             details.cancel();
-            if (modal) backToExplorer();
-            else minimizeDrawer();
+            // Escape belongs to the panel or dialog on top, if any.
+            if (
+              details.reason === "escape-key" &&
+              (liveLayers.length || document.querySelector("dialog[open]"))
+            )
+              return;
+            minimizeDrawer();
           }}
         >
           <DrawerVirtualKeyboardProvider>
@@ -2262,25 +2229,22 @@ export default memo(function Explorer({
                     "absolute inset-x-0 bottom-full h-0",
                     "transition-[opacity,visibility] duration-150 motion-reduce:transition-none",
                     "data-covered:invisible data-covered:opacity-0",
-                    // A project covers the map, all but a sliver.
-                    "group-data-nested-drawer-open/drawer-popup:invisible group-data-nested-drawer-open/drawer-popup:opacity-0",
+                    // A panel covers the map, all but a sliver.
+                    "group-data-panel-open/drawer-popup:invisible group-data-panel-open/drawer-popup:opacity-0",
                     // 14px clear of the drawer's top border.
                     "[&_[data-map-controls]]:bottom-[15px]!",
                   )}
                 />
               }
               data-explorer-drawer=""
+              data-panel-open={liveLayers.length > 0 || undefined}
               className={cn(
                 explorerDrawerClasses,
                 // Let Base UI swipe the drawer before its content starts scrolling.
                 snapPoint !== 1 &&
                   "[&_[data-drawer-scroll]]:overflow-y-hidden",
               )}
-              // The list stays in view behind a project, only stepped back.
-              contentClassName={cn(
-                mobileDrawerInnerClasses,
-                "group-data-nested-drawer-open/drawer-popup:opacity-100",
-              )}
+              contentClassName={mobileDrawerInnerClasses}
               initialFocus={false}
               finalFocus={false}
               onWheel={(event) => {
@@ -2303,7 +2267,7 @@ export default memo(function Explorer({
                   className={cn(
                     "group/handle flex h-6 w-full shrink-0 touch-none cursor-grab items-center justify-center p-0 active:cursor-grabbing",
                     "transition-[color,opacity] duration-150 hover:text-accent active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100",
-                    "group-data-nested-drawer-open/drawer-popup:opacity-0 group-data-nested-drawer-swiping/drawer-popup:opacity-100",
+                    "group-data-panel-open/drawer-popup:opacity-0",
                   )}
                   aria-label={
                     snapPoint === 1
@@ -2314,12 +2278,12 @@ export default memo(function Explorer({
                     setSnapPoint(snapPoint === 1 ? middleSnapPoint : 1)
                   }
                 >
-                  {drawerGrip}
+                  <DrawerGrip />
                 </button>
               }
             >
               <DrawerTitle className="sr-only">
-                {modal === "profile" ? "Din profil" : "Utforsk prosjekter"}
+                Utforsk prosjekter
               </DrawerTitle>
               <DrawerDescription className="sr-only">
                 Dra eller trykk på håndtaket for å endre høyden. Utforsk kart,
@@ -2328,54 +2292,10 @@ export default memo(function Explorer({
               {drawerReady && drawerBody}
             </DrawerContent>
           </DrawerVirtualKeyboardProvider>
-          {/* Nested, so the explorer steps back behind it and follows its swipe. */}
-          <Drawer
-            open={projectDrawerOpen}
-            modal={false}
-            disablePointerDismissal
-            onOpenChange={(open, details) => {
-              if (open) return;
-              if (!profileName) return closePost();
-              // A profile opened from a project steps back to that project.
-              if (postId) details.cancel();
-              closeProfile();
-            }}
-            onOpenChangeComplete={(open) => {
-              if (!open) setShown({ postId: null, profileName: null });
-            }}
-          >
-            <DrawerVirtualKeyboardProvider>
-              <DrawerContent
-                ref={(node) => {
-                  if (node) setProjectDrawerReady(true);
-                }}
-                data-project-drawer=""
-                className={projectDrawerClasses}
-                viewportClassName="z-[51]"
-                contentClassName={projectDrawerInnerClasses}
-                initialFocus={false}
-                finalFocus={false}
-                handle={
-                  <div
-                    aria-hidden="true"
-                    className="flex h-6 w-full shrink-0 touch-none cursor-grab items-center justify-center active:cursor-grabbing"
-                  >
-                    {drawerGrip}
-                  </div>
-                }
-              >
-                <DrawerTitle className="sr-only">
-                  {shown.profileName
-                    ? `Profilen til ${shown.profileName}`
-                    : post?.title || "Prosjektet finnes ikke"}
-                </DrawerTitle>
-                {projectDrawerReady && projectDrawerBody}
-              </DrawerContent>
-            </DrawerVirtualKeyboardProvider>
-          </Drawer>
         </Drawer>
       )}
-      {projectDrawerShell}
+      {panelDrawers}
+      {panelShell}
       {editorOpen && user && !canModerate && (
         <ProjectEditor
           suggest
@@ -2405,7 +2325,7 @@ export default memo(function Explorer({
         />
       )}
 
-      {(!isMobile || !post) && feedback}
+      {feedback}
     </div>
   );
 });
