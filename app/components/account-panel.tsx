@@ -3,7 +3,6 @@
 import Link from "next/link";
 import {
   ArrowLeft,
-  ArrowRight,
   Bell,
   ChevronRight,
   Inbox,
@@ -21,14 +20,13 @@ import ProfileEditor from "./profile-editor";
 import { ProfileContent } from "./profile-page";
 import { authClient } from "../lib/auth-client";
 import { navigateWithFreshSession } from "../lib/auth-navigation";
-import { welcomeHref } from "../lib/account-rules";
+import UsernameForm, { currentPath } from "./username-form";
 import { accountProfile } from "../lib/profiles";
 import { cn } from "../lib/cn";
 import {
   accountAction,
   accountView,
   iconButton,
-  primaryButton,
   secondaryButton,
   textButton,
 } from "../lib/ui";
@@ -48,7 +46,8 @@ export default function AccountPanel({
   followingCount = 0,
   suggestionCount = 0,
   reviewedCount = 0,
-  next = "/",
+  initialView = "profile",
+  onSignedOut,
 }: {
   onBack?: () => void;
   /** Opens the followed projects, where the app has no other entry to them. */
@@ -60,10 +59,14 @@ export default function AccountPanel({
   suggestionCount?: number;
   /** One's own suggestions reviewed since last looked; shown as a badge. */
   reviewedCount?: number;
-  next?: string;
+  initialView?: "profile" | "settings";
+  /** Signed out in place; without it the page reloads where it is. */
+  onSignedOut?: () => void;
 }) {
   const { user, pending } = useAuth();
-  const [view, setView] = useState<"profile" | "edit" | "settings">("profile");
+  const [view, setView] = useState<"profile" | "edit" | "settings">(
+    initialView,
+  );
   const [error, setError] = useState("");
   const [signingOut, setSigningOut] = useState(false);
   const settingsTrigger = useRef<HTMLButtonElement>(null);
@@ -93,7 +96,8 @@ export default function AccountPanel({
     try {
       const result = await authClient.signOut();
       if (result.error) throw new Error();
-      navigateWithFreshSession(next);
+      if (onSignedOut) onSignedOut();
+      else navigateWithFreshSession(currentPath());
     } catch {
       setError("Kunne ikke logge ut. Prøv igjen.");
       setSigningOut(false);
@@ -211,15 +215,10 @@ export default function AccountPanel({
             </div>
             <div className="mt-6 space-y-3">
               {user ? (
-                <Link
-                  href={welcomeHref(next)}
-                  className={cn(primaryButton, "w-full")}
-                >
-                  Fortsett
-                  <ArrowRight size={16} aria-hidden="true" />
-                </Link>
+                // Chosen here, then the page reloads where it is.
+                <UsernameForm />
               ) : (
-                <GoogleSignIn next={next} />
+                <GoogleSignIn next={currentPath()} />
               )}
               <p className="text-xs leading-5 text-muted">
                 E-posten din vises aldri.
@@ -333,7 +332,12 @@ export default function AccountPanel({
               activeView === "settings" ? "flex" : "hidden",
             )}
           >
-            <AccountSettings key={user.id} user={user} embedded />
+            <AccountSettings
+              key={user.id}
+              user={user}
+              embedded
+              onSignedOut={onSignedOut}
+            />
           </div>
         </>
       )}

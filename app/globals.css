@@ -223,3 +223,67 @@
   scrollbar-color: var(--color-border-strong) transparent;
   scrollbar-gutter: stable;
 }
+
+/*
+ * Desktop: maximizing or restoring the sidebar (see `changeMode` in
+ * explorer.tsx). The layer in view grows or shrinks from its old box to its
+ * new one, its two layouts fading through the surface colour; the page
+ * around it holds still, showing the map. Over the list, the logo and the
+ * header controls glide to their new places and the sidebar toggle fades.
+ */
+:root[data-sidebar-transition] [data-sidebar-transition-layer] {
+  view-transition-name: sidebar-layer;
+}
+:root[data-sidebar-transition]
+  [data-sidebar-transition-layer][data-explorer-layer] {
+  & [data-explorer-toggle] {
+    view-transition-name: sidebar-toggle;
+  }
+  & [data-explorer-brand] {
+    view-transition-name: sidebar-brand;
+  }
+  & [data-explorer-nav] {
+    view-transition-name: sidebar-nav;
+  }
+}
+:root[data-sidebar-transition]::view-transition-group(*) {
+  animation-duration: 320ms;
+  animation-timing-function: var(--ease-out-soft);
+}
+/* The map: as it was while maximizing, as it will be while restoring. */
+:root[data-sidebar-transition]::view-transition-old(root),
+:root[data-sidebar-transition]::view-transition-new(root) {
+  animation: none;
+}
+:root[data-sidebar-transition="maximize"]::view-transition-new(root),
+:root[data-sidebar-transition="restore"]::view-transition-old(root) {
+  opacity: 0;
+}
+:root[data-sidebar-transition]::view-transition-group(sidebar-layer) {
+  overflow: clip;
+  background: var(--color-surface);
+}
+/* Each layout at its own size from the top left, clipped by the edge. */
+:root[data-sidebar-transition]::view-transition-old(sidebar-layer),
+:root[data-sidebar-transition]::view-transition-new(sidebar-layer) {
+  inset: 0 auto auto 0;
+  inline-size: auto;
+  block-size: auto;
+  mix-blend-mode: normal;
+}
+:root[data-sidebar-transition]::view-transition-old(sidebar-layer) {
+  animation: sidebar-layout-out 120ms ease-out both;
+}
+:root[data-sidebar-transition]::view-transition-new(sidebar-layer) {
+  animation: sidebar-layout-in 200ms ease-out 70ms both;
+}
+@keyframes sidebar-layout-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes sidebar-layout-in {
+  from {
+    opacity: 0;
+  }
+}

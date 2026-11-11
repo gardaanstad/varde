@@ -16,15 +16,21 @@ import {
 } from "../lib/ui";
 import { cn } from "../lib/cn";
 import ProfileAvatar from "./profile-avatar";
+import GoogleSignIn from "./google-sign-in";
+import { currentPath } from "./username-form";
+import { storeLoginIntent } from "../lib/login-intent";
 
 type Feedback = { action: string; text: string; error?: boolean } | null;
 
 export default function AccountSettings({
   user,
   embedded = false,
+  onSignedOut,
 }: {
   user: typeof authClient.$Infer.Session.user;
   embedded?: boolean;
+  /** Signed out in place; otherwise the page reloads where it is. */
+  onSignedOut?: () => void;
 }) {
   const id = useId();
   const [busy, setBusy] = useState<string | null>(null);
@@ -127,7 +133,8 @@ export default function AccountSettings({
                 const result = await authClient.signOut();
                 if (result.error)
                   throw new Error("Kunne ikke logge ut. Prøv igjen.");
-                navigateWithFreshSession("/");
+                if (onSignedOut) onSignedOut();
+                else navigateWithFreshSession(embedded ? currentPath() : "/");
               })
             }
           >
@@ -205,14 +212,27 @@ export default function AccountSettings({
                 className={cn(fieldControl, "mt-2")}
               />
               {notice("delete")}
-              {reauth && (
-                <Link
-                  href="/logg-inn?next=%2Fkonto&reauth=1"
-                  className={cn(secondaryButton, "mb-3 w-full")}
-                >
-                  Bekreft med Google
-                </Link>
-              )}
+              {reauth &&
+                (embedded ? (
+                  // Back from Google to these settings, where they were.
+                  <div
+                    className="mb-3"
+                    onClickCapture={() => storeLoginIntent({ type: "account" })}
+                  >
+                    <GoogleSignIn
+                      next={currentPath()}
+                      reauthenticate
+                      label="Bekreft med Google"
+                    />
+                  </div>
+                ) : (
+                  <Link
+                    href="/logg-inn?next=%2Fkonto&reauth=1"
+                    className={cn(secondaryButton, "mb-3 w-full")}
+                  >
+                    Bekreft med Google
+                  </Link>
+                ))}
               <div className="mt-3 flex flex-col gap-2">
                 <button
                   type="button"

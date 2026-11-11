@@ -1,0 +1,127 @@
+"use client";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { LogIn } from "lucide-react";
+import { cn } from "../lib/cn";
+
+const reduced = () =>
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+export type SheetAction = {
+  id: string;
+  label: string;
+  icon: ReactNode;
+  onSelect: () => void;
+  /** Greyed out for guests; choosing it asks them to log in. */
+  locked?: boolean;
+  pressed?: boolean;
+};
+
+/**
+ * Phones: a modal list of actions, named by `label` for screen readers along the bottom edge, like the filter
+ * menus and the login prompt. A choice runs once the sheet has slid away,
+ * so focus is back on the trigger first.
+ */
+export default function ActionSheet({
+  label,
+  actions,
+  onClose,
+}: {
+  label: string;
+  actions: SheetAction[];
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  const trigger = useRef<Element | null>(null);
+  const closing = useRef(false);
+
+  useLayoutEffect(() => {
+    const dialog = ref.current;
+    trigger.current = document.activeElement;
+    dialog?.showModal();
+    dialog?.querySelector<HTMLElement>("[data-sheet-action]")?.focus();
+    return () => dialog?.close();
+  }, []);
+
+  function close(then?: () => void) {
+    const dialog = ref.current;
+    const panel = sheet.current;
+    if (closing.current) return;
+    closing.current = true;
+    const done = () => {
+      dialog?.close();
+      const target = trigger.current;
+      if (target instanceof HTMLElement && target.isConnected)
+        target.focus({ preventScroll: true });
+      onClose();
+      then?.();
+    };
+    if (!dialog || !panel || reduced()) return done();
+    const options = { duration: 200, easing: "ease-in", fill: "forwards" as const };
+    const out = panel.animate(
+      [{ transform: "none" }, { transform: "translateY(100%)" }],
+      options,
+    );
+    dialog.animate([{ opacity: 1 }, { opacity: 0 }], {
+      ...options,
+      pseudoElement: "::backdrop",
+    });
+    out.finished.then(done, done);
+  }
+
+  return (
+    <dialog
+      ref={ref}
+      aria-label={label}
+      data-action-sheet=""
+      className={cn(
+        "m-auto mb-0 w-full max-w-none overflow-visible border-0 bg-transparent p-0 text-ink",
+        "backdrop:bg-ink/25 motion-safe:backdrop:animate-backdrop-in",
+      )}
+      onCancel={(event) => {
+        event.preventDefault();
+        close();
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) close();
+      }}
+    >
+      <div
+        ref={sheet}
+        className="rounded-t-[22px] bg-surface px-2 pb-[calc(10px+env(safe-area-inset-bottom))] shadow-bar motion-safe:animate-sheet-in"
+      >
+        <div aria-hidden="true" className="flex justify-center pt-2 pb-3">
+          <span className="h-1 w-9 rounded-full bg-ink/15" />
+        </div>
+        <ul className="flex flex-col gap-0.5">
+          {actions.map((action) => (
+            <li key={action.id}>
+              <button
+                type="button"
+                data-sheet-action={action.id}
+                data-locked={action.locked || undefined}
+                aria-label={
+                  action.locked
+                    ? `${action.label}, krever innlogging`
+                    : undefined
+                }
+                aria-pressed={action.pressed}
+                className={cn(
+                  "flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-left text-body -outline-offset-2",
+                  "transition-colors duration-150 active:bg-surface-muted motion-reduce:transition-none",
+                  "[&>svg]:shrink-0 [&>svg]:text-muted",
+                  action.locked && "text-muted [&>svg]:text-muted/60",
+                )}
+                onClick={() => close(action.onSelect)}
+              >
+                {action.icon}
+                <span className="flex-1">{action.label}</span>
+                {action.locked && <LogIn size={16} aria-hidden="true" />}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </dialog>
+  );
+}

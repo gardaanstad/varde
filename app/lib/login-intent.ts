@@ -9,7 +9,9 @@ export type LoginIntent =
   | { type: "suggest-project" }
   | { type: "comment"; projectId: string }
   | { type: "tip"; projectId: string }
-  | { type: "edit"; projectId: string };
+  | { type: "edit"; projectId: string }
+  /** Account settings, after confirming the Google account again. */
+  | { type: "account" };
 
 const key = "varde-login-intent";
 
