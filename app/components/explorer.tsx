@@ -56,6 +56,13 @@ import {
   subscribeCollapsed,
 } from "../lib/explore-state";
 import type { MapApi, MapViewChange } from "./project-map";
+import {
+  extentPoints,
+  findPlace,
+  placeInView,
+  places,
+  projectPlaces,
+} from "../lib/places";
 import { errorMessage } from "../lib/api-client";
 import { profileHref } from "../lib/profiles";
 import { useAuth } from "./auth-provider";
@@ -356,8 +363,13 @@ export default memo(function Explorer({
     : collapsedPref
       ? "collapsed"
       : "normal";
-  // Maximized, the map no longer filters the list; a place does instead.
-  const [place, setPlace] = useState(initial.full ? initial.place ?? "" : "");
+  // The place shown in "Velg sted". Beside the map it follows the view and
+  // picking one moves the map there; maximized, it filters the list instead.
+  const [place, setPlace] = useState(
+    initial.place && findPlace(initial.place) ? initial.place : "",
+  );
+  // A picked place holds while the map flies there.
+  const placeHold = useRef<{ name: string; until: number } | null>(null);
   const [profileName, setProfileName] = useState<string | null>(
     initialProfile || null,
   );
@@ -606,12 +618,22 @@ export default memo(function Explorer({
   // Norway. Maximized, the map is out of sight and the place filters instead.
   const listBounds = maximized && !isMobile ? null : (frozenBounds ?? viewBounds);
   const listPlace = maximized && !isMobile ? place : "";
+  const placesOf = useMemo(
+    () =>
+      new Map(
+        projects.map((project) => [
+          project.id,
+          projectPlaces(project.city, project.center),
+        ]),
+      ),
+    [projects],
+  );
   const inPlace = useCallback(
     (project: Project) =>
       listBounds
         ? projectInBounds(project, listBounds)
-        : !listPlace || project.city === listPlace,
-    [listBounds, listPlace],
+        : !listPlace || !!placesOf.get(project.id)?.includes(listPlace),
+    [listBounds, listPlace, placesOf],
   );
   const inView = useMemo(
     () => projects.filter(inPlace),
@@ -772,15 +794,41 @@ export default memo(function Explorer({
       setViewBounds(view.bounds);
     }
     if (!postView.current) setFrozenBounds(null);
+    followPlace(view);
     window.clearTimeout(urlTimer.current);
     urlTimer.current = window.setTimeout(syncUrl, 300);
   }
+  /** Beside the map, "Velg sted" names the place the view shows. */
+  function followPlace(view: MapViewChange) {
+    // Maximized, the place filters the list; an open project's framing
+    // is passing.
+    if ((maximized && !isMobile) || postView.current) return;
+    const hold = placeHold.current;
+    if (hold && Date.now() < hold.until) return setPlace(hold.name);
+    placeHold.current = null;
+    setPlace((current) => placeInView(view.bounds, current));
+  }
+  /** Moves the map to a place, or out to Norway for none. */
+  function goToPlace(name: string) {
+    setPlace(name);
+    const found = findPlace(name);
+    placeHold.current = { name: found ? name : "", until: Date.now() + 1500 };
+    if (isMobile) setSnapPoint(middleSnapPoint);
+    // On phones, framed above the middle drawer it steps to.
+    if (found)
+      mapApi.current?.fit(extentPoints(found.extent), { maxZoom: 14 });
+    else mapApi.current?.showNorway();
+  }
+  function pickPlace(name: string) {
+    if (maximized && !isMobile) return setPlace(name);
+    goToPlace(name);
+  }
   function onMapReady(api: MapApi) {
     mapApi.current = api;
-    // A place picked before the map was ready.
+    // A place picked before the map was ready, or linked without a view.
     const fit = pendingFit.current;
     pendingFit.current = null;
-    if (fit?.length) return fitProjects(fit);
+    if (fit) return goToPlace(fit);
     // A project link frames its project, unless the URL already places the map.
     if (initialProjectId) enterPostView(initialProjectId, !initial.view);
   }
@@ -923,7 +971,9 @@ export default memo(function Explorer({
   // Desktop: one mode for the whole sidebar, whichever panel is on top.
   // The map keeps its size throughout, except when collapsing frees its
   // left edge (see the effect below).
-  const pendingFit = useRef<Project[] | null>(null);
+  const pendingFit = useRef<string | null>(
+    !initial.full && !initial.view && place ? place : null,
+  );
   // The mode a change is animating from; the layout holds both until then.
   const [modeFrom, setModeFrom] = useState<SidebarMode | null>(null);
   function animateFrom() {
@@ -940,10 +990,7 @@ export default memo(function Explorer({
     if (!maximized) return;
     animateFrom();
     setMaximized(false);
-    if (place) {
-      pendingFit.current = projects.filter((project) => project.city === place);
-      setPlace("");
-    }
+    if (place) pendingFit.current = place;
   }
   function toggleCollapsed() {
     animateFrom();
@@ -1049,12 +1096,15 @@ export default memo(function Explorer({
       );
     }
   }, [exiting, previousLayers, isMobile]);
+  const fitPending = useEffectEvent(() => {
+    const fit = pendingFit.current;
+    pendingFit.current = null;
+    if (fit) goToPlace(fit);
+  });
   useEffect(() => {
     if (isMobile || !mapApi.current) return;
     mapApi.current.syncSize();
-    const fit = pendingFit.current;
-    pendingFit.current = null;
-    if (fit?.length) fitProjects(fit);
+    fitPending();
     // Runs once the map has its new width: at the start of collapsing, the
     // end of expanding, and not at all when maximizing.
   }, [asideCollapsed, sidebarMode, isMobile]);
@@ -1137,7 +1187,8 @@ export default memo(function Explorer({
     statusChanged || category.length > 0 || !!needle || !!listPlace;
   function resetFilters() {
     setQuery("");
-    setPlace("");
+    // Beside the map, the place is where the map is, not a filter.
+    if (listPlace) setPlace("");
     setMobileSearchOpen(false);
     setStatus(defaultStatus);
     setCategory([]);
@@ -1270,21 +1321,29 @@ export default memo(function Explorer({
       ).length,
     }),
   }));
-  // Places in Norway with projects, counted by the other filters.
+  // Cities and counties with projects, counted by the other filters.
   const placeOptions = useMemo(() => {
     const counts = new Map<string, number>();
     for (const project of matching)
-      counts.set(project.city, (counts.get(project.city) ?? 0) + 1);
-    const cities = [...new Set(projects.map((project) => project.city))]
-      .filter(Boolean)
-      .sort((a, b) => a.localeCompare(b, "nb"));
-    // Cleared by its chip, like the categories.
-    return cities.map((city) => ({
-      value: city,
-      label: city,
-      count: counts.get(city) ?? 0,
-    }));
-  }, [matching, projects]);
+      for (const name of placesOf.get(project.id) ?? [])
+        counts.set(name, (counts.get(name) ?? 0) + 1);
+    const listed = new Set(
+      projects.flatMap((project) => placesOf.get(project.id) ?? []),
+    );
+    if (place) listed.add(place);
+    return [
+      { value: "", label: "Hele Norge" },
+      ...places
+        .filter(({ name }) => listed.has(name))
+        .map(({ name }) => name)
+        .sort((a, b) => a.localeCompare(b, "nb"))
+        .map((name) => ({
+          value: name,
+          label: name,
+          ...(!isMobile && { count: counts.get(name) ?? 0 }),
+        })),
+    ];
+  }, [isMobile, matching, place, placesOf, projects]);
   const statusFilter = (
     <ChoiceSelect
       label="Status"
@@ -1314,6 +1373,19 @@ export default memo(function Explorer({
         inert={mobileSearchOpen}
         aria-hidden={mobileSearchOpen || undefined}
       >
+        <ChoiceSelect
+          label="Sted"
+          value={place}
+          onChange={pickPlace}
+          triggerLabel={place || "Velg sted"}
+          className={cn(
+            inlineChoiceClasses,
+            "[&_[data-slot=choice-trigger]>span:nth-of-type(2)]:hidden",
+            !place &&
+              "[&_[data-slot=choice-trigger]]:font-medium [&_[data-slot=choice-trigger]]:text-muted",
+          )}
+          options={placeOptions}
+        />
         <ChoiceSelect
           label="Kategori"
           multiple
@@ -1369,11 +1441,11 @@ export default memo(function Explorer({
       options={sortOptions}
     />
   );
-  const placeFilter = sidebarMode === "maximized" && (
+  const placeFilter = (
     <ChoiceSelect
       label="Sted"
       value={place}
-      onChange={setPlace}
+      onChange={pickPlace}
       triggerLabel={place || "Velg sted"}
       icon={<MapPin size={15} aria-hidden="true" />}
       className={cn(panelChoiceClasses, place && panelChoiceActive)}
