@@ -33,6 +33,14 @@ import {
   textButton,
 } from "../lib/ui";
 
+/** A row in the profile's shortcut list, divided like the project list. */
+const profileLink = cn(
+  "relative isolate flex min-h-12 w-full items-center gap-3 border-b border-border text-left text-sm font-medium text-ink",
+  "before:absolute before:inset-x-[-10px] before:inset-y-0.5 before:-z-1 before:rounded-lg hover:before:bg-surface-muted/65",
+  "outline-none focus-visible:before:outline-2 focus-visible:before:outline-focus",
+  "[&>svg]:shrink-0 [&>svg]:text-muted",
+);
+
 export default function AccountPanel({
   onBack,
   onFollowing,
@@ -98,7 +106,31 @@ export default function AccountPanel({
   // Top-level views read like any profile; the dialog or this button closes.
   const top = cn(
     scroll,
-    "px-7 pt-7 pb-8 max-sm:px-4.5 max-sm:pt-1",
+    "px-5 pb-8 max-md:px-4.5",
+    onBack ? "pt-7 max-sm:pt-1" : "pt-1",
+  );
+
+  const suggestionsLink = (
+    <>
+      <Inbox size={18} aria-hidden="true" />
+      <span className="flex-1">Forslag</span>
+      {reviewedCount > 0 ? (
+        <span
+          className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums"
+          data-reviewed
+        >
+          {reviewedCount}
+          <span className="sr-only"> behandlet</span>
+        </span>
+      ) : (
+        suggestionCount > 0 && (
+          <span className="text-ui text-muted tabular-nums">
+            {suggestionCount}
+          </span>
+        )
+      )}
+      <ChevronRight size={16} aria-hidden="true" />
+    </>
   );
 
   return (
@@ -229,90 +261,55 @@ export default function AccountPanel({
           >
             <ProfileContent
               profile={accountProfile({ ...user, username: user.username })}
-              embedded
               onEdit={() => switchView("edit")}
               editRef={editTrigger}
               actions={
                 <button
                   ref={settingsTrigger}
                   type="button"
-                  className={cn(secondaryButton, "size-11 px-0")}
+                  className={cn(secondaryButton, "size-10 min-h-10 px-0")}
                   onClick={() => switchView("settings")}
                   aria-label="Kontoinnstillinger"
                   data-tooltip="Kontoinnstillinger"
                 >
-                  <Settings size={17} aria-hidden="true" />
+                  <Settings size={16} aria-hidden="true" />
                 </button>
               }
               links={
-                <div className="mt-4">
+                <div className="mt-5 border-t border-border">
                   {onFollowing && (
                     <button
                       type="button"
-                      className={cn(accountAction, "min-h-12 rounded-lg")}
+                      className={profileLink}
                       onClick={onFollowing}
                     >
                       <Bell size={18} aria-hidden="true" />
-                      <span className="flex-1 text-sm">Følger</span>
+                      <span className="flex-1">Følger</span>
                       {followingCount > 0 && (
-                        <span className="text-xs tabular-nums text-muted">
+                        <span className="text-ui text-muted tabular-nums">
                           {followingCount}
                         </span>
                       )}
                       <ChevronRight size={16} aria-hidden="true" />
                     </button>
                   )}
-{onSuggestions ? (
+                  {onSuggestions ? (
                     <button
                       type="button"
-                      className={cn(accountAction, "min-h-12 rounded-lg")}
+                      className={profileLink}
                       onClick={onSuggestions}
                     >
-                    <Inbox size={18} aria-hidden="true" />
-                    <span className="flex-1 text-sm">Forslag</span>
-                    {reviewedCount > 0 ? (
-                      <span
-                        className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums"
-                        data-reviewed
-                      >
-                        {reviewedCount}
-                        <span className="sr-only"> behandlet</span>
-                      </span>
-                    ) : (
-                      suggestionCount > 0 && (
-                        <span className="text-xs tabular-nums text-muted">
-                          {suggestionCount}
-                        </span>
-                      )
-                    )}
-                    <ChevronRight size={16} aria-hidden="true" />
-                  </button>
+                      {suggestionsLink}
+                    </button>
                   ) : (
-                                    <Link
-                    href="/forslag"
-                    // Opening the page marks reviews as seen; never prefetch it.
-                    prefetch={false}
-                    className={cn(accountAction, "min-h-12 rounded-lg")}
-                  >
-                    <Inbox size={18} aria-hidden="true" />
-                    <span className="flex-1 text-sm">Forslag</span>
-                    {reviewedCount > 0 ? (
-                      <span
-                        className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums"
-                        data-reviewed
-                      >
-                        {reviewedCount}
-                        <span className="sr-only"> behandlet</span>
-                      </span>
-                    ) : (
-                      suggestionCount > 0 && (
-                        <span className="text-xs tabular-nums text-muted">
-                          {suggestionCount}
-                        </span>
-                      )
-                    )}
-                    <ChevronRight size={16} aria-hidden="true" />
-                  </Link>
+                    <Link
+                      href="/forslag"
+                      // Opening the page marks reviews as seen; never prefetch it.
+                      prefetch={false}
+                      className={profileLink}
+                    >
+                      {suggestionsLink}
+                    </Link>
                   )}
                 </div>
               }
