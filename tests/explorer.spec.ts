@@ -812,7 +812,10 @@ test.describe("desktop explorer", () => {
       name: "Filtrer prosjekter",
       exact: true,
     });
-    await expect(filters.getByRole("button", { name: /^Sted/ })).toHaveCount(0);
+    // Beside the map, the place names what the map shows.
+    const place = (name: string) =>
+      filters.getByRole("button", { name: `Sted: ${name}`, exact: true });
+    await expect(place("Oslo")).toBeVisible();
     await page.getByRole("button", { name: "Vis som helside", exact: true }).click();
     await expect(page.locator("#project-panel")).toHaveAttribute(
       "data-sidebar-mode",
@@ -821,18 +824,17 @@ test.describe("desktop explorer", () => {
     await expect(
       page.getByRole("main", { name: "Utforsk prosjekter" }),
     ).toHaveAttribute("inert", "");
-    // The map no longer narrows the list; a place can instead.
+    // The map no longer narrows the list; the place does instead.
+    await expect(card(page, project.title)).toBeVisible();
+    await expect(card(page, "Nyhavna")).toHaveCount(0);
+    await place("Oslo").click();
+    const options = page.getByRole("listbox", { name: "Sted", exact: true });
+    await options.getByRole("option", { name: /^Hele Norge/ }).click();
+    await expect(place("Hele Norge")).toHaveText("Velg sted");
     await expect(card(page, "Nyhavna")).toBeVisible();
-    const place = filters.getByRole("button", { name: "Sted", exact: true });
-    await expect(place).toHaveText("Velg sted");
-    await place.click();
-    await page
-      .getByRole("listbox", { name: "Sted", exact: true })
-      .getByRole("option", { name: /^Bergen/ })
-      .click();
-    await expect(
-      filters.getByRole("button", { name: "Sted: Bergen", exact: true }),
-    ).toBeVisible();
+    await place("Hele Norge").click();
+    await options.getByRole("option", { name: /^Bergen/ }).click();
+    await expect(place("Bergen")).toBeVisible();
     await expect(card(page, "Bybanen til Åsane")).toBeVisible();
     await expect(card(page, "Nyhavna")).toHaveCount(0);
     await expect(card(page, project.title)).toHaveCount(0);
@@ -840,10 +842,11 @@ test.describe("desktop explorer", () => {
     await page.reload();
     await expect(card(page, "Bybanen til Åsane")).toBeVisible();
     await expect(card(page, "Nyhavna")).toHaveCount(0);
-    // Back beside the map, it shows the place picked.
+    // Back beside the map, it shows the place picked, which stays picked.
     await page.getByRole("button", { name: "Vis kart", exact: true }).click();
-    await expect.poll(() => mapParam(page)).toMatch(/^60\./);
+    await expect.poll(() => mapParam(page)).toMatch(/^60\.3/);
     await expect(page).not.toHaveURL(/sted=/);
+    await expect(place("Bergen")).toBeVisible();
     await expect(card(page, "Bybanen til Åsane")).toBeVisible();
     await expect(card(page, project.title)).toHaveCount(0);
     // Both ways animate the clip, not the layout; Escape also restores.
@@ -876,6 +879,119 @@ test.describe("desktop explorer", () => {
     await expect(
       page.getByRole("main", { name: "Utforsk prosjekter" }),
     ).not.toHaveAttribute("inert");
+  });
+});
+
+test.describe("the place follows the map", () => {
+  const zoomOf = (page: Page) =>
+    Number(new URL(page.url()).searchParams.get("kart")?.split(",")[2]);
+  const latOf = (page: Page) =>
+    Number(new URL(page.url()).searchParams.get("kart")?.split(",")[0]);
+  const listed = (page: Page, title: string) =>
+    page
+      .getByRole("region", { name: "Prosjektliste", exact: true })
+      .getByRole("button", { name: new RegExp(`^${title} · `) });
+
+  test.describe("desktop", () => {
+    test.use({ viewport: { width: 1280, height: 800 } });
+    const place = (page: Page, name: string) =>
+      page
+        .getByRole("region", { name: "Filtrer prosjekter", exact: true })
+        .getByRole("button", { name: `Sted: ${name}`, exact: true });
+
+    test("picking a place moves the map; zooming names the place; clearing shows Norway", async ({
+      page,
+    }) => {
+      await page.goto("/?kart=59.9100,10.7500,9");
+      // Zoomed out over Oslo, the view is mostly Akershus.
+      await expect(place(page, "Akershus")).toBeVisible();
+      const zoomIn = page.getByRole("button", { name: "Zoom inn", exact: true });
+      await zoomIn.click();
+      await expect.poll(() => zoomOf(page)).toBe(10);
+      await zoomIn.click();
+      await expect.poll(() => zoomOf(page)).toBe(11);
+      await expect(place(page, "Oslo")).toBeVisible();
+      // Picking moves the map, and the list follows it.
+      await place(page, "Oslo").click();
+      const options = page.getByRole("listbox", { name: "Sted", exact: true });
+      await options.getByRole("option", { name: /^Bergen/ }).click();
+      await expect.poll(() => latOf(page)).toBeCloseTo(60.37, 1);
+      await expect(place(page, "Bergen")).toBeVisible();
+      await expect(listed(page, "Bybanen til Åsane")).toBeVisible();
+      await expect(listed(page, seedProjects[0].title)).toHaveCount(0);
+      // Zooming out of Bergen passes Vestland's view, then none.
+      const zoomOut = page.getByRole("button", { name: "Zoom ut", exact: true });
+      await expect(async () => {
+        await zoomOut.click();
+        await expect(place(page, "Vestland")).toBeVisible({ timeout: 1500 });
+      }).toPass();
+      await expect(async () => {
+        await zoomOut.click();
+        await expect.poll(() => zoomOf(page), { timeout: 1500 }).toBeLessThan(6);
+      }).toPass();
+      await expect(place(page, "Hele Norge")).toHaveText("Velg sted");
+      // Clearing shows all of Norway.
+      await place(page, "Hele Norge").click();
+      await options.getByRole("option", { name: /^Bergen/ }).click();
+      await expect(place(page, "Bergen")).toBeVisible();
+      await place(page, "Bergen").click();
+      await options.getByRole("option", { name: /^Hele Norge/ }).click();
+      await expect(place(page, "Hele Norge")).toHaveText("Velg sted");
+      await expect.poll(() => zoomOf(page)).toBeLessThan(7);
+      await expect(listed(page, "Nyhavna")).toBeVisible();
+    });
+
+    test("a linked place frames the map", async ({ page }) => {
+      await page.goto("/?sted=Trondheim");
+      await expect(place(page, "Trondheim")).toBeVisible();
+      await expect.poll(() => latOf(page)).toBeCloseTo(63.41, 1);
+      await expect(listed(page, "Nyhavna")).toBeVisible();
+    });
+  });
+
+  test.describe("mobile", () => {
+    test.use({
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+      userAgent: devices["Pixel 7"].userAgent,
+    });
+
+    test("the drawer picks and clears a place, framed above it", async ({
+      page,
+    }) => {
+      await page.goto("/?kart=64.0000,12.0000,4");
+      const filters = page
+        .locator("[data-explorer-drawer]")
+        .getByRole("region", { name: "Filtrer prosjekter", exact: true });
+      const place = (name: string) =>
+        filters.getByRole("button", { name: `Sted: ${name}`, exact: true });
+      await expect(place("Hele Norge")).toHaveText("Velg sted");
+      await place("Hele Norge").click();
+      const options = page.getByRole("listbox", { name: "Sted", exact: true });
+      await options.getByRole("option", { name: /^Bergen/ }).click();
+      await expect(place("Bergen")).toBeVisible();
+      await expectDrawerHeight(page, 0.58);
+      await expect(listed(page, "Bybanen til Åsane")).toBeVisible();
+      // Bergen's centre lies in the map the drawer leaves open.
+      const top = await page
+        .locator("[data-explorer-drawer]")
+        .evaluate((element) => element.getBoundingClientRect().top);
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const shape = document.querySelector(
+              'path[data-project-id="bybanen"]',
+            );
+            return shape?.getBoundingClientRect().bottom ?? Infinity;
+          }),
+        )
+        .toBeLessThan(top);
+      await place("Bergen").click();
+      await options.getByRole("option", { name: /^Hele Norge/ }).click();
+      await expect(place("Hele Norge")).toHaveText("Velg sted");
+      await expect.poll(() => zoomOf(page)).toBeLessThan(7);
+    });
   });
 });
 
