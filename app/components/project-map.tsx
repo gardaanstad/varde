@@ -3,6 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "maplibre-gl/dist/maplibre-gl.css";
+import { maplibreGL } from "@maplibre/maplibre-gl-leaflet";
+import type maplibregl from "maplibre-gl";
 import "./project-map.css";
 import {
   Building2,
@@ -17,12 +20,14 @@ import {
   Undo2,
 } from "lucide-react";
 import {
-  type Bounds,
   cities,
+  lineDotZoom,
+  lineMidpoint,
   norwayBounds,
   type Point,
   type Project,
   statuses,
+  type ViewBounds,
 } from "../lib/data";
 import {
   type MapView,
@@ -43,36 +48,10 @@ const shapeStyle = (line: boolean, selected: boolean) => ({
 const dotRadius = (selected: boolean) => (selected ? 8 : 6);
 // Below this zoom areas collapse to dots and nearby projects group together.
 const clusterZoom = 12;
-// Below this zoom alignments collapse to dots too: wider than a county,
-// even long lines are short scribbles, so every project reads as a point.
-const lineDotZoom = 8;
 // Screen distance within which projects join a group.
 const clusterRadius = 44;
 // Alignments only group once they're this short on screen.
 const clusterLineExtent = 64;
-
-/** The point halfway along a line, so its dot sits on the alignment. */
-function lineMidpoint(points: Point[]): Point {
-  if (points.length < 2) return points[0];
-  // Longitude shrinks with latitude; this keeps lengths roughly true.
-  const scale = Math.cos((points[0][0] * Math.PI) / 180);
-  const lengths = points
-    .slice(1)
-    .map(([lat, lng], index) =>
-      Math.hypot(lat - points[index][0], (lng - points[index][1]) * scale),
-    );
-  let remaining = lengths.reduce((sum, length) => sum + length, 0) / 2;
-  for (const [index, length] of lengths.entries()) {
-    if (remaining <= length && length > 0) {
-      const [lat, lng] = points[index];
-      const [nextLat, nextLng] = points[index + 1];
-      const t = remaining / length;
-      return [lat + (nextLat - lat) * t, lng + (nextLng - lng) * t];
-    }
-    remaining -= length;
-  }
-  return points[points.length - 1];
-}
 
 function clusterIcon(count: number) {
   const size = count < 10 ? 32 : count < 50 ? 38 : 44;
@@ -177,22 +156,32 @@ export type MapApi = {
   show: (view: MapView) => void;
   showNorway: () => void;
   /**
-   * While the container is being resized by hand: `syncSize` keeps the right
-   * edge's geography in place, and views are reported once it ends.
+   * The map follows its container on its own, keeping the geography on
+   * screen in place; `syncSize` does so at once. While the container is
+   * resized by hand, views are reported once it ends.
    */
   beginResize: () => void;
   syncSize: () => void;
   endResize: () => void;
 };
-export type MapViewChange = MapView & { bounds: Bounds };
+export type MapViewChange = MapView & { bounds: ViewBounds };
 const reducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-// Tiles load once a zoom settles, not for each step of its animation, and
-// a wider ring stays around the view so panning back needs no reload.
-const tileLoading: L.TileLayerOptions = {
-  updateWhenZooming: false,
-  keepBuffer: 4,
+// Vector maps from OpenFreeMap: free, without keys or limits, and drawn
+// by the browser, so labels and lines are sharp at any pixel density and at
+// half zoom steps. Positron is a quiet grey base for the projects; Liberty
+// is a street map.
+const mapStyles: Record<MapLayer, string> = {
+  standard: "https://tiles.openfreemap.org/styles/positron",
+  streets: "https://tiles.openfreemap.org/styles/liberty",
 };
+const norwegianName: maplibregl.ExpressionSpecification = [
+  "coalesce",
+  ["get", "name:no"],
+  ["get", "name"],
+];
+const mapAttribution =
+  '<a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/" target="_blank" rel="noreferrer">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
 // Stable defaults, so drawing maps don't rebuild their layers on each render.
 const noProjects: Project[] = [];
 const noPoints: Point[] = [];
@@ -274,6 +263,9 @@ export default function ProjectMap({
     commit: (next: Point[]) => void;
   }>({ onSelect, onViewChange, onReady, draw, commit: () => {} });
   const resizing = useRef(false);
+  // Set while the map catches up with its container's new size and place.
+  const syncing = useRef(false);
+  const syncRef = useRef(() => {});
   // Drawing edits can be undone one by one, moves and removals included.
   const [history, setHistory] = useState<Point[][]>([]);
   const [ready, setReady] = useState(false);
@@ -347,6 +339,8 @@ export default function ProjectMap({
       zoomSnap: draw ? 1 : 0.5,
       maxZoom: 19,
       doubleClickZoom: !draw,
+      // The container is watched instead (below), which also sees panels.
+      trackResize: false,
     }).setView(cities.Oslo.center, 13);
     L.control
       .attribution({ position: "bottomright", prefix: false })
@@ -360,18 +354,43 @@ export default function ProjectMap({
     map.on("click", () => {
       if (!handlers.current.draw) handlers.current.onSelect(null);
     });
-    const resize = new ResizeObserver(() => {
-      if (
-        !resizing.current &&
-        container.current?.clientWidth &&
-        container.current.clientHeight
-      )
-        map.invalidateSize();
-    });
-    resize.observe(container.current);
+    // The container grows and shrinks as panels beside it open, close and
+    // resize. The geography on screen stays where it is: the edge that moves
+    // uncovers or covers map, it doesn't drag it along. Run before paint, so
+    // there's no frame where the map has jumped.
+    const element = container.current;
+    let edge = element.getBoundingClientRect();
+    const pane = map.getPane("mapPane")!;
+    syncRef.current = () => {
+      const rect = element.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const offset = L.point(rect.left - edge.left, rect.top - edge.top);
+      const resized =
+        rect.width !== edge.width || rect.height !== edge.height;
+      edge = rect;
+      if (!resized && !offset.x && !offset.y) return;
+      syncing.current = true;
+      // Keeps the top-left corner's geography; the offset covers the rest.
+      map.invalidateSize({ pan: false });
+      if (offset.x || offset.y)
+        L.DomUtil.setPosition(
+          pane,
+          L.DomUtil.getPosition(pane).subtract(offset),
+        );
+      syncing.current = false;
+      // Panning without a view reset, so tiles stay instead of reloading.
+      map.fire("move").fire("moveend");
+    };
+    const sync = () => syncRef.current();
+    const resize = new ResizeObserver(sync);
+    resize.observe(element);
+    // The container can also move without resizing.
+    window.addEventListener("resize", sync);
     setReady(true);
     return () => {
       resize.disconnect();
+      window.removeEventListener("resize", sync);
+      syncRef.current = () => {};
       mapRef.current = null;
       map.stop();
       map.remove();
@@ -379,47 +398,48 @@ export default function ProjectMap({
   }, [draw, frame]);
   useEffect(() => {
     if (!ready || !mapRef.current) return;
-    const canvas = layer !== "streets";
-    const tiles = L.tileLayer(
-      canvas
-        ? "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
-        : "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-      {
-        attribution: canvas
-          ? 'Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>'
-          : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>',
-        maxZoom: 19,
-        maxNativeZoom: canvas ? 16 : 19,
-        ...tileLoading,
-      },
-    ).addTo(mapRef.current);
-    const labels = canvas
-      ? L.tileLayer(
-          "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
-          {
-            maxZoom: 19,
-            maxNativeZoom: 16,
-            pane: "overlayPane",
-            // Faded per tile in CSS, not with the layer's own opacity.
-            className: "project-labels",
-            ...tileLoading,
-          },
-        ).addTo(mapRef.current)
-      : null;
+    const base = maplibreGL({
+      style: mapStyles[layer],
+      attributionControl: { customAttribution: mapAttribution },
+      // Draws a margin around the view, so panning shows map, not blank.
+      padding: 0.15,
+    } as L.LeafletMaplibreGLOptions).addTo(mapRef.current);
     let failures = 0;
-    tiles.on("tileerror", () => {
+    const gl = base.getMaplibreMap();
+    gl.on("style.load", () => {
+      for (const style of gl.getStyle().layers) {
+        if (style.type !== "symbol") continue;
+        // Norwegian place names, not the English ones the styles prefer.
+        const field = gl.getLayoutProperty(style.id, "text-field");
+        if (JSON.stringify(field ?? "").includes("name"))
+          gl.setLayoutProperty(style.id, "text-field", norwegianName);
+        // The base's labels step back behind the projects.
+        if (layer === "standard") {
+          gl.setPaintProperty(style.id, "text-opacity", 0.8);
+          gl.setPaintProperty(style.id, "icon-opacity", 0.8);
+        }
+      }
+    });
+    gl.on("error", () => {
       if (++failures > 4)
         setMapMessage("Kartet kunne ikke lastes. Prøv et annet kartlag.");
     });
+    // Whether the base map has drawn everything for the view; for tests.
+    const root = mapRef.current.getContainer().parentElement;
+    const idle = (value: boolean) =>
+      root?.setAttribute("data-basemap", value ? "idle" : "loading");
+    idle(false);
+    gl.on("dataloading", () => idle(false));
+    gl.on("movestart", () => idle(false));
+    gl.on("idle", () => idle(true));
     // Only after failures, so loading tiles doesn't touch React state.
-    tiles.on("tileload", () => {
+    gl.on("data", () => {
       if (!failures) return;
       failures = 0;
       setMapMessage("");
     });
     return () => {
-      tiles.remove();
-      labels?.remove();
+      base.remove();
     };
   }, [ready, layer]);
   useEffect(() => {
@@ -461,7 +481,7 @@ export default function ProjectMap({
     if (start) map.setView(start.center, start.zoom, { animate: false });
     else showNorway(false);
     const report = () => {
-      if (resizing.current) return;
+      if (resizing.current || syncing.current) return;
       const center = map.getCenter();
       const size = map.getSize();
       const bounds = L.latLngBounds(
@@ -483,17 +503,13 @@ export default function ProjectMap({
           west: bounds.getWest(),
           north: bounds.getNorth(),
           east: bounds.getEast(),
+          zoom: view.zoom,
         },
       });
     };
     report();
     map.on("moveend", report);
-    const syncSize = () => {
-      const before = map.getSize().x;
-      map.invalidateSize({ pan: false });
-      const change = map.getSize().x - before;
-      if (change) map.panBy([-change, 0], { animate: false });
-    };
+    const syncSize = () => syncRef.current();
     // Leaflet drops new views while a zoom animates, so they wait for its end.
     const settled = (move: () => void) => {
       map.off("zoomend", pending);

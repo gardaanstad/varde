@@ -9,11 +9,6 @@
   color: var(--color-muted) !important;
 }
 
-/* plus-lighter makes tiles vanish on WebKit. */
-[data-project-map] .leaflet-container img.leaflet-tile {
-  mix-blend-mode: normal;
-}
-
 [data-project-map] .leaflet-control-attribution {
   background: rgb(255 255 255 / 0.78) !important;
   color: var(--color-muted);
@@ -43,11 +38,8 @@
 /*
  * No filters or opacity on the tile pane or layer containers: a moving
  * container with an effect is recomposited on every frame of a pan or zoom,
- * which was the main source of map lag. Tile images carry their own opacity.
+ * which was the main source of map lag.
  */
-[data-project-map] .project-labels img.leaflet-tile {
-  opacity: 0.8;
-}
 
 [data-project-map] .leaflet-interactive {
   transition:
