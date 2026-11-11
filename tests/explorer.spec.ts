@@ -854,6 +854,11 @@ test.describe("desktop explorer", () => {
               .some((frame) => "clipPath" in frame),
           ),
       );
+    // Drawing the base map can hold up the page while it animates.
+    await expect(page.locator("[data-basemap]")).toHaveAttribute(
+      "data-basemap",
+      "idle",
+    );
     await page.getByRole("button", { name: "Vis som helside", exact: true }).click();
     expect(await clipping()).toBe(true);
     await expect.poll(clipping).toBe(false);
@@ -948,5 +953,118 @@ test.describe("desktop sidebar panels", () => {
     await expect(account).toHaveCount(0);
     await expect(sidebar).toHaveAttribute("data-sidebar-mode", "normal");
     await expect(list).toBeVisible();
+  });
+});
+
+test.describe("the list holds what the uncovered map shows", () => {
+  const listed = (page: Page, title: string) =>
+    page
+      .getByRole("region", { name: "Prosjektliste", exact: true })
+      .getByRole("button", { name: new RegExp(`^${title} · `) });
+  const byId = (id: string) => seedProjects.find((item) => item.id === id)!;
+  const zoom = 14;
+  // Web Mercator pixels at `zoom`, as Leaflet places them.
+  const scale = 256 * 2 ** zoom;
+  const toPixel = ([lat, lng]: [number, number]) => [
+    (scale * (lng + 180)) / 360,
+    scale *
+      (0.5 - Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) / (2 * Math.PI)),
+  ];
+  const toLatLng = ([x, y]: number[]) => [
+    (Math.atan(Math.exp((0.5 - y / scale) * 2 * Math.PI)) * 360) / Math.PI - 90,
+    (x / scale) * 360 - 180,
+  ];
+  /** A view placing `point` at `at` in the map's container. */
+  async function viewWith(
+    page: Page,
+    point: [number, number],
+    at: [number, number],
+  ) {
+    const box = (await page.locator(".leaflet-container").boundingBox())!;
+    const [x, y] = toPixel(point);
+    const [lat, lng] = toLatLng([
+      x - at[0] + box.width / 2,
+      y - at[1] + box.height / 2,
+    ]);
+    return `/?kart=${lat.toFixed(6)},${lng.toFixed(6)},${zoom}`;
+  }
+  async function show(page: Page, url: string) {
+    await page.goto(url);
+    await expect(page.locator("path[data-project-id]").first()).toBeAttached();
+    // Far away, so this only passes once the map has narrowed the list.
+    await expect(listed(page, "Nyhavna")).toHaveCount(0);
+  }
+  const area = byId("regjeringskvartalet");
+  const east = area.geometry.reduce((a, b) => (b[1] > a[1] ? b : a));
+  const north = area.geometry.reduce((a, b) => (b[0] > a[0] ? b : a));
+  const line = byId("fornebubanen");
+
+  test.describe("desktop", () => {
+    test.use({ viewport: { width: 1280, height: 800 } });
+
+    test("behind the sidebar is out; just past its edge is in", async ({
+      page,
+    }) => {
+      await page.goto("/");
+      const box = (await page.locator(".leaflet-container").boundingBox())!;
+      const aside = (await page.locator("#project-panel").boundingBox())!;
+      // The map starts where the sidebar ends: none of it lies behind.
+      expect(Math.round(box.x)).toBe(Math.round(aside.x + aside.width));
+      await show(page, await viewWith(page, east, [-8, 300]));
+      await expect(listed(page, area.title)).toHaveCount(0);
+      await show(page, await viewWith(page, east, [8, 300]));
+      await expect(listed(page, area.title)).toBeVisible();
+      // Just past the right and bottom edges is out too.
+      const west = area.geometry.reduce((a, b) => (b[1] < a[1] ? b : a));
+      await show(page, await viewWith(page, west, [box.width + 8, 300]));
+      await expect(listed(page, area.title)).toHaveCount(0);
+      const south = area.geometry.reduce((a, b) => (b[0] < a[0] ? b : a));
+      await show(page, await viewWith(page, south, [300, -8]));
+      await expect(listed(page, area.title)).toHaveCount(0);
+      await show(page, await viewWith(page, north, [300, box.height + 8]));
+      await expect(listed(page, area.title)).toHaveCount(0);
+      await show(page, await viewWith(page, north, [300, box.height - 8]));
+      await expect(listed(page, area.title)).toBeVisible();
+    });
+
+    test("an alignment counts where it runs, not across its bounding box", async ({
+      page,
+    }) => {
+      await page.goto("/");
+      const box = (await page.locator(".leaflet-container").boundingBox())!;
+      // Within the line's extent, but well clear of its bend.
+      const [start, , , end] = line.geometry;
+      const corner: [number, number] = [end[0] + 0.004, start[1] - 0.004];
+      await show(page, await viewWith(page, corner, [box.width / 2, box.height / 2]));
+      await expect(listed(page, line.title)).toHaveCount(0);
+      // No corner in view, only the middle of a side passing through.
+      const [a, b] = line.geometry;
+      const middle: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      await show(page, await viewWith(page, middle, [box.width / 2, box.height / 2]));
+      await expect(listed(page, line.title)).toBeVisible();
+    });
+  });
+
+  test.describe("mobile", () => {
+    test.use({
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+      userAgent: devices["Pixel 7"].userAgent,
+    });
+
+    test("under the drawer is out; just above it is in", async ({ page }) => {
+      await page.goto("/");
+      const drawer = page.locator("[data-explorer-drawer]");
+      await expectDrawerHeight(page, 0.58);
+      const top = await drawer.evaluate(
+        (element) => element.getBoundingClientRect().top,
+      );
+      const south = area.geometry.reduce((a, b) => (b[0] < a[0] ? b : a));
+      await show(page, await viewWith(page, north, [195, top + 8]));
+      await expect(listed(page, area.title)).toHaveCount(0);
+      await show(page, await viewWith(page, south, [195, top - 8]));
+      await expect(listed(page, area.title)).toBeVisible();
+    });
   });
 });

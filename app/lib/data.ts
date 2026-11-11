@@ -151,27 +151,95 @@ export type Bounds = {
   north: number;
   east: number;
 };
-export function pointsBounds(points: Point[]): Bounds {
-  const bounds = { south: 90, west: 180, north: -90, east: -180 };
-  for (const [lat, lng] of points) {
-    bounds.south = Math.min(bounds.south, lat);
-    bounds.north = Math.max(bounds.north, lat);
-    bounds.west = Math.min(bounds.west, lng);
-    bounds.east = Math.max(bounds.east, lng);
+/** The map's view; `zoom` decides whether alignments show as their dot. */
+export type ViewBounds = Bounds & { zoom?: number };
+// Below this zoom alignments collapse to a dot halfway along them: wider
+// than a county, even long lines are short scribbles.
+export const lineDotZoom = 8;
+/** The point halfway along a line, so its dot sits on the alignment. */
+export function lineMidpoint(points: Point[]): Point {
+  if (points.length < 2) return points[0];
+  // Longitude shrinks with latitude; this keeps lengths roughly true.
+  const scale = Math.cos((points[0][0] * Math.PI) / 180);
+  const lengths = points
+    .slice(1)
+    .map(([lat, lng], index) =>
+      Math.hypot(lat - points[index][0], (lng - points[index][1]) * scale),
+    );
+  let remaining = lengths.reduce((sum, length) => sum + length, 0) / 2;
+  for (const [index, length] of lengths.entries()) {
+    if (remaining <= length && length > 0) {
+      const [lat, lng] = points[index];
+      const [nextLat, nextLng] = points[index + 1];
+      const t = remaining / length;
+      return [lat + (nextLat - lat) * t, lng + (nextLng - lng) * t];
+    }
+    remaining -= length;
   }
-  return bounds;
+  return points[points.length - 1];
 }
-/** Whether any part of the project's extent lies inside `bounds`. */
-export function projectInBounds(project: Project, bounds: Bounds) {
-  const extent = pointsBounds(
-    project.geometry.length ? project.geometry : [project.center],
-  );
-  return (
-    extent.south <= bounds.north &&
-    extent.north >= bounds.south &&
-    extent.west <= bounds.east &&
-    extent.east >= bounds.west
-  );
+// Web Mercator, where the map draws its shapes' sides as straight lines.
+const mercator = ([lat, lng]: Point): Point => [
+  lng,
+  Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)),
+];
+/**
+ * Whether any part of the project as drawn lies inside `bounds`: a corner,
+ * a side crossing it, or an area around all of it. Not its bounding box, so
+ * a bend or a slanted alignment passing outside doesn't count. Zoomed out,
+ * an alignment is its dot.
+ */
+export function projectInBounds(project: Project, bounds: ViewBounds) {
+  const [west, south] = mercator([bounds.south, bounds.west]);
+  const [east, north] = mercator([bounds.north, bounds.east]);
+  const inside = ([x, y]: Point) =>
+    x >= west && x <= east && y >= south && y <= north;
+  const line = project.geometryType === "line";
+  const dotted = line && bounds.zoom !== undefined && bounds.zoom < lineDotZoom;
+  if (!project.geometry.length || dotted)
+    return inside(
+      mercator(
+        project.geometry.length ? lineMidpoint(project.geometry) : project.center,
+      ),
+    );
+  // Zoomed out, an area's dot sits on its centre.
+  if (!line && inside(mercator(project.center))) return true;
+  const points = project.geometry.map(mercator);
+  if (points.some(inside)) return true;
+  // Liang–Barsky: whether the side from a to b crosses the view.
+  const crosses = ([ax, ay]: Point, [bx, by]: Point) => {
+    let from = 0;
+    let to = 1;
+    const dx = bx - ax;
+    const dy = by - ay;
+    for (const [p, q] of [
+      [-dx, ax - west],
+      [dx, east - ax],
+      [-dy, ay - south],
+      [dy, north - ay],
+    ]) {
+      if (p === 0) {
+        if (q < 0) return false;
+      } else if (p < 0) from = Math.max(from, q / p);
+      else to = Math.min(to, q / p);
+      if (from > to) return false;
+    }
+    return true;
+  };
+  const sides = line ? points.length - 1 : points.length;
+  for (let side = 0; side < sides; side++)
+    if (crosses(points[side], points[(side + 1) % points.length])) return true;
+  if (line || points.length < 3) return false;
+  // No corner or side in view: either the area holds all of it, or none.
+  const [x, y] = [(west + east) / 2, (south + north) / 2];
+  let within = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const [xi, yi] = points[i];
+    const [xj, yj] = points[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)
+      within = !within;
+  }
+  return within;
 }
 const area = (lat: number, lng: number, scale = 1): Point[] => [
   [lat - 0.001 * scale, lng - 0.0017 * scale],
