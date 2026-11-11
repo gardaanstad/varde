@@ -434,17 +434,13 @@ function morph(
   return animations;
 }
 
-/** Category, place and status at a glance, under the title. */
+/** Place and status at a glance, under the title. */
 function ProjectMeta({ project }: { project: Project }) {
   return (
     <p
       className="mb-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-ui leading-normal text-muted max-md:text-xs [&>span]:inline-flex [&>span]:items-center [&>span]:gap-1.5 [&_svg]:shrink-0"
       data-project-meta=""
     >
-      <span>
-        <CategoryIcon category={project.category} size={14} />
-        {project.category}
-      </span>
       <span>
         <MapPin size={14} aria-hidden="true" />
         {projectPlace(project)}

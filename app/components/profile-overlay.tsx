@@ -77,24 +77,23 @@ export default function ProfileOverlay({
       )}
       <div
         className={cn(
-          "min-h-0 flex-1 overflow-y-auto overscroll-contain px-7 pb-8 scrollbar-thin max-sm:px-4.5 max-sm:pt-1",
-          onClose ? "pt-7" : "pt-1",
+          "min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-8 scrollbar-thin max-md:px-4.5",
+          onClose ? "pt-7 max-sm:pt-1" : "pt-1",
         )}
         data-drawer-scroll
       >
         {profile ? (
           <ProfileContent
             profile={profile}
-            embedded
             onEdit={() => setEditing(true)}
             actions={
               <Link
                 href="/konto"
-                className={cn(secondaryButton, "size-11 px-0")}
+                className={cn(secondaryButton, "size-10 min-h-10 px-0")}
                 aria-label="Kontoinnstillinger"
                 data-tooltip="Kontoinnstillinger"
               >
-                <Settings size={17} aria-hidden="true" />
+                <Settings size={16} aria-hidden="true" />
               </Link>
             }
             onOpenProject={onOpenProject}

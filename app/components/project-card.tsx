@@ -1,6 +1,6 @@
 import { memo } from "react";
 import Image from "next/image";
-import { Megaphone, MessageCircle } from "lucide-react";
+import { MapPin, Megaphone, MessageCircle } from "lucide-react";
 import {
   formatDate,
   getProjectUpdates,
@@ -11,7 +11,6 @@ import {
 } from "../lib/data";
 import { cn } from "../lib/cn";
 import { statusTone } from "../lib/ui";
-import CategoryIcon from "./category-icon";
 import ProjectPlaceholder from "./project-placeholder";
 
 // Above the stretched card link, for the stat tooltips.
@@ -35,7 +34,7 @@ export default memo(function ProjectCard({
   return (
     <li
       className={cn(
-        "relative isolate flex items-start gap-5 border-b border-border py-4.5 max-md:gap-3.5 max-md:pt-4 max-md:pb-3.75",
+        "relative isolate flex items-start gap-4 border-b border-border py-4 max-md:gap-3 max-md:py-3.5",
         // Hover wash bleeds slightly past the text edge, like a list row.
         // Instant, so moving down the list reads as a pointer, not a fade.
         "before:absolute before:inset-x-[-12px] before:inset-y-1 before:-z-1 before:rounded-xl",
@@ -54,13 +53,7 @@ export default memo(function ProjectCard({
       }}
     >
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-1.5 text-xs leading-normal text-muted max-md:gap-1.25 max-md:leading-4 [&>svg]:shrink-0">
-          <CategoryIcon category={project.category} size={14} />
-          <span>{project.category}</span>
-          <span aria-hidden="true">·</span>
-          <span className="min-w-0 truncate">{projectPlace(project)}</span>
-        </div>
-        <h2 className="my-1 text-[17px] leading-[1.35] font-[620] tracking-[-0.3px] max-md:mt-0.5 max-md:mb-0.75 max-md:text-base max-md:leading-[1.3] max-md:tracking-[-0.25px]">
+        <h2 className="text-base leading-snug font-[620] tracking-[-0.25px] text-ink">
           {/* Stretched over the whole card; other controls sit above it. */}
           <button
             type="button"
@@ -75,12 +68,16 @@ export default memo(function ProjectCard({
             {project.title}
           </button>
         </h2>
-        <p className="line-clamp-2 text-sm leading-[1.6] text-ink-soft max-md:text-ui max-md:leading-normal">
+        <p className="mt-0.5 flex min-w-0 items-center gap-1 text-xs leading-4.5 text-muted">
+          <MapPin size={14} className="shrink-0" aria-hidden="true" />
+          <span className="min-w-0 truncate">{projectPlace(project)}</span>
+        </p>
+        <p className="mt-1.5 line-clamp-2 text-sm leading-normal text-ink-soft max-md:text-ui">
           {project.description.split("\n")[0]}
         </p>
         {/* Stats sit above the card link for their tooltips; forward clicks. */}
         <div
-          className="mt-3 flex min-h-4.5 cursor-pointer items-center gap-x-4 gap-y-1 text-xs leading-normal text-muted max-md:mt-2.25 max-md:gap-x-3 max-md:leading-4.5"
+          className="mt-2 flex min-h-4.5 cursor-pointer items-center gap-x-3.5 gap-y-1 text-xs leading-4.5 text-muted max-md:gap-x-3"
           onClick={() => onOpen(project.id)}
         >
           <span className="inline-flex items-center gap-1.5 font-medium whitespace-nowrap text-ink">
@@ -110,8 +107,8 @@ export default memo(function ProjectCard({
           )}
         </div>
       </div>
-      {/* Mobile: a square thumbnail, top-aligned with the category line. */}
-      <div className="relative mt-0.5 aspect-4/3 w-30 shrink-0 overflow-hidden rounded-lg bg-surface-muted max-md:mt-0 max-md:aspect-square max-md:w-19">
+      {/* Mobile: a square thumbnail, top-aligned with the title. */}
+      <div className="relative mt-0.5 aspect-4/3 w-28 shrink-0 overflow-hidden rounded-lg bg-surface-muted max-md:aspect-square max-md:w-18">
         {hasPhoto(project) ? (
           <Image
             src={project.image}
