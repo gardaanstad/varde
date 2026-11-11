@@ -37,6 +37,42 @@ async function expectDrawerHeight(
     .toBeCloseTo(fraction, 1);
 }
 
+/** Each project lies in the box: as its shape, its dot, or its group. */
+async function expectMembersIn(
+  page: Page,
+  ids: string[],
+  box: { left: number; top: number; right: number; bottom: number },
+) {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        ({ ids, box }) =>
+          ids.filter((id) => {
+            const element = [
+              `path[data-project-id="${id}"]`,
+              `path[data-project-dot="${id}"]`,
+              `.project-cluster[data-cluster~="${id}"]`,
+            ]
+              .map((selector) => document.querySelector(selector))
+              .find(
+                (candidate) =>
+                  candidate && getComputedStyle(candidate).display !== "none",
+              );
+            if (!element) return true;
+            const rect = element.getBoundingClientRect();
+            return (
+              rect.left < box.left ||
+              rect.top < box.top ||
+              rect.right > box.right ||
+              rect.bottom > box.bottom
+            );
+          }),
+        { ids, box },
+      ),
+    )
+    .toEqual([]);
+}
+
 async function expectMenuFits(menu: Locator) {
   await expect(menu).toBeVisible();
   await expect
@@ -538,6 +574,85 @@ test.describe("desktop explorer", () => {
     expect(await list.evaluate((element) => element.scrollTop)).toBe(top);
   });
 
+  test("hovering a grouped project's card lights up its group, and only that", async ({
+    page,
+  }) => {
+    await page.goto("/?kart=59.9100,10.7500,10");
+    const group = page.locator(`.project-cluster[data-cluster~="${project.id}"]`);
+    await expect(group).toBeVisible();
+    // Hovering touches the existing markers; nothing is redrawn.
+    await page.locator(".leaflet-marker-pane").evaluate((pane) => {
+      const changes = { count: 0 };
+      Object.assign(window, { markerChanges: changes });
+      new MutationObserver((records) => {
+        for (const record of records)
+          changes.count += record.addedNodes.length + record.removedNodes.length;
+      }).observe(pane, { childList: true, subtree: true });
+    });
+    await card(page, project.title).hover();
+    await expect(group).toHaveClass(/is-highlighted/);
+    // The project stays in its group instead of being pulled out of it.
+    await expect(page.locator(`path[data-project-id="${project.id}"]`)).toBeHidden();
+    await expect(page.locator(".project-cluster.is-highlighted")).toHaveCount(1);
+    await page.mouse.move(1000, 790);
+    await expect(group).not.toHaveClass(/is-highlighted/);
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { markerChanges: { count: number } }).markerChanges.count,
+      ),
+    ).toBe(0);
+  });
+
+  test("a group flies in to frame its projects beside the list", async ({
+    page,
+  }) => {
+    await page.goto("/?kart=59.9100,10.7500,10");
+    const group = page.locator(`.project-cluster[data-cluster~="${project.id}"]`);
+    const members = (await group.getAttribute("data-cluster"))!.split(" ");
+    const before = new URL(page.url()).searchParams.get("kart");
+    await group.click();
+    // It animates: the view is still on its way a moment later.
+    await page.waitForTimeout(150);
+    expect(new URL(page.url()).searchParams.get("kart")).toBe(before);
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("kart"))
+      .not.toBe(before);
+    const zoom = Number(new URL(page.url()).searchParams.get("kart")!.split(",")[2]);
+    expect(zoom).toBeGreaterThanOrEqual(11);
+    const map = (await page.locator(".leaflet-container").boundingBox())!;
+    await expectMembersIn(page, members, {
+      left: map.x,
+      top: map.y,
+      right: map.x + map.width,
+      bottom: map.y + map.height,
+    });
+  });
+
+  test("a project clicked on the map shows no focus ring; the keyboard's does", async ({
+    page,
+  }) => {
+    await page.goto(oslo);
+    const shape = page.locator(`path[data-project-id="${project.id}"]`);
+    const stroke = () =>
+      shape.evaluate((element) => [
+        getComputedStyle(element).outlineStyle,
+        getComputedStyle(element).stroke,
+      ]);
+    const drawn = await stroke();
+    expect(drawn[0]).toBe("none");
+    // Opened and closed by pointer, focus comes back to it without a ring.
+    // Other tests' projects can lie on top of it, so the press is dispatched.
+    await shape.dispatchEvent("pointerdown");
+    await shape.dispatchEvent("click");
+    await page.getByRole("button", { name: "Lukk prosjekt", exact: true }).click();
+    await expect(shape).toBeFocused();
+    expect(await stroke()).toEqual(drawn);
+    // Once the keyboard is used, the focused shape takes the accent ring.
+    await page.keyboard.press("Shift");
+    await expect.poll(async () => (await stroke())[1]).toBe("rgb(31, 90, 67)");
+    expect((await stroke())[0]).toBe("none");
+  });
+
   test("zoomed out, an alignment becomes a dot that still opens it", async ({
     page,
   }) => {
@@ -803,6 +918,55 @@ test.describe("desktop explorer", () => {
     await expect.poll(mapWidth).toBe(narrow);
   });
 
+  test("the base map moves with the list's edge, in the same frame", async ({
+    page,
+  }) => {
+    // Specs run without the base map unless they ask for it.
+    await page.addInitScript(() => localStorage.setItem("varde:basemap", "on"));
+    await page.goto(oslo);
+    const basemap = page.locator("[data-basemap]");
+    await expect(page.locator(".leaflet-gl-layer")).toBeAttached();
+    await page.getByRole("button", { name: "Skjul prosjektlisten", exact: true }).click();
+    const panel = page.locator("#project-panel");
+    await expect(panel).toHaveAttribute("data-sidebar-mode", "collapsed");
+    await expect(basemap).toHaveAttribute("data-basemap", "idle", { timeout: 20_000 });
+    // Checked as the map takes its new size, before that frame is painted:
+    // the base map's canvas already has the size and place to match.
+    await page.locator(".leaflet-container").evaluate((element) => {
+      const misfits: number[][] = [];
+      Object.assign(window, { misfits });
+      new ResizeObserver(() => {
+        const map = element.getBoundingClientRect();
+        const layer = element.querySelector(".leaflet-gl-layer")!;
+        const gl = layer.getBoundingClientRect();
+        const canvas = layer.querySelector("canvas")!;
+        const width = canvas.width / devicePixelRatio;
+        misfits.push(
+          [
+            gl.left - (map.left - map.width * 0.15),
+            gl.width - map.width * 1.3,
+            width - map.width * 1.3,
+          ].map(Math.round),
+        );
+      }).observe(element);
+    });
+    await page.getByRole("button", { name: "Vis prosjektlisten", exact: true }).click();
+    await expect(panel).toHaveAttribute("data-sidebar-mode", "normal");
+    // The first entry is from before; the second, the map taking its size.
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window as unknown as { misfits: number[][] }).misfits.length,
+        ),
+      )
+      .toBeGreaterThan(1);
+    const misfits = await page.evaluate(
+      () => (window as unknown as { misfits: number[][] }).misfits,
+    );
+    for (const misfit of misfits)
+      for (const value of misfit) expect(Math.abs(value)).toBeLessThanOrEqual(1);
+  });
+
   test("maximized, the list filters by place and the map follows it back", async ({
     page,
   }) => {
@@ -1055,6 +1219,29 @@ test.describe("the list holds what the uncovered map shows", () => {
       isMobile: true,
       hasTouch: true,
       userAgent: devices["Pixel 7"].userAgent,
+    });
+
+    test("a group zooms to frame its projects above the drawer", async ({
+      page,
+    }) => {
+      await page.goto("/?kart=59.8000,10.7500,9.5");
+      await expectDrawerHeight(page, 0.58);
+      const group = page.locator(`.project-cluster[data-cluster~="${area.id}"]`);
+      const members = (await group.getAttribute("data-cluster"))!.split(" ");
+      const before = new URL(page.url()).searchParams.get("kart");
+      await group.tap();
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get("kart"))
+        .not.toBe(before);
+      const top = await page
+        .locator("[data-explorer-drawer]")
+        .evaluate((element) => element.getBoundingClientRect().top);
+      await expectMembersIn(page, members, {
+        left: 0,
+        top: 0,
+        right: 390,
+        bottom: top,
+      });
     });
 
     test("under the drawer is out; just above it is in", async ({ page }) => {

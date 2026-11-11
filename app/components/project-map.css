@@ -67,10 +67,26 @@
   stroke-opacity: 0 !important;
 }
 
-[data-project-map] .leaflet-interactive[role="button"]:focus-visible {
-  fill-opacity: 0.4;
+/*
+ * Focus rings are for the keyboard. A click focuses a shape (so focus can
+ * return to it) and browsers would draw their box around it; shapes and
+ * groups draw their own ring instead, and none after a pointer press.
+ */
+[data-project-map] .leaflet-container:focus,
+[data-project-map] .leaflet-interactive:focus,
+[data-project-map] .project-cluster:focus {
   outline: none;
-  stroke: var(--color-accent-strong);
+}
+
+[data-project-map]:not([data-pointer]) .leaflet-container:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+[data-project-map]:not([data-pointer])
+  .leaflet-interactive[role="button"]:focus-visible {
+  fill-opacity: 0.4;
+  stroke: var(--color-accent);
   stroke-width: 5px;
 }
 
@@ -105,16 +121,29 @@
   line-height: 1;
   /* The icon itself carries Leaflet's positioning transform. */
   animation: project-cluster-in 160ms ease-out;
-  transition: transform 120ms ease;
+  transition:
+    transform 120ms ease,
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
 }
 
 [data-project-map] .project-cluster:hover > span {
   transform: scale(1.08);
 }
 
-[data-project-map] .project-cluster:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+/* A hovered project inside the group, e.g. its card in the list. */
+[data-project-map] .project-cluster.is-highlighted > span {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: #fff;
+  transform: scale(1.12);
+}
+
+[data-project-map]:not([data-pointer]) .project-cluster:focus-visible > span {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--color-focus);
 }
 
 @keyframes project-cluster-in {

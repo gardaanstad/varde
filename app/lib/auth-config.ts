@@ -57,7 +57,19 @@ export function createAppAuth(
       deleteUser: { enabled: true },
     },
     account: { accountLinking: { enabled: false }, encryptOAuthTokens: true },
-    rateLimit: { enabled: true, storage: "database", window: 60, max: 100 },
+    rateLimit: {
+      enabled: true,
+      storage: "database",
+      window: 60,
+      max: 100,
+      // Without a forwarded client IP every request shares one bucket per
+      // path. Playwright's parallel pages poll the session far past it, and
+      // a 429 there reads as signed out.
+      customRules:
+        process.env.AUTH_SESSION_RATE_LIMIT === "off"
+          ? { "/get-session": false }
+          : undefined,
+    },
     disabledPaths: ["/update-user", "/link-social", "/unlink-account"],
   });
 }

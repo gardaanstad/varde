@@ -182,6 +182,27 @@ const norwegianName: maplibregl.ExpressionSpecification = [
 ];
 const mapAttribution =
   '<a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/" target="_blank" rel="noreferrer">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
+// The parts of the MapLibre bridge that follow the map's size.
+type GlLayerInternals = {
+  _resize: () => void;
+  _transitionEnd: () => void;
+  _resizeContainer: () => void;
+  _update: () => void;
+  _zooming?: boolean;
+};
+/**
+ * Playwright runs set NEXT_PUBLIC_BASEMAP=off: drawing vector tiles with
+ * software WebGL is slow there and loads them over the network. A spec that
+ * needs the base map opts in with `localStorage["varde:basemap"] = "on"`.
+ */
+function basemapEnabled() {
+  if (process.env.NEXT_PUBLIC_BASEMAP !== "off") return true;
+  try {
+    return localStorage.getItem("varde:basemap") === "on";
+  } catch {
+    return false;
+  }
+}
 // Stable defaults, so drawing maps don't rebuild their layers on each render.
 const noProjects: Project[] = [];
 const noPoints: Point[] = [];
@@ -248,6 +269,10 @@ export default function ProjectMap({
   const hitsRef = useRef(new Map<string, L.Polyline>());
   // Regroups projects, e.g. so the selected one leaves its group.
   const clusterRef = useRef(() => {});
+  // The group each grouped project is drawn in, as of the last grouping.
+  const groupOfRef = useRef(new Map<string, L.Marker>());
+  // Restyles one project for the current selection and highlight.
+  const styleRef = useRef<(id: string | null) => void>(() => {});
   const projectsRef = useRef(projects);
   // Editing an existing shape opens framed on it.
   const initialPoints = useRef(points);
@@ -266,6 +291,8 @@ export default function ProjectMap({
   // Set while the map catches up with its container's new size and place.
   const syncing = useRef(false);
   const syncRef = useRef(() => {});
+  // Resizes, places and draws the base map at once.
+  const refreshBase = useRef<() => boolean>(() => false);
   // Drawing edits can be undone one by one, moves and removals included.
   const [history, setHistory] = useState<Point[][]>([]);
   const [ready, setReady] = useState(false);
@@ -378,6 +405,7 @@ export default function ProjectMap({
           L.DomUtil.getPosition(pane).subtract(offset),
         );
       syncing.current = false;
+      refreshBase.current();
       // Panning without a view reset, so tiles stay instead of reloading.
       map.fire("move").fire("moveend");
     };
@@ -398,12 +426,41 @@ export default function ProjectMap({
   }, [draw, frame]);
   useEffect(() => {
     if (!ready || !mapRef.current) return;
+    // Whether the base map has drawn everything for the view; for tests.
+    const root = mapRef.current.getContainer().parentElement;
+    const idle = (value: boolean) =>
+      root?.setAttribute("data-basemap", value ? "idle" : "loading");
+    if (!basemapEnabled()) {
+      idle(true);
+      return;
+    }
     const base = maplibreGL({
       style: mapStyles[layer],
       attributionControl: { customAttribution: mapAttribution },
       // Draws a margin around the view, so panning shows map, not blank.
       padding: 0.15,
-    } as L.LeafletMaplibreGLOptions).addTo(mapRef.current);
+    } as L.LeafletMaplibreGLOptions) as L.MaplibreGL & GlLayerInternals;
+    // The bridge follows a resize a frame later and lets MapLibre redraw
+    // after another: for a frame or two the base map sat in the wrong place
+    // or blank, a flicker whenever a panel resized the map. Instead its
+    // canvas is resized, placed and drawn at once, before the next paint.
+    const transitionEnd = base._transitionEnd;
+    const refresh = () => {
+      const glMap = base.getMaplibreMap();
+      if (!glMap || base._zooming) return false;
+      base._resizeContainer();
+      base._update();
+      glMap.resize();
+      glMap.redraw();
+      return true;
+    };
+    base._resize = function () {
+      // The container sync places and draws it once it's done.
+      if (syncing.current) return;
+      if (!refresh()) transitionEnd.call(base);
+    };
+    refreshBase.current = refresh;
+    base.addTo(mapRef.current);
     let failures = 0;
     const gl = base.getMaplibreMap();
     gl.on("style.load", () => {
@@ -424,10 +481,6 @@ export default function ProjectMap({
       if (++failures > 4)
         setMapMessage("Kartet kunne ikke lastes. Prøv et annet kartlag.");
     });
-    // Whether the base map has drawn everything for the view; for tests.
-    const root = mapRef.current.getContainer().parentElement;
-    const idle = (value: boolean) =>
-      root?.setAttribute("data-basemap", value ? "idle" : "loading");
     idle(false);
     gl.on("dataloading", () => idle(false));
     gl.on("movestart", () => idle(false));
@@ -439,6 +492,7 @@ export default function ProjectMap({
       setMapMessage("");
     });
     return () => {
+      refreshBase.current = () => false;
       base.remove();
     };
   }, [ready, layer]);
@@ -566,7 +620,9 @@ export default function ProjectMap({
     const hitWeight = window.matchMedia("(pointer: coarse)").matches ? 28 : 18;
     const select = (project: Project, shape: L.Path) => {
       const element = shape.getElement();
-      if (element instanceof SVGElement) element.focus({ preventScroll: true });
+      // Focus comes back here when the project closes; a pointer shows no ring.
+      if (element instanceof SVGElement)
+        element.focus({ preventScroll: true, focusVisible: false } as FocusOptions);
       handlers.current.onSelect(project.id);
     };
     for (const project of projects) {
@@ -702,17 +758,17 @@ export default function ProjectMap({
         .map((project) => [project.id, L.latLngBounds(project.geometry)]),
     );
     // Greedy screen-space grouping, redone whenever the zoom changes.
+    const groupOf = groupOfRef.current;
     const cluster = () => {
       clusters.clearLayers();
+      groupOf.clear();
       const zoom = map.getZoom();
       const grouped = new Set<string>();
       if (zoom < clusterZoom) {
         const candidates = projects.flatMap((project) => {
-          if (
-            project.id === selectedRef.current ||
-            project.id === highlightedRef.current
-          )
-            return [];
+          // The open project stands on its own; a hovered one lights up
+          // its group instead.
+          if (project.id === selectedRef.current) return [];
           const bounds = lineBounds.get(project.id);
           if (
             bounds &&
@@ -749,22 +805,19 @@ export default function ProjectMap({
             .addTo(clusters)
             .on("click", (event) => {
               L.DomEvent.stopPropagation(event);
-              // Zoom in far enough to frame the group, at least one step.
-              const bounds = L.latLngBounds(
-                list.flatMap((project) => project.geometry),
-              );
-              const target = Math.min(
-                Math.max(
-                  map.getBoundsZoom(bounds, false, L.point(96, 96)),
-                  zoom + 1,
-                ),
-                map.getMaxZoom(),
-              );
-              map.setView(bounds.getCenter(), target);
+              zoomToGroup(list);
             });
-          marker
-            .getElement()
-            ?.setAttribute("aria-label", `${list.length} prosjekter`);
+          const element = marker.getElement();
+          element?.setAttribute("aria-label", `${list.length} prosjekter`);
+          element?.setAttribute(
+            "data-cluster",
+            list.map((project) => project.id).join(" "),
+          );
+          for (const project of list) groupOf.set(project.id, marker);
+          element?.classList.toggle(
+            "is-highlighted",
+            list.some((project) => project.id === highlightedRef.current),
+          );
         }
       }
       for (const project of projects) {
@@ -788,12 +841,73 @@ export default function ProjectMap({
         else if (dot) dots.removeLayer(dot);
       }
     };
+    // Zooms in far enough to frame the group, at least one step, in the
+    // part of the map no sheet covers.
+    const zoomToGroup = (list: Project[]) => {
+      const bounds = L.latLngBounds(list.flatMap((project) => project.geometry));
+      const topLeft = L.point(48, 48);
+      const bottomRight = L.point(48, 48 + (handlers.current.bottomInset?.() ?? 0));
+      const zoom = Math.min(
+        Math.max(
+          map.getBoundsZoom(bounds, false, topLeft.add(bottomRight)),
+          map.getZoom() + 1,
+        ),
+        map.getMaxZoom(),
+      );
+      const center = map.unproject(
+        map
+          .project(bounds.getSouthWest(), zoom)
+          .add(map.project(bounds.getNorthEast(), zoom))
+          .divideBy(2)
+          .add(bottomRight.subtract(topLeft).divideBy(2)),
+        zoom,
+      );
+      if (reducedMotion()) map.setView(center, zoom, { animate: false });
+      else map.flyTo(center, zoom, { duration: 0.6 });
+    };
+    const style = (id: string | null) => {
+      if (!id) return;
+      const project = projects.find((item) => item.id === id);
+      if (!project) return;
+      const isSelected = id === selectedRef.current;
+      const emphasized = isSelected || id === highlightedRef.current;
+      const shape = shapes.get(id);
+      const casing = casings.get(id);
+      const dot = dotMarkers.get(id);
+      // The open project stays at full strength; the rest step back.
+      for (const layer of [shape, casing, dot])
+        layer?.getElement()?.classList.toggle("is-selected", isSelected);
+      shape?.setStyle(shapeStyle(project.geometryType === "line", emphasized));
+      casing?.setStyle({ weight: lineWeight(emphasized) + 4 });
+      dot?.setRadius(dotRadius(emphasized));
+      const group = groupOf.get(id);
+      // Inside a group, the group lights up in its place.
+      group
+        ?.getElement()
+        ?.classList.toggle(
+          "is-highlighted",
+          groupOf.get(highlightedRef.current ?? "") === group,
+        );
+      if (!emphasized || group) return;
+      const element = shape?.getElement();
+      const wasFocused = element === document.activeElement;
+      casing?.bringToFront();
+      shape?.bringToFront();
+      hits.get(id)?.bringToFront();
+      if (wasFocused && element instanceof SVGElement)
+        element.focus({ preventScroll: true });
+      shape?.closeTooltip();
+    };
+    styleRef.current = style;
     clusterRef.current = cluster;
     map.on("zoomend", cluster);
     cluster();
+    style(highlightedRef.current);
     return () => {
       map.off("zoomend", cluster);
       clusterRef.current = () => {};
+      styleRef.current = () => {};
+      groupOf.clear();
       group.remove();
       dots.remove();
       clusters.remove();
@@ -803,40 +917,23 @@ export default function ProjectMap({
       hits.clear();
     };
   }, [projects, ready, draw]);
+  // Only the projects whose state changed are touched.
   useEffect(() => {
+    const previous = selectedRef.current;
     selectedRef.current = selectedId;
-    highlightedRef.current = highlightedId;
+    if (previous === selectedId) return;
+    // The open project leaves its group, and a closed one may rejoin it.
     clusterRef.current();
-    for (const project of projects) {
-      const selected =
-        project.id === selectedId || project.id === highlightedId;
-      const shape = shapesRef.current.get(project.id);
-      // The open project stays at full strength; the rest step back.
-      for (const layer of [
-        shape,
-        casingsRef.current.get(project.id),
-        dotsRef.current.get(project.id),
-      ])
-        layer
-          ?.getElement()
-          ?.classList.toggle("is-selected", project.id === selectedId);
-      shape?.setStyle(shapeStyle(project.geometryType === "line", selected));
-      casingsRef.current
-        .get(project.id)
-        ?.setStyle({ weight: lineWeight(selected) + 4 });
-      dotsRef.current.get(project.id)?.setRadius(dotRadius(selected));
-      if (selected) {
-        const element = shape?.getElement();
-        const wasFocused = element === document.activeElement;
-        casingsRef.current.get(project.id)?.bringToFront();
-        shape?.bringToFront();
-        hitsRef.current.get(project.id)?.bringToFront();
-        if (wasFocused && element instanceof SVGElement)
-          element.focus({ preventScroll: true });
-        shape?.closeTooltip();
-      }
-    }
-  }, [selectedId, highlightedId, projects, ready]);
+    styleRef.current(previous);
+    styleRef.current(selectedId);
+  }, [selectedId]);
+  useEffect(() => {
+    const previous = highlightedRef.current;
+    highlightedRef.current = highlightedId;
+    if (previous === highlightedId) return;
+    styleRef.current(previous);
+    styleRef.current(highlightedId);
+  }, [highlightedId]);
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map || !draw) return;
@@ -1127,7 +1224,12 @@ export default function ProjectMap({
       data-selection={!draw && selectedId ? "" : undefined}
       data-drawing={draw ? "true" : undefined}
       data-map-style={layer}
+      // After a pointer press, focus moved by it shows no ring.
+      onPointerDown={(event) =>
+        event.currentTarget.setAttribute("data-pointer", "")
+      }
       onKeyDown={(event) => {
+        event.currentTarget.removeAttribute("data-pointer");
         if (
           draw &&
           (event.metaKey || event.ctrlKey) &&

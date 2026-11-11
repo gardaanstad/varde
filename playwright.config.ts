@@ -30,6 +30,10 @@ export default defineConfig({
       GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com",
       GOOGLE_CLIENT_SECRET: "test-google-secret",
       NEXT_TEST_DIST_DIR: ".next-test",
+      // Vector tiles with software WebGL make specs slow; see basemapEnabled.
+      NEXT_PUBLIC_BASEMAP: "off",
+      // All test pages share one IP; see auth-config.ts.
+      AUTH_SESSION_RATE_LIMIT: "off",
       MODERATOR_EMAILS:
         [
           "moderator@example.test",
