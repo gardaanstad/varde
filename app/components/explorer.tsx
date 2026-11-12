@@ -1671,7 +1671,7 @@ export default memo(function Explorer({
       />
       <span
         className="flex shrink-0"
-        data-tooltip={statusSummary(status)}
+        data-tooltip="Status"
       >
         {statusFilter}
       </span>
