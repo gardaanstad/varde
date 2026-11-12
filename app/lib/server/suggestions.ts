@@ -28,6 +28,7 @@ import {
 import { findProject, saveProject, throttle } from "./community";
 import { HttpError } from "./http";
 import { publishUploads, requireOwnImages } from "./uploads";
+import { serverNow } from "./clock";
 
 type Submission = z.output<typeof submitSchema>;
 type Row = typeof suggestion.$inferSelect;
@@ -65,12 +66,12 @@ export async function submitSuggestion(userId: string, input: Submission) {
     id: crypto.randomUUID(),
     userId,
     note: "note" in input ? input.note : "",
-    createdAt: new Date(),
+    createdAt: serverNow(),
   };
   switch (input.kind) {
     case "project": {
       // Identity, history and labels are the server's, never the member's.
-      const now = new Date().toISOString();
+      const now = serverNow().toISOString();
       const data: Project = {
         ...input.project,
         id: `prosjekt-${crypto.randomUUID().slice(0, 8)}`,
@@ -137,7 +138,7 @@ async function claim(
 ) {
   const [row] = await getDb()
     .update(suggestion)
-    .set({ status, reason, reviewerId, reviewedAt: new Date() })
+    .set({ status, reason, reviewerId, reviewedAt: serverNow() })
     .where(and(eq(suggestion.id, id), eq(suggestion.status, "pending")))
     .returning();
   if (row) return row;
@@ -229,7 +230,7 @@ async function apply(
     return;
   }
   if (row.kind === "update" && "text" in data) {
-    const date = new Date().toISOString();
+    const date = serverNow().toISOString();
     const text = input.text ?? data.text;
     const updateId = crypto.randomUUID();
     await saveProject(
@@ -268,7 +269,7 @@ async function record(row: Row, data: Row["data"]) {
 export async function markSeen(userId: string) {
   const rows = await getDb()
     .update(suggestion)
-    .set({ seenAt: new Date() })
+    .set({ seenAt: serverNow() })
     .where(
       and(
         eq(suggestion.userId, userId),

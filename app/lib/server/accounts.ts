@@ -5,6 +5,7 @@ import { user } from "../db/schema";
 import { usernameSchema } from "../account-rules";
 import { HttpError } from "./http";
 import type { Profile } from "../profiles";
+import { serverNow } from "./clock";
 
 export function publicProfile(row: typeof user.$inferSelect): Profile | null {
   if (!row.username) return null;
@@ -29,7 +30,7 @@ export async function claimUsername(userId: string, input: unknown) {
   try {
     const [updated] = await db
       .update(user)
-      .set({ username, updatedAt: new Date() })
+      .set({ username, updatedAt: serverNow() })
       .where(and(eq(user.id, userId), isNull(user.username)))
       .returning();
     if (updated) return publicProfile(updated);

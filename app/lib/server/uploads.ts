@@ -3,6 +3,7 @@ import { and, eq, inArray, or } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { upload } from "../db/schema";
 import { HttpError } from "./http";
+import { serverNow } from "./clock";
 
 /** Browsers resize before uploading, so this only stops abuse. */
 export const maxUploadBytes = 4 * 1024 * 1024;
@@ -31,7 +32,7 @@ export async function saveUpload(file: File, userId: string, visible = true) {
       type,
       data: Buffer.from(bytes),
       userId,
-      createdAt: new Date(),
+      createdAt: serverNow(),
       public: visible,
     });
   return `/api/uploads/${id}`;

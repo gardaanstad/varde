@@ -14,14 +14,22 @@ export default defineConfig({
   use: {
     baseURL: origin,
     browserName: "chromium",
-    trace: "retain-on-failure",
+    // Recording traces roughly doubles test time; rerun a failure with
+    // `--trace on` to get one.
+    trace: "off",
+    screenshot: "only-on-failure",
+    // The app skips its animations under reduced motion, so specs needn't wait
+    // them out. Specs about motion opt back in with "no-preference".
+    contextOptions: { reducedMotion: "reduce" },
   },
   webServer: {
     command:
-      `bun scripts/test-db.ts && bun run dev --hostname 127.0.0.1 --port ${process.env.TEST_PORT}`,
+      // A production build: pages respond in milliseconds instead of compiling
+      // on first request, and Turbopack's build cache keeps rebuilds short.
+      `bun scripts/test-db.ts && next build && next start --hostname 127.0.0.1 --port ${process.env.TEST_PORT}`,
     url: `${origin}/api/auth/get-session`,
     reuseExistingServer: false,
-    timeout: 120_000,
+    timeout: 180_000,
     env: {
       DATABASE_URL: "file:./test-auth.db",
       DATABASE_AUTH_TOKEN: "",

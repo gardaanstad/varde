@@ -115,6 +115,7 @@ import {
   animateVisibleWidth,
   MaximizeButton,
   type SidebarMode,
+  sidebarTiming,
 } from "./sidebar-panel";
 import {
   iconButton,
@@ -417,6 +418,7 @@ export default memo(function Explorer({
   );
   // A picked place holds while the map flies there.
   const placeHold = useRef<{ name: string; until: number } | null>(null);
+  const lastZoom = useRef<number | null>(null);
   const [profileName, setProfileName] = useState<string | null>(
     initialProfile || null,
   );
@@ -846,28 +848,33 @@ export default memo(function Explorer({
 
   function onMapView(view: MapViewChange) {
     mapViewRef.current = view;
-    const key = projects
-      .filter((project) => projectInBounds(project, view.bounds))
-      .map((project) => project.id)
-      .join();
+    const shown = projects.filter((project) =>
+      projectInBounds(project, view.bounds),
+    );
+    const key = shown.map((project) => project.id).join();
     if (key !== inViewKey.current) {
       inViewKey.current = key;
       setViewBounds(view.bounds);
     }
     if (!postView.current) setFrozenBounds(null);
-    followPlace(view);
+    followPlace(view, shown);
     window.clearTimeout(urlTimer.current);
     urlTimer.current = window.setTimeout(syncUrl, 300);
   }
   /** Beside the map, "Velg sted" names the place the view shows. */
-  function followPlace(view: MapViewChange) {
+  function followPlace(view: MapViewChange, shown: Project[]) {
     // Maximized, the place filters the list; an open project's framing
     // is passing.
     if ((maximized && !isMobile) || postView.current) return;
+    const previousZoom = lastZoom.current ?? view.zoom;
+    lastZoom.current = view.zoom;
     const hold = placeHold.current;
     if (hold && Date.now() < hold.until) return setPlace(hold.name);
     placeHold.current = null;
-    setPlace((current) => placeInView(view.bounds, current));
+    const inView = shown.map((project) => placesOf.get(project.id) ?? []);
+    setPlace((current) =>
+      placeInView(inView, view.zoom, current, previousZoom),
+    );
   }
   /** Moves the map to a place, or out to Norway for none. */
   function goToPlace(name: string) {
@@ -1056,6 +1063,8 @@ export default memo(function Explorer({
   );
   // The mode a change is animating from; the layout holds both until then.
   const [modeFrom, setModeFrom] = useState<SidebarMode | null>(null);
+  /** Where the collapsed toggle rests: just right of the corner tab's logo. */
+  const [toggleRest, setToggleRest] = useState(128);
   function animateFrom() {
     if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches)
       setModeFrom(sidebarMode);
@@ -1156,6 +1165,32 @@ export default memo(function Explorer({
           : undefined,
       );
     });
+    // Collapsing or expanding, the toggle rides the list's edge, so it is
+    // never left over the map, and waits in the corner tab. Keyframe offsets
+    // are in eased progress, the same the edge moves by.
+    const toggle = aside.querySelector<HTMLElement>("[data-explorer-toggle]");
+    const rest = aside.querySelector<HTMLElement>("[data-toggle-rest]");
+    const modes = [modeFrom, sidebarMode];
+    if (
+      toggle &&
+      rest &&
+      modes.includes("collapsed") &&
+      modes.includes("normal")
+    ) {
+      const end = `${sidebar - 56}px`; // At the header's end.
+      const left = `${rest.offsetLeft}px`;
+      const meet = Math.min(
+        1,
+        Math.max(0, (sidebar - 56 - rest.offsetLeft) / sidebar),
+      );
+      const frames =
+        sidebarMode === "collapsed"
+          ? [{ left: end }, { left, offset: meet }, { left }]
+          : [{ left }, { left, offset: 1 - meet }, { left: end }];
+      animations.push(
+        toggle.animate(frames, { ...sidebarTiming, fill: "forwards" }),
+      );
+    }
     Promise.all(animations.map((animation) => animation.finished)).then(
       () => setModeFrom(null),
       () => {
@@ -2284,24 +2319,22 @@ export default memo(function Explorer({
             // in the corner of the page, its shadow fading with the list.
             <div
               className={cn(
-                "absolute top-0 left-0 z-30 flex h-16 items-center gap-1 rounded-br-2xl bg-surface pr-4 pl-2",
+                "absolute top-0 left-0 z-30 flex h-16 items-center gap-2 rounded-br-2xl bg-surface pr-2 pl-4",
                 "transition-shadow duration-320 ease-out-soft starting:shadow-none",
                 sidebarMode === "collapsed" && "shadow-[2px_2px_16px_rgb(20_28_24/0.12)]",
               )}
               data-sidebar-tab=""
             >
-              {/* Where the toggle comes to rest; the logo makes way for it. */}
-              <span aria-hidden="true" className="size-11 shrink-0" />
-              <div
-                className={cn(
-                  "transition-transform duration-320 ease-out-soft motion-reduce:transition-none",
-                  sidebarMode === "collapsed"
-                    ? "starting:-translate-x-10"
-                    : "-translate-x-10",
-                )}
-              >
-                {brand}
-              </div>
+              {brand}
+              {/* Where the toggle comes to rest, right of the logo. */}
+              <span
+                ref={(node) => {
+                  if (node) setToggleRest(node.offsetLeft);
+                }}
+                aria-hidden="true"
+                className="size-11 shrink-0"
+                data-toggle-rest=""
+              />
             </div>
           )}
           {/*
@@ -2313,11 +2346,13 @@ export default memo(function Explorer({
             className={cn(
               "absolute top-2.5 z-[35] transition-[left,opacity] duration-320 ease-out-soft motion-reduce:transition-none",
               "[[data-resizing]_&]:transition-none",
-              sidebarMode === "collapsed"
-                ? "left-2"
-                : "left-[calc(var(--sidebar-width)-0.75rem-2.75rem)]",
+              sidebarMode !== "collapsed" &&
+                "left-[calc(var(--sidebar-width)-0.75rem-2.75rem)]",
               sidebarMode === "maximized" && "pointer-events-none opacity-0",
             )}
+            style={
+              sidebarMode === "collapsed" ? { left: toggleRest } : undefined
+            }
             inert={sidebarMode === "maximized"}
             data-explorer-toggle=""
           >

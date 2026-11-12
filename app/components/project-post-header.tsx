@@ -249,7 +249,11 @@ export default function ProjectPostHeader({
   }, [project.id, scrollRootRef, editing, wide]);
 
   const title = edit ? (
-    <EditField id="title" inline className="min-w-0 flex-1 pt-1.5 pb-1">
+    <EditField
+      id="title"
+      inline
+      className={cn("min-w-0 flex-1 pb-1", mobile ? "pt-1.5" : "pt-[5px]")}
+    >
       {/* Same type as the heading, with the field's padding outside the text. */}
       <textarea
         className={cn(
@@ -275,7 +279,9 @@ export default function ProjectPostHeader({
       id="project-card-title"
       tabIndex={-1}
       className={cn(
-        "m-0 line-clamp-2 min-w-0 flex-1 overflow-hidden pt-1.5 text-ink outline-none wrap-break-word",
+        "m-0 line-clamp-2 min-w-0 flex-1 overflow-hidden text-ink outline-none wrap-break-word",
+        // Desktop: the first line centred on the 40px buttons beside it.
+        mobile ? "pt-1.5" : "pt-[5px]",
         titleType,
       )}
     >
@@ -317,21 +323,23 @@ export default function ProjectPostHeader({
     );
 
   // Desktop: a bar like every sidebar panel's, the mode and close controls
-  // where the others have them. The project's actions sit under its intro.
+  // where the others have them, level with the title's first line. The
+  // project's actions sit under its intro.
   return (
     <header
       className={cn("z-20 shrink-0 border-b bg-surface", border)}
       data-compact={compact}
     >
       <div
-        className="flex h-14 items-center gap-2 pr-3 pl-6"
+        className="flex items-start gap-2 pt-2 pr-3 pb-2 pl-6"
         style={
           wide
             ? { paddingLeft: columnStart, paddingRight: columnEnd }
             : undefined
         }
       >
-        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        {title}
+        <div className="flex shrink-0 items-center gap-0.5">
           {onToggleFull && (
             <button
               type="button"
@@ -347,16 +355,6 @@ export default function ProjectPostHeader({
           )}
           {close}
         </div>
-      </div>
-      <div
-        className="flex px-6 pb-2"
-        style={
-          wide
-            ? { paddingLeft: columnStart, paddingRight: columnStart }
-            : undefined
-        }
-      >
-        {title}
       </div>
     </header>
   );

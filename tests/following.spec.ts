@@ -2,7 +2,7 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { seedProjects } from "../app/lib/data";
 import type { Following } from "../app/lib/following";
-import { cookieHeaders, member, mutation, signIn } from "./support";
+import { cookieHeaders, member, mutation, shot, signIn } from "./support";
 
 // Projects no other spec comments on, one set per test, so each test's
 // unread counts only change through the test itself.
@@ -187,9 +187,7 @@ for (const [viewport, project, direct] of [
     await expect(
       page.locator("[data-followed-project]").first(),
     ).toHaveAttribute("data-unread", "true");
-    await page.screenshot({
-      path: `test-results/following-${viewport.width}.png`,
-    });
+    await shot(page, `following-${viewport.width}`);
 
     // A row opens its project at the first new comment and reads only it.
     await row.getByRole("button", { name: project.title, exact: true }).click();
@@ -248,7 +246,7 @@ test("unfollowing from a row can be undone, and following from a project page", 
   await expect(unfollow).toHaveCSS("opacity", "0");
   await row.hover();
   await expect(unfollow).toHaveCSS("opacity", "1");
-  await page.screenshot({ path: "test-results/following-hover-1280.png" });
+  await shot(page, "following-hover-1280");
   await unfollow.click();
   await expect(row).toHaveCount(0);
   await expect(page.getByText("Følger ingen prosjekter")).toBeVisible();
