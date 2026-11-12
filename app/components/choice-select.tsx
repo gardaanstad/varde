@@ -90,6 +90,8 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  const fade = useRef<HTMLDivElement>(null);
   // Touch browsers don't focus tapped buttons, so a press inside (the trigger,
   // the scrim) blurs to nothing first; let its click decide instead.
   const pressing = useRef(false);
@@ -171,6 +173,33 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
       window.removeEventListener("scroll", positionMenu, true);
     };
   }, [open, grouped]);
+
+  /**
+   * The sheet's fade shows what is left below: whole a fade's height or more
+   * from the end, none at it, and none when everything fits. Clamped, so a
+   * bounce past either end doesn't flash it.
+   */
+  function updateFade() {
+    const scroller = list.current;
+    const overlay = fade.current;
+    if (!scroller || !overlay) return;
+    const height =
+      parseFloat(getComputedStyle(overlay).getPropertyValue("--fade-height")) ||
+      40;
+    const left =
+      scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
+    overlay.style.opacity = String(Math.min(1, Math.max(0, left / height)));
+  }
+  const refreshFade = useEffectEvent(updateFade);
+  // Opening, resizing and groups opening underneath all change what's left.
+  useLayoutEffect(() => {
+    if (!open || !sheet) return;
+    refreshFade();
+    const observer = new ResizeObserver(() => refreshFade());
+    if (list.current) observer.observe(list.current);
+    if (content.current) observer.observe(content.current);
+    return () => observer.disconnect();
+  }, [open, sheet]);
 
   function close() {
     setOpen(false);
@@ -426,111 +455,137 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
         }}
       >
         <div
-          ref={list}
-          id={id}
-          role="listbox"
-          aria-multiselectable={multiple || undefined}
-          aria-label={label}
           className={cn(
-            "flex min-h-0 flex-col overflow-y-auto overscroll-contain border border-border bg-surface",
-            sheet
-              ? [
-                  "max-h-[min(75dvh,560px)] gap-0.5 rounded-t-[22px] border-x-0 border-b-0 px-2 pb-[calc(10px+env(safe-area-inset-bottom))] shadow-bar",
-                  "motion-safe:animate-sheet-in",
-                ]
-              : "gap-1 rounded-xl p-1.5 shadow-[0_12px_40px_rgb(20_28_24/0.14),0_2px_6px_rgb(20_28_24/0.04)]",
+            "relative flex min-h-0 flex-col",
+            sheet && [
+              "max-h-[min(66dvh,500px)] overflow-hidden rounded-t-[22px] border-t border-border bg-surface shadow-bar",
+              "motion-safe:animate-sheet-in",
+            ],
           )}
-          onKeyDown={(event) => {
-            // Options under a closed group are out of reach.
-            const items = [
-              ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
-                '[role="option"]',
-              ),
-            ].filter((item) => !item.closest("[inert]"));
-            const current = items.indexOf(
-              document.activeElement as HTMLButtonElement,
-            );
-            let next = current;
-            if (event.key === "ArrowDown") next = (current + 1) % items.length;
-            else if (event.key === "ArrowUp")
-              next = (current - 1 + items.length) % items.length;
-            else if (event.key === "Home") next = 0;
-            else if (event.key === "End") next = items.length - 1;
-            else if (event.key.length === 1 && event.key !== " ") {
-              // Type-ahead: the next option starting with the key, wrapping around.
-              const key = event.key.toLocaleLowerCase("nb");
-              const starts = (item: HTMLButtonElement) =>
-                (item.dataset.label ?? "")
-                  .toLocaleLowerCase("nb")
-                  .startsWith(key);
-              const match = items.findIndex(
-                (item, i) => i > current && starts(item),
-              );
-              next = match < 0 ? items.findIndex(starts) : match;
-            } else return;
-            event.preventDefault();
-            items[next]?.focus();
-          }}
         >
-          {sheet && (
-            <div
-              aria-hidden="true"
-              className="sticky top-0 z-1 -mx-2 flex shrink-0 flex-col items-center bg-surface px-4 pt-2 pb-2.5"
-            >
-              <span className="h-1 w-9 rounded-full bg-ink/15" />
-              {/* Above the options' 15px: larger, heavier and in full ink. */}
-              <span
-                data-slot="choice-title"
-                className="mt-4 self-start px-1 text-lg leading-6 font-semibold tracking-[-0.3px] text-ink"
-              >
-                {label}
-              </span>
-            </div>
-          )}
-          {options.map((option) => {
-            const open = selectedValues.has(option.value);
-            if (!option.children?.length) return renderOption(option);
-            return (
+          <div
+            ref={list}
+            id={id}
+            role="listbox"
+            aria-multiselectable={multiple || undefined}
+            aria-label={label}
+            className={cn(
+              "flex min-h-0 flex-col overflow-y-auto overscroll-contain",
+              sheet
+                ? "flex-1 gap-0.5 px-2 pb-[calc(10px+env(safe-area-inset-bottom))]"
+                : "gap-1 rounded-xl border border-border bg-surface p-1.5 shadow-[0_12px_40px_rgb(20_28_24/0.14),0_2px_6px_rgb(20_28_24/0.04)]",
+            )}
+            onScroll={sheet ? updateFade : undefined}
+            onKeyDown={(event) => {
+              // Options under a closed group are out of reach.
+              const items = [
+                ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                  '[role="option"]',
+                ),
+              ].filter((item) => !item.closest("[inert]"));
+              const current = items.indexOf(
+                document.activeElement as HTMLButtonElement,
+              );
+              let next = current;
+              if (event.key === "ArrowDown")
+                next = (current + 1) % items.length;
+              else if (event.key === "ArrowUp")
+                next = (current - 1 + items.length) % items.length;
+              else if (event.key === "Home") next = 0;
+              else if (event.key === "End") next = items.length - 1;
+              else if (event.key.length === 1 && event.key !== " ") {
+                // Type-ahead: the next option starting with the key, wrapping around.
+                const key = event.key.toLocaleLowerCase("nb");
+                const starts = (item: HTMLButtonElement) =>
+                  (item.dataset.label ?? "")
+                    .toLocaleLowerCase("nb")
+                    .startsWith(key);
+                const match = items.findIndex(
+                  (item, i) => i > current && starts(item),
+                );
+                next = match < 0 ? items.findIndex(starts) : match;
+              } else return;
+              event.preventDefault();
+              items[next]?.focus();
+            }}
+          >
+            {sheet && (
               <div
-                key={option.value}
-                role="group"
-                aria-label={option.label}
-                data-slot="choice-group"
-                data-open={open}
-                className={cn(
-                  "shrink-0 rounded-[10px] border border-transparent",
-                  "transition-[border-color] duration-200 motion-reduce:transition-none",
-                  "data-[open=true]:border-border-strong",
-                )}
+                aria-hidden="true"
+                className="sticky top-0 z-1 -mx-2 flex shrink-0 flex-col items-center bg-surface px-4 pt-2 pb-2.5"
               >
-                {renderOption(option)}
-                {/* Rows ease from 0fr to 1fr, so the group opens smoothly. */}
-                <div
-                  className={cn(
-                    "grid transition-[grid-template-rows,opacity,visibility] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
-                    open
-                      ? "grid-rows-[1fr] opacity-100"
-                      : "invisible grid-rows-[0fr] opacity-0",
-                  )}
-                  inert={!open}
+                <span className="h-1 w-9 rounded-full bg-ink/15" />
+                {/* Above the options' 15px: larger, heavier and in full ink. */}
+                <span
+                  data-slot="choice-title"
+                  className="mt-4 self-start px-1 text-lg leading-6 font-semibold tracking-[-0.3px] text-ink"
                 >
-                  <div className="min-h-0 overflow-hidden">
+                  {label}
+                </span>
+              </div>
+            )}
+            <div
+              ref={content}
+              className={cn("flex flex-col", sheet ? "gap-0.5" : "gap-1")}
+            >
+              {options.map((option) => {
+                const open = selectedValues.has(option.value);
+                if (!option.children?.length) return renderOption(option);
+                return (
+                  <div
+                    key={option.value}
+                    role="group"
+                    aria-label={option.label}
+                    data-slot="choice-group"
+                    data-open={open}
+                    className={cn(
+                      "shrink-0 rounded-[10px] border border-transparent",
+                      "transition-[border-color] duration-200 motion-reduce:transition-none",
+                      "data-[open=true]:border-border-strong",
+                    )}
+                  >
+                    {renderOption(option)}
+                    {/* Rows ease from 0fr to 1fr, so the group opens smoothly. */}
                     <div
                       className={cn(
-                        // A plain guide under the parent's icon.
-                        "relative flex flex-col gap-0.5 px-1 pt-1 pb-1",
-                        "before:absolute before:top-1 before:bottom-1 before:border-l-[1.5px] before:border-border",
-                        // Centred under the parent's icon; rows start right of it.
-                        sheet ? "before:left-[20.25px]" : "before:left-[18.25px]",
+                        "grid transition-[grid-template-rows,opacity,visibility] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+                        open
+                          ? "grid-rows-[1fr] opacity-100"
+                          : "invisible grid-rows-[0fr] opacity-0",
                       )}
+                      inert={!open}
                     >
-                      {option.children.map(renderSuboption)}
+                      <div className="min-h-0 overflow-hidden">
+                        <div
+                          className={cn(
+                            // A plain guide under the parent's icon.
+                            "relative flex flex-col gap-0.5 px-1 pt-1 pb-1",
+                            "before:absolute before:top-1 before:bottom-1 before:border-l-[1.5px] before:border-border",
+                            // Centred under the parent's icon; rows start right of it.
+                            sheet
+                              ? "before:left-[20.25px]"
+                              : "before:left-[18.25px]",
+                          )}
+                        >
+                          {option.children.map(renderSuboption)}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          </div>
+          {sheet && (
+            // More below: fades out over the last stretch of scrolling. Over
+            // the bottom padding it is solid, so options pass under it there.
+            <div
+              ref={fade}
+              aria-hidden="true"
+              data-slot="choice-fade"
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-2 h-[calc(var(--fade-height)+10px+env(safe-area-inset-bottom))] bg-[linear-gradient(to_bottom,transparent,var(--color-surface)_var(--fade-height))] opacity-0 [--fade-height:40px]"
+            />
+          )}
         </div>
       </div>
     </div>

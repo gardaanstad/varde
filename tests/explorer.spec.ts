@@ -260,6 +260,57 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   });
 
+  test("a sheet fades out at its end only while there is more below", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const filters = page.getByRole("region", {
+      name: "Filtrer prosjekter",
+      exact: true,
+    });
+    const opacity = (menu: Locator) =>
+      menu.evaluate((element) =>
+        Number(
+          getComputedStyle(
+            element.parentElement!.querySelector("[data-slot=choice-fade]")!,
+          ).opacity,
+        ),
+      );
+    // Everything fits: no fade.
+    await filters.getByRole("button", { name: /^Status:/ }).click();
+    const status = page.getByRole("listbox", { name: "Status", exact: true });
+    await expect(status).toBeVisible();
+    await expect.poll(() => opacity(status)).toBe(0);
+    await page.keyboard.press("Escape");
+    // More below: a whole fade at the top, part of it near the end, none there.
+    await filters.getByRole("button", { name: /^Sted/ }).click();
+    const place = page.getByRole("listbox", { name: "Sted", exact: true });
+    await expect(place).toBeVisible();
+    await expect.poll(() => opacity(place)).toBe(1);
+    await place.evaluate((element) => {
+      element.scrollTop = element.scrollHeight - element.clientHeight - 20;
+    });
+    await expect.poll(() => opacity(place)).toBeCloseTo(0.5, 1);
+    await place.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect.poll(() => opacity(place)).toBe(0);
+    // The last option is in full view, and the fade doesn't take its taps.
+    const last = place.getByRole("option").last();
+    const reachable = await last.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const scroller = element.closest("[role=listbox]")!.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        rect.left + rect.width / 2,
+        rect.bottom - 2,
+      );
+      return rect.bottom <= scroller.bottom && !!hit && element.contains(hit);
+    });
+    expect(reachable).toBe(true);
+    await last.click();
+    await expect(place).toBeHidden();
+  });
+
   test("review screenshots at 390px", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
@@ -280,6 +331,15 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
       page.getByRole("listbox", { name: "Kategori", exact: true }),
     ).toBeVisible();
     await shot(page, "mobile-390-category-sheet");
+    await page.keyboard.press("Escape");
+    await filters.getByRole("button", { name: /^Sted/ }).click();
+    const placeSheet = page.getByRole("listbox", { name: "Sted", exact: true });
+    await expect(placeSheet).toBeVisible();
+    await shot(page, "mobile-390-place-sheet-top");
+    await placeSheet.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await shot(page, "mobile-390-place-sheet-bottom");
     await page.keyboard.press("Escape");
     await filters.getByRole("button", { name: "Åpne søk", exact: true }).click();
     await page
