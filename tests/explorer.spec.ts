@@ -260,6 +260,34 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   });
 
+  test("review screenshots at 390px", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+    const filters = page.getByRole("region", {
+      name: "Filtrer prosjekter",
+      exact: true,
+    });
+    await expect(filters).toBeVisible();
+    await shot(page, "mobile-390");
+    await filters.getByRole("button", { name: /^Status:/ }).click();
+    await expect(
+      page.getByRole("listbox", { name: "Status", exact: true }),
+    ).toBeVisible();
+    await shot(page, "mobile-390-status-sheet");
+    await page.keyboard.press("Escape");
+    await filters.getByRole("button", { name: "Kategori", exact: true }).click();
+    await expect(
+      page.getByRole("listbox", { name: "Kategori", exact: true }),
+    ).toBeVisible();
+    await shot(page, "mobile-390-category-sheet");
+    await page.keyboard.press("Escape");
+    await filters.getByRole("button", { name: "Åpne søk", exact: true }).click();
+    await page
+      .getByRole("textbox", { name: "Søk etter prosjekt eller sted" })
+      .fill("Oslo");
+    await shot(page, "mobile-390-search");
+  });
+
   test("filters and keyboard search work at full and compact map heights", async ({
     page,
   }) => {
@@ -279,6 +307,22 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     await expect(status.getByRole("option", { selected: true })).toHaveCount(
       2,
     );
+    // The sheet opens over a trigger that keeps still: no turned chevron, no
+    // open highlight.
+    const statusTrigger = filters.getByRole("button", { name: /^Status:/ });
+    await expect(statusTrigger.locator("svg.lucide-chevron-down")).toHaveCSS(
+      "transform",
+      "none",
+    );
+    await expect(statusTrigger).toHaveCSS(
+      "background-color",
+      "rgba(0, 0, 0, 0)",
+    );
+    // The sheet's title reads above its options.
+    const title = status.locator("[data-slot=choice-title]");
+    await expect(title).toHaveCSS("font-weight", "600");
+    await expect(title).toHaveCSS("font-size", "18px");
+    await shot(page, "mobile-status-sheet");
     await status
       .getByRole("option", { name: "Ferdigstilt", exact: true })
       .click();
@@ -312,6 +356,7 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     });
     await expect(search).toBeFocused();
     await expectDrawerHeight(page, 1);
+    await shot(page, "mobile-search-open");
     await search.fill("Ingen slike prosjekter");
     await expect(
       page
@@ -440,6 +485,132 @@ test.describe("desktop explorer", () => {
     listRegion(page).getByRole("button", { name: new RegExp(`^${title} · `) });
   const mapParam = (page: Page) => new URL(page.url()).searchParams.get("kart");
 
+  test("search opens out of its button on the filter row, and folds away", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const filters = page.getByRole("region", {
+      name: "Filtrer prosjekter",
+      exact: true,
+    });
+    const button = filters.getByRole("button", { name: "Åpne søk", exact: true });
+    const search = page.getByRole("textbox", {
+      name: "Søk etter prosjekt eller sted",
+    });
+    const place = filters.getByRole("button", { name: /^Sted/ });
+    await expect(search).toBeHidden();
+    // On the same line as the filters.
+    const [buttonBox, placeBox] = await Promise.all([
+      button.boundingBox(),
+      place.boundingBox(),
+    ]);
+    expect(
+      Math.abs(
+        buttonBox!.y + buttonBox!.height / 2 - (placeBox!.y + placeBox!.height / 2),
+      ),
+    ).toBeLessThanOrEqual(1);
+    await button.click();
+    await expect(search).toBeFocused();
+    await shot(page, "desktop-search-open");
+    // Escape folds it back to the button.
+    await search.press("Escape");
+    await expect(search).toBeHidden();
+    await expect(button).toBeFocused();
+    // Left empty, it folds away.
+    await page.keyboard.press("/");
+    await expect(search).toBeFocused();
+    const count = page.getByRole("status", { name: /prosjekter?$/ });
+    await count.click();
+    await expect(search).toBeHidden();
+    // Left with words, the button stays marked and the words become a chip.
+    await button.click();
+    await search.fill("Bergen");
+    await count.click();
+    await expect(search).toBeHidden();
+    await expect(button).toHaveAttribute("data-active", "true");
+    const chip = page.getByRole("button", {
+      name: "Fjern filter: «Bergen»",
+      exact: true,
+    });
+    await expect(chip).toBeVisible();
+    await shot(page, "desktop-search-active");
+    await button.click();
+    await expect(search).toHaveValue("Bergen");
+    await page.getByRole("button", { name: "Lukk søk", exact: true }).click();
+    await expect(search).toBeHidden();
+    await expect(button).not.toHaveAttribute("data-active");
+    await expect(chip).toBeHidden();
+  });
+
+  test("the sort sits beside the count, and status shows what it hides", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const count = page.getByRole("status", { name: /prosjekter?$/ });
+    const sort = page.getByRole("button", { name: /^Sorter prosjekter:/ });
+    const [countBox, sortBox] = await Promise.all([
+      count.boundingBox(),
+      sort.boundingBox(),
+    ]);
+    expect(
+      Math.abs(
+        countBox!.y + countBox!.height / 2 - (sortBox!.y + sortBox!.height / 2),
+      ),
+    ).toBeLessThanOrEqual(2);
+    expect(sortBox!.x).toBeGreaterThan(countBox!.x + countBox!.width);
+    const filters = page.getByRole("region", {
+      name: "Filtrer prosjekter",
+      exact: true,
+    });
+    // A dot per status shown, a ring for finished ones, hidden by default.
+    const trigger = filters.getByRole("button", {
+      name: "Status: Planlagt, Under bygging",
+      exact: true,
+    });
+    await expect(trigger.locator("[data-status-dots]")).toHaveAttribute(
+      "data-status-dots",
+      "planned,construction",
+    );
+    await trigger.click();
+    const menu = page.getByRole("listbox", { name: "Status", exact: true });
+    // Several can be chosen, and each chosen one is checked.
+    await expect(menu).toHaveAttribute("aria-multiselectable", "true");
+    await expect(menu.getByRole("option", { selected: true })).toHaveCount(2);
+    await expect(
+      menu.getByRole("option", { selected: true }).locator("svg.lucide-check"),
+    ).toHaveCount(2);
+    await shot(page, "desktop-status-menu");
+    await menu.getByRole("option", { name: /^Planlagt/ }).click();
+    // The last status shown stays shown.
+    await menu.getByRole("option", { name: /^Under bygging/ }).click();
+    await expect(menu.getByRole("option", { selected: true })).toHaveCount(1);
+    await expect(page).toHaveURL(/status=construction/);
+    // All of them is no filter.
+    await menu.getByRole("option", { name: /^Planlagt/ }).click();
+    await menu.getByRole("option", { name: /^Ferdigstilt/ }).click();
+    await expect(menu.getByRole("option", { selected: true })).toHaveCount(3);
+    await expect(page).toHaveURL(/status=alle/);
+    await page.keyboard.press("Escape");
+    await expect(
+      filters.locator("[data-status-dots]"),
+    ).toHaveAttribute("data-status-dots", "all");
+    await expect(
+      page.getByRole("button", { name: "Fjern filter: Alle statuser", exact: true }),
+    ).toBeVisible();
+  });
+
+  test("review screenshots at 1440px", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await expect(page.getByRole("status", { name: /prosjekter?$/ })).toBeVisible();
+    await shot(page, "desktop-1440");
+    await page.getByRole("button", { name: "Åpne søk", exact: true }).click();
+    await page
+      .getByRole("textbox", { name: "Søk etter prosjekt eller sted" })
+      .fill("Oslo");
+    await shot(page, "desktop-1440-search");
+  });
+
   test("status and category filters combine, sort, and survive a reload", async ({
     page,
   }) => {
@@ -556,6 +727,7 @@ test.describe("desktop explorer", () => {
     const search = page.getByRole("textbox", {
       name: "Søk etter prosjekt eller sted",
     });
+    await page.getByRole("button", { name: "Åpne søk", exact: true }).click();
     await search.fill("Bergen");
     await expect(
       listRegion(page).getByRole("heading", { name: "Ingen treff", exact: true }),
@@ -567,6 +739,11 @@ test.describe("desktop explorer", () => {
     await expect.poll(() => mapParam(page)).toMatch(/^60\./);
     await expect(page).toHaveURL(/[?&]q=Bergen&/);
     await page.reload();
+    // Reopened, the words wait behind the button, and in a chip.
+    await expect(
+      page.getByRole("button", { name: "Fjern filter: «Bergen»", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Åpne søk", exact: true }).click();
     await expect(search).toHaveValue("Bergen");
     await expect(card(page, "Bybanen til Åsane")).toBeVisible();
     // Without a view in the URL, the explorer reopens on the last one.

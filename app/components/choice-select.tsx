@@ -240,7 +240,9 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
             ? "min-h-12! gap-3 px-3 text-body active:bg-surface-muted"
             : [
                 "min-h-9 gap-2 px-2.5 py-1.5 text-ui hover:bg-surface-muted",
+                // Several can be chosen: each chosen one is checked instead.
                 !grouped &&
+                  !multiple &&
                   "aria-selected:border-border-strong aria-selected:hover:bg-transparent",
               ],
           // Grouped: a chosen main is tinted, so its open group reads as one.
@@ -284,7 +286,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
             {option.count}
           </span>
         )}
-        {(sheet || grouped) &&
+        {(sheet || grouped || multiple) &&
           check(chosen, sheet ? 18 : 15, option.count === undefined)}
       </button>
     );
@@ -362,8 +364,11 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
         className={cn(
           "group/trigger flex min-h-11 w-full items-center gap-2.5 whitespace-nowrap rounded-[9px] border border-border bg-surface px-3.25 text-left text-ui text-ink",
           "transition-[color,border-color,background-color,box-shadow] duration-150 motion-reduce:transition-none",
-          "hover:border-border-strong hover:bg-surface-subtle",
-          "aria-expanded:border-accent/50",
+          // Phones open a sheet over it, so the trigger keeps still: no
+          // hover, press or open states, and no turning chevron.
+          "[-webkit-tap-highlight-color:transparent]",
+          "md:hover:border-border-strong md:hover:bg-surface-subtle",
+          "md:aria-expanded:border-accent/50",
           triggerClassName,
         )}
         aria-label={
@@ -393,7 +398,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
         )}
         <ChevronDown
           size={14}
-          className="ml-auto shrink-0 transition-transform duration-150 group-aria-expanded/trigger:rotate-180 motion-reduce:transition-none"
+          className="ml-auto shrink-0 transition-transform duration-150 motion-reduce:transition-none max-md:transition-none md:group-aria-expanded/trigger:rotate-180"
         />
       </button>
       {/* Anchored menu; on phones, a scrim holding a bottom sheet. */}
@@ -470,10 +475,14 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
           {sheet && (
             <div
               aria-hidden="true"
-              className="sticky top-0 z-1 -mx-2 flex shrink-0 flex-col items-center bg-surface px-4 pt-2 pb-2"
+              className="sticky top-0 z-1 -mx-2 flex shrink-0 flex-col items-center bg-surface px-4 pt-2 pb-2.5"
             >
               <span className="h-1 w-9 rounded-full bg-ink/15" />
-              <span className="mt-3 self-start px-2 text-xs font-medium text-muted">
+              {/* Above the options' 15px: larger, heavier and in full ink. */}
+              <span
+                data-slot="choice-title"
+                className="mt-4 self-start px-1 text-lg leading-6 font-semibold tracking-[-0.3px] text-ink"
+              >
                 {label}
               </span>
             </div>

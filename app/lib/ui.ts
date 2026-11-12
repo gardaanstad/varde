@@ -85,14 +85,17 @@ export const avatarTone = {
 export const statusTone = {
   planned: {
     dot: "bg-status-planned",
+    fill: "fill-status-planned",
     badge: "border-status-planned/25 text-status-planned-ink",
   },
   construction: {
     dot: "bg-status-construction",
+    fill: "fill-status-construction",
     badge: "border-status-construction/30 text-status-construction-ink",
   },
   completed: {
     dot: "bg-status-completed",
+    fill: "fill-status-completed",
     badge: "border-status-completed/25 text-status-completed-ink",
   },
 } as const;

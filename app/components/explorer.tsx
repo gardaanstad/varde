@@ -2,6 +2,7 @@
 
 import {
   type CSSProperties,
+  type ReactNode,
   memo,
   useCallback,
   useEffect,
@@ -21,7 +22,6 @@ import {
   Inbox,
   RotateCcw,
   Map as MapIcon,
-  ListFilter,
   MapPin,
   PanelLeftClose,
   PanelLeftOpen,
@@ -75,6 +75,7 @@ import { useCommunity } from "./community-provider";
 import AccountPanel from "./account-panel";
 import ProfileAvatar from "./profile-avatar";
 import ChoiceSelect from "./choice-select";
+import StatusDots from "./status-dots";
 import CategoryIcon from "./category-icon";
 import ProjectEditor from "./project-editor";
 import ProjectPost from "./project-post";
@@ -268,24 +269,14 @@ const panelChoiceActive =
 const inlineChoiceClasses = [
   "min-w-0 shrink",
   "[&_[data-slot=choice-trigger]]:min-h-11 [&_[data-slot=choice-trigger]]:gap-1.5 [&_[data-slot=choice-trigger]]:rounded-lg [&_[data-slot=choice-trigger]]:border-transparent! [&_[data-slot=choice-trigger]]:bg-transparent [&_[data-slot=choice-trigger]]:px-2 [&_[data-slot=choice-trigger]]:text-body [&_[data-slot=choice-trigger]]:font-semibold [&_[data-slot=choice-trigger]]:tracking-[-0.2px]",
-  "[&_[data-slot=choice-trigger]]:hover:bg-ink/[0.05] [&_[data-slot=choice-trigger]]:aria-expanded:bg-ink/[0.05]",
   "[&_[data-slot=choice-trigger]>svg]:text-muted [&_[data-slot=choice-trigger]>svg:last-child]:ml-0",
   "[&_[data-slot=choice-option]]:min-h-11 [&_[data-slot=choice-menu][data-open=false]]:hidden",
   "max-xs:[&_[data-slot=choice-trigger]]:gap-1 max-xs:[&_[data-slot=choice-trigger]]:px-1.5 max-xs:[&_[data-slot=choice-trigger]]:text-[14px]",
 ].join(" ");
-const statusChoiceClasses = cn(
-  inlineChoiceClasses,
-  "shrink-0",
-  "[&_[data-slot=choice-trigger]]:relative [&_[data-slot=choice-trigger]]:size-11 [&_[data-slot=choice-trigger]]:justify-center [&_[data-slot=choice-trigger]]:px-0",
-  "[&_[data-slot=choice-trigger]>span:first-of-type]:sr-only [&_[data-slot=choice-trigger]>svg:last-child]:hidden",
-  "[&_[data-slot=choice-trigger]>span:nth-of-type(2)]:absolute [&_[data-slot=choice-trigger]>span:nth-of-type(2)]:top-1.5 [&_[data-slot=choice-trigger]>span:nth-of-type(2)]:right-1 [&_[data-slot=choice-trigger]>span:nth-of-type(2)]:grid [&_[data-slot=choice-trigger]>span:nth-of-type(2)]:size-4 [&_[data-slot=choice-trigger]>span:nth-of-type(2)]:place-items-center [&_[data-slot=choice-trigger]>span:nth-of-type(2)]:rounded-full [&_[data-slot=choice-trigger]>span:nth-of-type(2)]:bg-accent [&_[data-slot=choice-trigger]>span:nth-of-type(2)]:text-white [&_[data-slot=choice-trigger]>span:nth-of-type(2)]:ring-2 [&_[data-slot=choice-trigger]>span:nth-of-type(2)]:ring-surface",
-  "[&_[data-slot=choice-menu]]:min-w-[200px]",
-);
-
 const sortChoiceClasses = [
   "w-auto",
   "[&_[data-slot=choice-trigger]]:min-h-10 [&_[data-slot=choice-trigger]]:gap-1.5 [&_[data-slot=choice-trigger]]:border-transparent [&_[data-slot=choice-trigger]]:bg-transparent! [&_[data-slot=choice-trigger]]:px-2 [&_[data-slot=choice-trigger]]:text-ui [&_[data-slot=choice-trigger]]:text-muted",
-  "[&_[data-slot=choice-trigger]]:hover:bg-ink/[0.05]! [&_[data-slot=choice-trigger]]:hover:text-ink",
+  "md:[&_[data-slot=choice-trigger]]:hover:bg-ink/[0.05]! md:[&_[data-slot=choice-trigger]]:hover:text-ink",
   "[&_[data-slot=choice-menu]]:right-0 [&_[data-slot=choice-menu]]:left-auto [&_[data-slot=choice-menu]]:min-w-[205px] [&_[data-slot=choice-menu][data-open=false]]:hidden",
   "[&_[data-slot=choice-trigger]>svg:first-child]:max-md:hidden",
 ].join(" ");
@@ -377,7 +368,7 @@ export default memo(function Explorer({
     parseExploreState(new URLSearchParams(initialSearch)),
   );
   const [query, setQuery] = useState(initial.query);
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [status, setStatus] = useState<string[]>(initial.status);
   const [category, setCategory] = useState<string[]>(initial.category);
   const [sort, setSort] = useState(initial.sort);
@@ -466,15 +457,17 @@ export default memo(function Explorer({
     if (postId || profileName || modal || followingOnly || suggestionsOpen)
       return;
     // Focus during the tap so mobile browsers also open the keyboard.
-    if (isMobile) flushSync(() => setMobileSearchOpen(true));
-    // A collapsed list comes back to be searched.
-    else if (storedCollapsed()) flushSync(() => storeCollapsed(false));
+    flushSync(() => {
+      setSearchOpen(true);
+      // A collapsed list comes back to be searched.
+      if (!isMobile && storedCollapsed()) storeCollapsed(false);
+    });
     searchRef.current?.focus({ preventScroll: true });
   }, [isMobile, modal, postId, profileName, followingOnly, suggestionsOpen]);
 
-  function closeMobileSearch() {
+  function closeSearch() {
     flushSync(() => {
-      setMobileSearchOpen(false);
+      setSearchOpen(false);
       setQuery("");
     });
     searchTriggerRef.current?.focus({ preventScroll: true });
@@ -1038,7 +1031,7 @@ export default memo(function Explorer({
       if (trigger?.isConnected && focusTrigger)
         trigger.focus({ preventScroll: true });
       else if (isMobile) drawerHandleRef.current?.focus({ preventScroll: true });
-      else searchRef.current?.focus({ preventScroll: true });
+      else searchTriggerRef.current?.focus({ preventScroll: true });
     });
     if (state.projectOverlay) {
       // The history step leaves the map view as well (see onPopState).
@@ -1343,7 +1336,7 @@ export default memo(function Explorer({
     setQuery("");
     // Beside the map, the place is where the map is, not a filter.
     if (listPlace) setPlace("");
-    setMobileSearchOpen(false);
+    setSearchOpen(false);
     setStatus(defaultStatus);
     setCategory([]);
   }
@@ -1395,16 +1388,23 @@ export default memo(function Explorer({
     </Link>
   );
 
+  // One field on phones and beside the map: it opens out of its button over
+  // the filters. Beside the map it folds back once left empty, or keeps its
+  // words behind the button, marked, and as a chip.
   const search = (
     <div
       className={cn(
-        "flex h-10 w-full min-w-0 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-muted",
+        "flex h-full w-full min-w-0 items-center gap-2 rounded-full border border-border bg-surface pl-3.5 text-muted",
         "transition-[border-color,box-shadow] duration-150 focus-within:border-accent/50 focus-within:ring-3 focus-within:ring-accent/10 motion-reduce:transition-none",
-        isMobile && "h-11 pr-0",
       )}
       data-base-ui-swipe-ignore
+      onBlur={(event) => {
+        if (isMobile || event.currentTarget.contains(event.relatedTarget))
+          return;
+        setSearchOpen(false);
+      }}
     >
-      <Search className="shrink-0" size={17} />
+      <Search className="shrink-0" size={isMobile ? 17 : 15} />
       <input
         ref={searchRef}
         className={cn(
@@ -1424,35 +1424,90 @@ export default memo(function Explorer({
           if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
-            if (isMobile) closeMobileSearch();
-            else {
-              setQuery("");
-              event.currentTarget.blur();
-            }
+            closeSearch();
           }
           if (event.key === "Enter" && searched.length === 1)
             openPost(searched[0].id);
         }}
       />
-      {isMobile || query ? (
-        <button
-          className={cn(compactIconAction, "size-11 text-muted hover:text-ink")}
-          aria-label={isMobile ? "Lukk søk" : "Tøm søk"}
-          onClick={isMobile ? closeMobileSearch : () => setQuery("")}
-        >
-          <X size={15} />
-        </button>
-      ) : (
-        <kbd
-          className={cn(
-            "rounded border border-border bg-surface-muted px-1.5 font-mono text-2xs text-muted",
-            isMobile && "hidden",
-          )}
-        >
-          /
-        </kbd>
-      )}
+      <button
+        type="button"
+        className={cn(
+          compactIconAction,
+          "shrink-0 rounded-full text-muted hover:text-ink",
+          isMobile ? "size-11" : "size-8.5",
+        )}
+        aria-label="Lukk søk"
+        onClick={closeSearch}
+      >
+        <X size={15} />
+      </button>
     </div>
+  );
+  const searchActive = !searchOpen && !!needle;
+  const searchButton = (
+    <button
+      ref={searchTriggerRef}
+      type="button"
+      className={cn(
+        "relative flex shrink-0 items-center justify-center rounded-full text-muted",
+        "transition-[color,border-color,background-color] duration-150 motion-reduce:transition-none",
+        isMobile
+          ? "size-11 [-webkit-tap-highlight-color:transparent]"
+          : [
+              "size-9 border border-border bg-surface hover:border-border-strong hover:bg-surface-subtle hover:text-ink",
+              searchActive &&
+                "border-accent/30 bg-accent-soft/60 text-accent hover:border-accent/40 hover:bg-accent-soft hover:text-accent-strong",
+            ],
+      )}
+      aria-label="Åpne søk"
+      aria-expanded={searchOpen}
+      aria-controls="project-search-field"
+      data-active={searchActive || undefined}
+      onClick={openSearch}
+    >
+      <Search size={isMobile ? 19 : 16} aria-hidden="true" />
+    </button>
+  );
+  // The filters fade as the field opens out of the button at their end.
+  const filterBar = (filters: ReactNode) => (
+    <section
+      className={cn(
+        "relative",
+        isMobile
+          ? "-mx-2 mt-1.5 mb-0.5 h-11 [--search-button:2.75rem]"
+          : "@container mb-1 h-9 [--search-button:2.25rem]",
+      )}
+      aria-label="Filtrer prosjekter"
+    >
+      <div
+        className={cn(
+          "flex h-full min-w-0 items-center transition-opacity duration-200 ease-out motion-reduce:transition-none",
+          !isMobile && "gap-1.5",
+          searchOpen ? "pointer-events-none opacity-0" : "opacity-100",
+        )}
+        inert={searchOpen}
+        aria-hidden={searchOpen || undefined}
+      >
+        {filters}
+        <div className="ml-auto flex shrink-0 items-center pl-1">
+          {searchButton}
+        </div>
+      </div>
+      <div
+        id="project-search-field"
+        className={cn(
+          "absolute inset-0 z-20 transition-[clip-path,opacity] duration-250 ease-out-soft motion-reduce:transition-none",
+          searchOpen
+            ? "opacity-100 [clip-path:inset(-4px_round_9999px)]"
+            : "pointer-events-none opacity-0 [clip-path:inset(0_0_0_calc(100%_-_var(--search-button))_round_9999px)]",
+        )}
+        inert={!searchOpen}
+        aria-hidden={!searchOpen}
+      >
+        {search}
+      </div>
+    </section>
   );
 
   // Counts follow the map: each filter counts what the other leaves in view.
@@ -1511,91 +1566,69 @@ export default memo(function Explorer({
         })),
     ];
   }, [isMobile, matching, place, placesOf, projects]);
+  // Every status shown is no filter; the last one shown can't be hidden.
+  const statusValue = status.length ? status : statusOrder;
+  const pickStatus = (next: string[]) => {
+    if (next.length === 0) return;
+    setStatus(next.length === statusOrder.length ? [] : next);
+  };
   const statusFilter = (
     <ChoiceSelect
       label="Status"
       multiple
-      value={status}
-      onChange={setStatus}
+      value={statusValue}
+      onChange={pickStatus}
+      triggerLabel="Status"
+      icon={<StatusDots values={status} />}
       className={cn(
-        statusChoiceClasses,
-        statusChanged
-          ? "[&_[data-slot=choice-trigger]>svg]:text-accent"
-          : "[&_[data-slot=choice-trigger]>span:nth-of-type(2)]:hidden!",
+        isMobile
+          ? [
+              inlineChoiceClasses,
+              "[&_[data-slot=choice-trigger]>span]:sr-only [&_[data-slot=choice-trigger]]:gap-1 [&_[data-slot=choice-menu]]:min-w-[200px]",
+              !statusChanged && "[&_[data-slot=choice-trigger]]:text-muted",
+            ]
+          : [
+              panelChoiceClasses,
+              "shrink-0",
+              // Its dots alone where the row is short of room for the word.
+              "@max-[27.5rem]:[&_[data-slot=choice-trigger]>span]:sr-only",
+              statusChanged && panelChoiceActive,
+            ],
       )}
-      icon={<ListFilter size={19} aria-hidden="true" />}
       options={statusOptions}
     />
   );
-  const mobileFilters = (
-    <section
-      className="relative -mx-2 mt-1.5 mb-0.5 h-11"
-      aria-label="Filtrer prosjekter"
-    >
-      <div
+  const mobileFilters = filterBar(
+    <>
+      <ChoiceSelect
+        label="Sted"
+        value={place}
+        onChange={pickPlace}
+        triggerLabel={place || "Velg sted"}
         className={cn(
-          "flex items-center transition-opacity duration-200 ease-out motion-reduce:transition-none",
-          mobileSearchOpen ? "pointer-events-none opacity-0" : "opacity-100",
+          inlineChoiceClasses,
+          "[&_[data-slot=choice-trigger]>span:nth-of-type(2)]:hidden",
+          !place &&
+            "[&_[data-slot=choice-trigger]]:font-medium [&_[data-slot=choice-trigger]]:text-muted",
         )}
-        inert={mobileSearchOpen}
-        aria-hidden={mobileSearchOpen || undefined}
-      >
-        <ChoiceSelect
-          label="Sted"
-          value={place}
-          onChange={pickPlace}
-          triggerLabel={place || "Velg sted"}
-          className={cn(
-            inlineChoiceClasses,
-            "[&_[data-slot=choice-trigger]>span:nth-of-type(2)]:hidden",
-            !place &&
-              "[&_[data-slot=choice-trigger]]:font-medium [&_[data-slot=choice-trigger]]:text-muted",
-          )}
-          options={placeOptions}
-        />
-        <ChoiceSelect
-          label="Kategori"
-          multiple
-          value={category}
-          onChange={setCategory}
-          triggerLabel={categorySummary(category)}
-          className={cn(
-            inlineChoiceClasses,
-            "[&_[data-slot=choice-trigger]>span:nth-of-type(2)]:hidden",
-            category.length === 0 &&
-              "[&_[data-slot=choice-trigger]]:font-medium [&_[data-slot=choice-trigger]]:text-muted",
-          )}
-          options={categoryOptions}
-        />
-        <div className="ml-auto flex shrink-0 items-center">
-          <button
-            ref={searchTriggerRef}
-            type="button"
-            className={cn(compactIconAction, "size-11 text-muted")}
-            aria-label="Åpne søk"
-            aria-expanded={mobileSearchOpen}
-            aria-controls="mobile-project-search"
-            onClick={openSearch}
-          >
-            <Search size={19} aria-hidden="true" />
-          </button>
-          {statusFilter}
-        </div>
-      </div>
-      <div
-        id="mobile-project-search"
+        options={placeOptions}
+      />
+      <ChoiceSelect
+        label="Kategori"
+        multiple
+        value={category}
+        onChange={setCategory}
+        triggerLabel={categorySummary(category)}
         className={cn(
-          "absolute inset-0 z-20 transition-[clip-path,opacity] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
-          mobileSearchOpen
-            ? "opacity-100 [clip-path:inset(-4px_-4px_-4px_-4px_round_10px)]"
-            : "pointer-events-none opacity-0 [clip-path:inset(-4px_calc(44px_-_4px)_-4px_calc(100%_-_88px)_round_10px)]",
+          inlineChoiceClasses,
+          "[&_[data-slot=choice-trigger]>span:nth-of-type(2)]:hidden",
+          category.length === 0 &&
+            "[&_[data-slot=choice-trigger]]:font-medium [&_[data-slot=choice-trigger]]:text-muted",
         )}
-        inert={!mobileSearchOpen}
-        aria-hidden={!mobileSearchOpen}
-      >
-        {search}
-      </div>
-    </section>
+        options={categoryOptions}
+      />
+      {statusFilter}
+    </>,
   );
 
   const sortFilter = (
@@ -1619,49 +1652,34 @@ export default memo(function Explorer({
       options={placeOptions}
     />
   );
-  const desktopFilters = (
-    <section className="pb-1" aria-label="Filtrer prosjekter">
-      {search}
-      <div className="mt-2 flex min-w-0 items-center gap-1.5">
-        {placeFilter}
-        <ChoiceSelect
-          label="Kategori"
-          multiple
-          value={category}
-          onChange={setCategory}
-          triggerLabel={categorySummary(category)}
-          className={cn(
-            panelChoiceClasses,
-            category.length > 0 && panelChoiceActive,
-          )}
-          options={categoryOptions}
-        />
-        {/* Status is secondary: an icon with a badge once it's changed. */}
-        <span className="ml-auto shrink-0" data-tooltip="Status">
-          <ChoiceSelect
-            label="Status"
-            multiple
-            value={status}
-            onChange={setStatus}
-            className={cn(
-              statusChoiceClasses,
-              "[&_[data-slot=choice-trigger]]:size-9 [&_[data-slot=choice-trigger]>span:nth-of-type(2)]:top-0.5 [&_[data-slot=choice-trigger]>span:nth-of-type(2)]:right-0",
-              statusChanged
-                ? "[&_[data-slot=choice-trigger]>svg]:text-accent"
-                : "[&_[data-slot=choice-trigger]>span:nth-of-type(2)]:hidden!",
-            )}
-            icon={<ListFilter size={17} aria-hidden="true" />}
-            options={statusOptions}
-          />
-        </span>
-        <div className="-mr-2 shrink-0">{sortFilter}</div>
-      </div>
-    </section>
+  const desktopFilters = filterBar(
+    <>
+      {placeFilter}
+      <ChoiceSelect
+        label="Kategori"
+        multiple
+        value={category}
+        onChange={setCategory}
+        triggerLabel={categorySummary(category)}
+        className={cn(
+          panelChoiceClasses,
+          category.length > 0 && panelChoiceActive,
+        )}
+        options={categoryOptions}
+      />
+      <span
+        className="flex shrink-0"
+        data-tooltip={statusSummary(status)}
+      >
+        {statusFilter}
+      </span>
+    </>,
   );
 
   const activeFilters = [
-    // Mobile shows category inline, so only hidden filters get chips there.
-    ...(isMobile && needle
+    // Mobile shows category inline, so only hidden filters get chips there;
+    // a folded search's words get one everywhere.
+    ...(needle && (isMobile || !searchOpen)
       ? [
           {
             key: "query",
@@ -1802,7 +1820,9 @@ export default memo(function Explorer({
               </ul>
             )}
           </div>
-          {isMobile && sortFilter}
+          <div className={cn("shrink-0", !isMobile && "-mr-2")}>
+            {sortFilter}
+          </div>
         </div>
         {listedProjects.length === 0 ? (
           <EmptyState
