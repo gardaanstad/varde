@@ -234,7 +234,8 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
         tabIndex={-1}
         className={cn(
           "flex w-full shrink-0 items-center rounded-lg border border-transparent text-left -outline-offset-2",
-          "transition-[color,border-color,background-color] duration-150 motion-reduce:transition-none",
+          // Hover and focus tint at once; only colour changes ease.
+          "transition-[color,border-color] duration-150 motion-reduce:transition-none",
           "focus-visible:bg-surface-muted aria-selected:font-medium",
           sheet
             ? "min-h-12! gap-3 px-3 text-body active:bg-surface-muted"
@@ -243,10 +244,10 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
                 !grouped &&
                   "aria-selected:border-border-strong aria-selected:hover:bg-transparent",
               ],
-          // Grouped: a chosen main is tinted, so its open group reads as one.
+          // Grouped: the group's outline marks what's chosen.
           grouped && [
-            "aria-selected:bg-accent-soft aria-selected:text-accent-strong aria-selected:hover:bg-accent-soft aria-selected:focus-visible:bg-accent-soft",
-            // Inside the group's border, the row's corners follow it.
+            "aria-selected:text-accent-strong",
+            // Inside the group's outline, the row's corners follow it.
             option.children?.length && "rounded-[9px]",
             open && "font-medium",
           ],
@@ -307,12 +308,12 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
         tabIndex={-1}
         className={cn(
           "flex w-full shrink-0 items-center rounded-lg text-left text-ink -outline-offset-2",
-          "transition-[color,background-color] duration-150 motion-reduce:transition-none",
+          "transition-[color] duration-150 motion-reduce:transition-none",
           "focus-visible:bg-surface-muted",
-          "aria-selected:bg-accent-soft aria-selected:font-medium aria-selected:text-accent-strong aria-selected:focus-visible:bg-accent-soft",
+          "aria-selected:font-medium aria-selected:text-accent-strong",
           sheet
             ? "ml-6 min-h-11 w-auto gap-3 pr-2 pl-3.25 text-ui active:bg-surface-muted"
-            : "ml-5.5 min-h-8 w-auto gap-2 pr-1.75 pl-2.25 text-ui hover:bg-surface-muted aria-selected:hover:bg-accent-soft",
+            : "ml-5.5 min-h-8 w-auto gap-2 pr-1.75 pl-2.25 text-ui hover:bg-surface-muted",
         )}
         onClick={() => toggle(option.value)}
       >
@@ -488,11 +489,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
                 aria-label={option.label}
                 data-slot="choice-group"
                 data-open={open}
-                className={cn(
-                  "shrink-0 rounded-[10px] border border-transparent",
-                  "transition-[border-color] duration-200 motion-reduce:transition-none",
-                  "data-[open=true]:border-border-strong",
-                )}
+                className="relative shrink-0 rounded-[10px] border border-transparent"
               >
                 {renderOption(option)}
                 {/* Rows ease from 0fr to 1fr, so the group opens smoothly. */}
@@ -519,11 +516,209 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
                     </div>
                   </div>
                 </div>
+                <GroupOutline
+                  runs={
+                    !open
+                      ? []
+                      : narrowed(option)
+                        ? chosenRuns(option.children, selectedValues)
+                        : [whole]
+                  }
+                />
               </div>
             );
           })}
         </div>
       </div>
     </div>
+  );
+}
+
+/** A run of neighbouring children, by index, first to last. */
+type Run = readonly [number, number];
+/** The whole group: its main and every child. */
+const whole: Run = [-1, Number.MAX_SAFE_INTEGER];
+
+/** The chosen children, as runs of neighbours. */
+function chosenRuns(children: Option[], selected: Set<string>): Run[] {
+  const runs: [number, number][] = [];
+  children.forEach((child, index) => {
+    if (!selected.has(child.value)) return;
+    const last = runs.at(-1);
+    if (last && last[1] === index - 1) last[1] = index;
+    else runs.push([index, index]);
+  });
+  return runs;
+}
+
+const overlaps = (a: Run, b: Run) => a[0] <= b[1] && b[0] <= a[1];
+
+type Frame = Pick<
+  CSSStyleDeclaration,
+  "top" | "left" | "width" | "height" | "borderRadius"
+>;
+
+const moveMs = 250;
+const fadeMs = 200;
+const ease = "cubic-bezier(0.22, 1, 0.36, 1)";
+const transition = [
+  ...["top", "left", "width", "height", "border-radius"].map(
+    (property) => `${property} ${moveMs}ms ${ease}`,
+  ),
+  `opacity ${fadeMs}ms ease-out`,
+].join(", ");
+
+/** An element's offset from an ancestor's padding edge, untouched by transforms. */
+function offsetWithin(element: HTMLElement, ancestor: HTMLElement) {
+  let top = 0;
+  let left = 0;
+  let node: HTMLElement | null = element;
+  while (node && node !== ancestor) {
+    top += node.offsetTop;
+    left += node.offsetLeft;
+    node = node.offsetParent as HTMLElement | null;
+  }
+  return { top, left };
+}
+
+/** Where a run's outline sits in its group. */
+function frameOf(group: HTMLElement, run: Run): Frame {
+  // Over the group's own border, so it follows the group as it opens.
+  if (run === whole)
+    return {
+      top: "-1px",
+      left: "-1px",
+      width: "calc(100% + 2px)",
+      height: "calc(100% + 2px)",
+      borderRadius: "10px",
+    };
+  const rows = group.querySelectorAll<HTMLElement>(
+    '[data-slot="choice-suboption"]',
+  );
+  const first = rows[run[0]];
+  const last = rows[run[1]];
+  if (!first || !last) return frameOf(group, whole);
+  const start = offsetWithin(first, group);
+  const end = offsetWithin(last, group);
+  return {
+    top: `${start.top}px`,
+    left: `${start.left}px`,
+    width: `${first.offsetWidth}px`,
+    height: `${end.top + last.offsetHeight - start.top}px`,
+    borderRadius: "8px",
+  };
+}
+
+const sameFrame = (element: HTMLElement, frame: Frame) =>
+  (Object.keys(frame) as (keyof Frame)[]).every(
+    (key) => element.style[key] === frame[key],
+  );
+
+/** Places an outline at once, cutting short whatever it was easing to. */
+function jump(element: HTMLElement, frame: Frame, opacity = "1") {
+  element.style.transition = "none";
+  Object.assign(element.style, frame, { opacity });
+  void element.offsetWidth;
+  element.style.transition = transition;
+}
+
+/**
+ * The outline around what's chosen in a group: all of it, or each run of
+ * chosen children. Outlines glide between choices: from the group onto a
+ * child, out over a neighbour, apart when a run is broken and together when
+ * runs join; one around a child on its own fades in.
+ */
+function GroupOutline({ runs }: { runs: Run[] }) {
+  const layer = useRef<HTMLDivElement>(null);
+  const boxes = useRef<{ element: HTMLDivElement; run: Run }[]>([]);
+  const placed = useRef(false);
+  const key = runs.map((run) => run.join(":")).join(",");
+  const currentRuns = useEffectEvent(() => runs);
+
+  useLayoutEffect(() => {
+    const group = layer.current?.parentElement;
+    if (!layer.current || !group) return;
+    const next = currentRuns();
+    const animate =
+      placed.current &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches &&
+      !group.closest('[data-slot="choice-menu"][data-open="false"]');
+    placed.current = true;
+    const old = boxes.current;
+    // Where each outline is right now, mid-glide or not.
+    const now = new Map(
+      old.map(({ element }) => {
+        const style = getComputedStyle(element);
+        return [
+          element,
+          {
+            top: style.top,
+            left: style.left,
+            width: style.width,
+            height: style.height,
+            borderRadius: style.borderRadius,
+          },
+        ];
+      }),
+    );
+    const kept = new Set<HTMLDivElement>();
+    boxes.current = next.map((run) => {
+      const hits = old.filter((box) => overlaps(box.run, run));
+      const reused = hits.find((box) => !kept.has(box.element));
+      const frame = frameOf(group, run);
+      if (reused) {
+        kept.add(reused.element);
+        if (animate) Object.assign(reused.element.style, frame);
+        else jump(reused.element, frame);
+        return { element: reused.element, run };
+      }
+      const element = document.createElement("div");
+      element.style.cssText =
+        "position:absolute;box-sizing:border-box;pointer-events:none;border:1px solid var(--color-border-strong)";
+      layer.current!.append(element);
+      if (!animate) jump(element, frame);
+      else {
+        // Split off from the outline it was part of, or faded in.
+        const from = hits[0] && now.get(hits[0].element);
+        jump(element, from ?? frame, from ? "1" : "0");
+        Object.assign(element.style, frame, { opacity: "1" });
+      }
+      return { element, run };
+    });
+    for (const box of old) {
+      if (kept.has(box.element)) continue;
+      if (!animate) {
+        box.element.remove();
+        continue;
+      }
+      // Joining a run: glide into it, then give way to the one that stays.
+      const into = next.find((run) => overlaps(box.run, run));
+      if (into) Object.assign(box.element.style, frameOf(group, into));
+      else box.element.style.opacity = "0";
+      setTimeout(() => box.element.remove(), into ? moveMs : fadeMs);
+    }
+  }, [key]);
+
+  // Rows change size with the layout (a sheet on phones); keep up at once.
+  useLayoutEffect(() => {
+    const group = layer.current?.parentElement;
+    if (!group) return;
+    const observer = new ResizeObserver(() => {
+      for (const { element, run } of boxes.current) {
+        const frame = frameOf(group, run);
+        if (!sameFrame(element, frame)) jump(element, frame);
+      }
+    });
+    observer.observe(group);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={layer}
+      aria-hidden="true"
+      data-slot="choice-outline"
+      className="pointer-events-none absolute inset-0"
+    />
   );
 }
