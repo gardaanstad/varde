@@ -97,7 +97,6 @@ test("moderators add photos while creating a project; without one it shows the p
         .poll(() => thumbnail.evaluate((img: HTMLImageElement) => img.naturalWidth))
         .toBeGreaterThan(0);
     }
-    await dialog.getByRole("button", { name: "Tegn området" }).click();
     await dialog.getByText("Legg inn koordinater").click();
     for (const point of ["59.91, 10.75", "59.92, 10.76", "59.91, 10.77"]) {
       await dialog.getByLabel("Breddegrad, lengdegrad").fill(point);

@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
-import dynamic from "next/dynamic";
 import {
   ArrowUp,
   ArrowUpRight,
@@ -46,6 +45,7 @@ import {
   composerSend,
   statusTone,
 } from "../lib/ui";
+import DrawingMap from "./drawing-map";
 import ProjectPostHeader, { DesktopActions } from "./project-post-header";
 import ProjectDiscussion from "./project-discussion";
 import CategoryIcon from "./category-icon";
@@ -74,8 +74,6 @@ import ImagePicker from "./image-picker";
 import ProjectPlaceholder from "./project-placeholder";
 import styles from "./project-post.module.css";
 import { takeLoginIntent } from "../lib/login-intent";
-
-const ProjectMap = dynamic(() => import("./project-map"), { ssr: false });
 
 const cover =
   "relative aspect-3/2 w-full overflow-hidden rounded-[10px] bg-surface-muted";
@@ -327,23 +325,15 @@ function EditFacts() {
         />
       </EditField>
       <EditField id="geometry" wide>
-        <div
-          className={cn(
-            "h-90 overflow-hidden rounded-lg border border-border-strong max-md:h-80",
-            editState,
-          )}
-          data-base-ui-swipe-ignore
-        >
-          <ProjectMap
-            city={draft.city.trim() || draft.city}
-            draw
-            compact
-            points={draft.geometry}
-            geometryType={draft.geometryType}
-            onGeometryChange={(geometryType) => change({ geometryType })}
-            onPointsChange={(geometry) => change({ geometry })}
-          />
-        </div>
+        <DrawingMap
+          city={draft.city.trim() || draft.city}
+          compact
+          frameClassName={editState}
+          points={draft.geometry}
+          shape={draft.geometryType}
+          onShapeChange={(geometryType) => change({ geometryType })}
+          onPointsChange={(geometry) => change({ geometry })}
+        />
       </EditField>
     </div>
   );

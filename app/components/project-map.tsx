@@ -14,10 +14,6 @@ import {
   Plus,
   X,
   Check,
-  RotateCcw,
-  Pentagon,
-  Route,
-  Undo2,
 } from "lucide-react";
 import {
   categoryLabels,
@@ -112,16 +108,6 @@ const mapIconButton = cn(
   "size-11 rounded-[6px] border-border bg-surface text-ink shadow-control",
   "hover:bg-surface-muted hover:text-ink",
   "aria-pressed:bg-surface-muted aria-pressed:text-ink",
-);
-
-const drawModeButton = cn(
-  "inline-flex min-h-11 items-center gap-1.5 rounded-[4px] border border-transparent px-[11px]",
-  "text-xs font-medium text-muted",
-  "transition-[color,border-color,box-shadow,transform] duration-150",
-  "hover:bg-surface-muted hover:text-ink",
-  "aria-pressed:bg-accent/10 aria-pressed:text-accent-strong",
-  "active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100",
-  "max-sm:px-2.5 max-sm:text-2xs",
 );
 
 const layerOptionButton = cn(
@@ -227,7 +213,7 @@ type Props = {
   highlightedId?: string | null;
   onSelect?: (id: string | null) => void;
   draw?: boolean;
-  /** Small inline drawing map: no hint bar or layer menu. */
+  /** Small inline map: no layer menu. */
   compact?: boolean;
   /** A preview framed on its projects; the explorer's view is left alone. */
   frame?: boolean;
@@ -235,7 +221,6 @@ type Props = {
   geometryType?: "area" | "line";
   /** Every drawing edit: added, moved, inserted or removed points. */
   onPointsChange?: (points: Point[]) => void;
-  onGeometryChange?: (type: "area" | "line") => void;
   /**
    * Where the zoom and layer controls go instead of over the map, such as a
    * slot on the mobile drawer so they move with it. `null` holds them back
@@ -259,7 +244,6 @@ export default function ProjectMap({
   points = noPoints,
   geometryType = "area",
   onPointsChange,
-  onGeometryChange,
   controlsContainer,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
@@ -294,8 +278,6 @@ export default function ProjectMap({
   const syncRef = useRef(() => {});
   // Resizes, places and draws the base map at once.
   const refreshBase = useRef<() => boolean>(() => false);
-  // Drawing edits can be undone one by one, moves and removals included.
-  const [history, setHistory] = useState<Point[][]>([]);
   const [ready, setReady] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
   const [layer, setLayer] = useState<MapLayer>(draw ? "streets" : "standard");
@@ -337,25 +319,10 @@ export default function ProjectMap({
       bottomInset,
       draw,
       commit(next) {
-        setHistory((past) => [...past.slice(-49), points]);
         onPointsChange?.(next);
       },
     };
-  }, [
-    onSelect,
-    onViewChange,
-    onReady,
-    bottomInset,
-    draw,
-    points,
-    onPointsChange,
-  ]);
-  function undo() {
-    const previous = history.at(-1);
-    if (!previous) return;
-    setHistory(history.slice(0, -1));
-    onPointsChange?.(previous);
-  }
+  }, [onSelect, onViewChange, onReady, bottomInset, draw, onPointsChange]);
   useEffect(() => {
     if (!container.current) return;
     const map = L.map(container.current, {
@@ -1121,11 +1088,9 @@ export default function ProjectMap({
       data-base-ui-swipe-ignore=""
       className={cn(
         "absolute right-4.5 z-600 flex flex-col items-end gap-2 max-lg:right-3.75 max-sm:right-3 max-sm:gap-1.5",
-        compact
+        compact || draw
           ? "right-2 bottom-6 max-lg:right-2 max-sm:right-2 max-sm:bottom-6"
-          : draw
-            ? "bottom-22.75 max-md:bottom-19.25 max-sm:bottom-18"
-            : "bottom-10 max-sm:bottom-8",
+          : "bottom-10 max-sm:bottom-8",
       )}
     >
       {layersOpen && !compact && (
@@ -1229,17 +1194,9 @@ export default function ProjectMap({
       onPointerDown={(event) =>
         event.currentTarget.setAttribute("data-pointer", "")
       }
-      onKeyDown={(event) => {
-        event.currentTarget.removeAttribute("data-pointer");
-        if (
-          draw &&
-          (event.metaKey || event.ctrlKey) &&
-          event.key.toLowerCase() === "z"
-        ) {
-          event.preventDefault();
-          undo();
-        }
-      }}
+      onKeyDown={(event) =>
+        event.currentTarget.removeAttribute("data-pointer")
+      }
     >
       <div
         ref={container}
@@ -1250,73 +1207,6 @@ export default function ProjectMap({
         role="region"
         aria-label={draw ? "Tegn prosjektområdet på kartet" : "Prosjektkart"}
       />
-      {draw && (
-        <>
-          <div
-            className={cn(
-              "absolute top-4 left-4 z-600 flex rounded-[7px] border border-border bg-surface/95 p-1 shadow-overlay max-sm:top-3 max-sm:left-3",
-              compact && "top-2 left-2 max-sm:top-2 max-sm:left-2",
-            )}
-          >
-            <button
-              type="button"
-              className={drawModeButton}
-              aria-pressed={geometryType === "area"}
-              onClick={() => onGeometryChange?.("area")}
-            >
-              <Pentagon size={16} aria-hidden="true" /> Område
-            </button>
-            <button
-              type="button"
-              className={drawModeButton}
-              aria-pressed={geometryType === "line"}
-              onClick={() => onGeometryChange?.("line")}
-            >
-              <Route size={16} aria-hidden="true" /> Trasé
-            </button>
-          </div>
-          <div
-            hidden={compact}
-            className="absolute right-16.25 bottom-7.5 left-4 z-600 flex items-center gap-2.25 rounded-[7px] border border-border bg-surface/95 p-3 text-xs text-muted shadow-overlay max-md:right-3.75 max-md:bottom-5.5 max-md:text-2xs max-sm:right-15 max-sm:bottom-5 max-sm:left-3 max-sm:gap-1.5 max-sm:p-2.5 max-sm:text-[8px]"
-          >
-            <span
-              className="inline-block size-1.5 shrink-0 rounded-full bg-accent shadow-[0_0_0_4px_rgb(31_90_67/0.1)]"
-              aria-hidden="true"
-            />
-            Klikk for å sette punkt, dra for å flytte{" "}
-            <span className="ml-auto font-medium whitespace-nowrap text-ink max-md:hidden">
-              {points.length} punkter
-            </span>
-          </div>
-          <div
-            className={cn(
-              "absolute top-18 left-4 z-600 flex gap-1.5 max-sm:top-16.5 max-sm:left-3",
-              compact && "top-16 left-2 max-sm:top-16 max-sm:left-2",
-            )}
-          >
-            <button
-              type="button"
-              className={cn(mapIconButton, "border-border text-muted")}
-              disabled={!history.length}
-              onClick={undo}
-              aria-label="Angre"
-              data-tooltip="Angre"
-            >
-              <Undo2 size={17} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className={cn(mapIconButton, "border-border text-muted")}
-              disabled={!points.length}
-              onClick={() => handlers.current.commit([])}
-              aria-label="Tøm tegning"
-              data-tooltip="Tøm tegning"
-            >
-              <RotateCcw size={17} aria-hidden="true" />
-            </button>
-          </div>
-        </>
-      )}
       {controlsContainer === undefined
         ? controls
         : controlsContainer && createPortal(controls, controlsContainer)}
