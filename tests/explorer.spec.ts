@@ -885,7 +885,7 @@ test.describe("desktop explorer", () => {
     await expect.poll(mapWidth).toBe(1280);
     await expect(listRegion(page)).toBeHidden();
     expect(narrow).toBeLessThan(1280);
-    // The toggle glides from the header's end to just left of the logo.
+    // The toggle glides from the header's end to just right of the logo.
     const expand = page.getByRole("button", {
       name: "Vis prosjektlisten",
       exact: true,
@@ -898,7 +898,7 @@ test.describe("desktop explorer", () => {
     await expect
       .poll(async () => {
         const [box, mark] = [await expand.boundingBox(), await logo.boundingBox()];
-        return box && mark && [box.x < before!.x, box.x + box.width <= mark.x + 1];
+        return box && mark && [box.x < before!.x, box.x >= mark.x + mark.width - 1];
       })
       .toEqual([true, true]);
     // A project picked on the map opens as the usual sidebar panel...
