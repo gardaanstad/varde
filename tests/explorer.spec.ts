@@ -287,7 +287,7 @@ for (const viewport of [
         .getByRole("button", { name: "Kategori", exact: true })
         .click();
       await page
-        .getByRole("option", { name: project.category, exact: true })
+        .getByRole("option", { name: project.categories[0], exact: true })
         .click();
       await page.keyboard.press("Escape");
       await page
@@ -466,17 +466,33 @@ test.describe("desktop explorer", () => {
         exact: true,
       }),
     ).toBeVisible();
+    // Main categories first; a chosen one opens its subcategories.
+    const [main, sub] = project.categories;
     await filters.getByRole("button", { name: "Kategori", exact: true }).click();
-    await page
-      .getByRole("listbox", { name: "Kategori", exact: true })
-      .getByRole("option", { name: new RegExp(`^${project.category}`) })
-      .click();
+    const categoryMenu = page.getByRole("listbox", {
+      name: "Kategori",
+      exact: true,
+    });
+    const subOption = categoryMenu.getByRole("option", {
+      name: new RegExp(`^${sub}`),
+    });
+    await expect(subOption).toBeHidden();
+    const mainOption = categoryMenu.getByRole("option", {
+      name: new RegExp(`^${main}`),
+    });
+    await mainOption.click();
+    await expect(mainOption).toHaveAttribute("aria-selected", "true");
+    await expect(subOption).toBeVisible();
+    // A subcategory narrows the main: it's no longer all of it.
+    await subOption.click();
+    await expect(mainOption).toHaveAttribute("aria-selected", "false");
+    await expect(subOption).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(
       active.getByRole("button", { name: /^Fjern filter/ }),
     ).toHaveCount(2);
     await expect(page).toHaveURL(
-      new RegExp(`status=construction&kategori=${project.category}`),
+      new RegExp(`status=construction&kategori=${main},${sub}`),
     );
     const results = listRegion(page);
     for (const button of await results
@@ -485,10 +501,11 @@ test.describe("desktop explorer", () => {
       .all())
       await expect(button).toHaveAttribute(
         "aria-label",
-        new RegExp(` · ${project.category} · `),
+        new RegExp(` · [^·]*${sub}[^·]* · `),
       );
+    // The last subcategory's chip takes its main category along.
     await active
-      .getByRole("button", { name: `Fjern filter: ${project.category}` })
+      .getByRole("button", { name: `Fjern filter: ${sub}` })
       .click();
     await expect(
       active.getByRole("button", { name: /^Fjern filter/ }),

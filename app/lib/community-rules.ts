@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { categories } from "./data";
+import { categories, type Category, normalizeCategories } from "./data";
 export const id = z.string().min(1).max(100);
 export const sourceUrl = z
   .url()
@@ -23,7 +23,11 @@ export const projectFields = z.object({
   title: z.string().trim().min(3).max(160),
   district: z.string().trim().max(100),
   city: z.string().trim().min(1).max(100),
-  category: z.enum(categories),
+  categories: z
+    .array(z.enum(categories as [Category, ...Category[]]))
+    .min(1, "Velg minst én kategori.")
+    .max(categories.length)
+    .transform(normalizeCategories),
   status: z.enum(["planned", "construction", "completed"]),
   image: z.union([image, z.literal("")]),
   images: z.array(photo).max(20).optional(),

@@ -33,8 +33,13 @@ import {
   ZoomOut,
 } from "lucide-react";
 import {
-  categories,
+  categoryLabels,
+  categoryTree,
+  isMainCategory,
+  mainCategoryOf,
+  matchesCategories,
   type Bounds,
+  type Category,
   type Comment,
   type Point,
   type Project,
@@ -70,6 +75,7 @@ import { useCommunity } from "./community-provider";
 import AccountPanel from "./account-panel";
 import ProfileAvatar from "./profile-avatar";
 import ChoiceSelect from "./choice-select";
+import CategoryIcon from "./category-icon";
 import ProjectEditor from "./project-editor";
 import ProjectPost from "./project-post";
 import ProjectCard from "./project-card";
@@ -208,14 +214,31 @@ const countBadge =
   "inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums";
 
 function categorySummary(values: string[]) {
-  return values.length === 0
+  const labels = categoryLabels(values);
+  return labels.length === 0
     ? "Alle kategorier"
-    : values.length === 1
-      ? values[0]
-      : `${values.length} kategorier`;
+    : labels.length === 1
+      ? labels[0]
+      : `${labels.length} kategorier`;
+}
+/**
+ * The filter without one of its labels: a main goes with its subcategories,
+ * and the last subcategory of a main takes the main along.
+ */
+function withoutCategory(values: string[], label: Category) {
+  const main = mainCategoryOf(label);
+  const siblings = values.filter(
+    (value) => value !== main && mainCategoryOf(value as Category) === main,
+  );
+  const removeMain = isMainCategory(label) || siblings.length <= 1;
+  return values.filter(
+    (value) =>
+      value !== label &&
+      !(removeMain && mainCategoryOf(value as Category) === main),
+  );
 }
 const searchText = (project: Project) =>
-  `${project.title} ${project.city} ${project.district} ${project.category} ${project.developer}`.toLocaleLowerCase(
+  `${project.title} ${project.city} ${project.district} ${project.categories.join(" ")} ${project.developer}`.toLocaleLowerCase(
     "nb",
   );
 const projectPoints = (project: Project): Point[] =>
@@ -676,7 +699,7 @@ export default memo(function Explorer({
   );
   const categoryMatch = useCallback(
     (project: Project) =>
-      category.length === 0 || category.includes(project.category),
+      matchesCategories(project.categories, category),
     [category],
   );
   // The map gets every match in Norway, unsorted, so re-ranking never redraws it.
@@ -1408,14 +1431,27 @@ export default memo(function Explorer({
       ).length,
     }),
   }));
-  const categoryOptions = categories.map((value) => ({
-    value,
-    label: value,
-    ...(!isMobile && {
-      count: inView.filter(
-        (project) => project.category === value && statusMatch(project),
-      ).length,
-    }),
+  const categoryCount = (test: (project: Project) => boolean) =>
+    isMobile
+      ? {}
+      : {
+          count: inView.filter(
+            (project) => test(project) && statusMatch(project),
+          ).length,
+        };
+  // Main categories; their subcategories open underneath once chosen.
+  const categoryOptions = categoryTree.map((node) => ({
+    value: node.name,
+    label: node.name,
+    icon: <CategoryIcon category={node.name} size={16} />,
+    ...categoryCount((project) =>
+      project.categories.some((value) => mainCategoryOf(value) === node.name),
+    ),
+    children: node.subcategories.map((sub) => ({
+      value: sub,
+      label: sub,
+      ...categoryCount((project) => project.categories.includes(sub)),
+    })),
   }));
   // Cities and counties with projects, counted by the other filters.
   const placeOptions = useMemo(() => {
@@ -1588,11 +1624,6 @@ export default memo(function Explorer({
     </section>
   );
 
-  const toggle = (values: string[], value: string) =>
-    values.includes(value)
-      ? values.filter((item) => item !== value)
-      : [...values, value];
-
   const activeFilters = [
     // Mobile shows category inline, so only hidden filters get chips there.
     ...(isMobile && needle
@@ -1616,10 +1647,10 @@ export default memo(function Explorer({
           },
         ]
       : []),
-    ...(isMobile ? [] : category).map((value) => ({
+    ...(isMobile ? [] : categoryLabels(category)).map((value) => ({
       key: value,
       label: value,
-      clear: () => setCategory(toggle(category, value)),
+      clear: () => setCategory(withoutCategory(category, value)),
     })),
   ];
   // Not a filter, so not a chip: a quiet action beside the count.

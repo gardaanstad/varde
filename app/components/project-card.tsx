@@ -2,6 +2,8 @@ import { memo } from "react";
 import Image from "next/image";
 import { MapPin, Megaphone, MessageCircle } from "lucide-react";
 import {
+  categoryLabels,
+  leadCategory,
   formatDate,
   getProjectUpdates,
   hasPhoto,
@@ -62,7 +64,7 @@ export default memo(function ProjectCard({
               "after:absolute after:inset-x-[-12px] after:inset-y-1 after:rounded-xl max-md:after:inset-x-[-8px] max-md:after:inset-y-0.5",
               "focus-visible:after:outline-2 focus-visible:after:outline-focus",
             )}
-            aria-label={`${project.title} · ${project.category} · ${project.city}`}
+            aria-label={`${project.title} · ${categoryLabels(project.categories).join(", ")} · ${project.city}`}
             onClick={() => onOpen(project.id)}
           >
             {project.title}
@@ -119,7 +121,7 @@ export default memo(function ProjectCard({
           />
         ) : (
           <ProjectPlaceholder
-            category={project.category}
+            category={leadCategory(project.categories)}
             iconSize={16}
             className="bg-size-[12px_12px]"
           />

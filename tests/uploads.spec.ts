@@ -83,6 +83,11 @@ test("moderators add photos while creating a project; without one it shows the p
     const dialog = page.locator("[data-project-editor]");
     await dialog.getByLabel("Prosjektnavn").fill(title);
     await dialog.getByLabel("Beskrivelse").fill("Et testprosjekt.");
+    await dialog.getByRole("button", { name: "Kategori", exact: true }).click();
+    const categoryMenu = page.getByRole("listbox", { name: "Kategori", exact: true });
+    await categoryMenu.getByRole("option", { name: "Samferdsel", exact: true }).click();
+    await categoryMenu.getByRole("option", { name: "Vei", exact: true }).click();
+    await page.keyboard.press("Escape");
     if (photo) {
       await dialog
         .getByLabel("Legg til bilde")

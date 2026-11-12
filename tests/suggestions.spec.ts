@@ -465,6 +465,11 @@ test("members suggest new projects; moderators edit and publish them", async ({
   const dialog = page.locator("[data-project-editor]");
   await dialog.getByLabel("Prosjektnavn").fill(title);
   await dialog.getByLabel("Beskrivelse").fill("En ny bru over fjorden.");
+  await dialog.getByRole("button", { name: "Kategori", exact: true }).click();
+  const categoryMenu = page.getByRole("listbox", { name: "Kategori", exact: true });
+  await categoryMenu.getByRole("option", { name: "Samferdsel", exact: true }).click();
+  await categoryMenu.getByRole("option", { name: "Vei", exact: true }).click();
+  await page.keyboard.press("Escape");
   await dialog
     .getByLabel("Legg til bilde")
     .setInputFiles({ name: "foto.png", mimeType: "image/png", buffer: png() });
@@ -498,7 +503,7 @@ test("members suggest new projects; moderators edit and publish them", async ({
     .locator('article[data-suggestion="project"]')
     .filter({ hasText: title });
   // Collapsed: the category and date only; details behind the toggle.
-  await expect(card.locator("[data-summary]")).toHaveText("Samferdsel");
+  await expect(card.locator("[data-summary]")).toHaveText("Vei");
   await expect(card).not.toContainText("En ny bru over fjorden.");
   await card.locator("[data-row-toggle]").click();
   await expect(card).toContainText("En ny bru over fjorden.");

@@ -1,4 +1,4 @@
-import { categories, type Point, statusOrder } from "./data";
+import { normalizeCategories, type Point, statusOrder } from "./data";
 
 /** A map position: centre and zoom level. */
 export type MapView = { center: Point; zoom: number };
@@ -61,9 +61,8 @@ export function parseExploreState(
           : list(status).filter((value) =>
               (statusOrder as string[]).includes(value),
             ),
-    category: list(params.get("kategori")).filter((value) =>
-      (categories as readonly string[]).includes(value),
-    ),
+    // A subcategory brings its main category along.
+    category: normalizeCategories(list(params.get("kategori"))),
     sort: sortOptions.some(({ value }) => value === params.get("sorter"))
       ? params.get("sorter")!
       : defaultSort,
@@ -85,10 +84,7 @@ export function exploreSearch(state: ExploreState) {
         : anyStatus,
     );
   if (state.category.length)
-    params.set(
-      "kategori",
-      categories.filter((value) => state.category.includes(value)).join(","),
-    );
+    params.set("kategori", normalizeCategories(state.category).join(","));
   if (state.sort !== defaultSort) params.set("sorter", state.sort);
   if (state.full) params.set("visning", "full");
   if (state.full && state.place) params.set("sted", state.place);

@@ -21,9 +21,9 @@ import {
   Plus,
 } from "lucide-react";
 import {
-  categories,
-  type Category,
+  categoryLabels,
   formatDateYear,
+  leadCategory,
   getProjectUpdates,
   presetPlaces,
   type Project,
@@ -49,6 +49,7 @@ import {
 import ProjectPostHeader, { DesktopActions } from "./project-post-header";
 import ProjectDiscussion from "./project-discussion";
 import CategoryIcon from "./category-icon";
+import CategoryPicker from "./category-picker";
 import RelativeTime from "./relative-time";
 import Link from "next/link";
 import { profileHref } from "../lib/profiles";
@@ -145,6 +146,7 @@ function ProjectFacts({
 }) {
   const developer =
     project.developer !== unknownDeveloper ? project.developer : "";
+  const labels = categoryLabels(project.categories);
   return (
     <dl className={cn("my-4", className)}>
       <Fact label="Status">
@@ -163,9 +165,18 @@ function ProjectFacts({
       >
         {project.year || "–"}
       </Fact>
-      <Fact label="Kategori">
-        <CategoryIcon category={project.category} size={14} />
-        {project.category}
+      <Fact label={labels.length > 1 ? "Kategorier" : "Kategori"}>
+        <span className="flex flex-wrap justify-end gap-x-3 gap-y-1">
+          {labels.map((category) => (
+            <span
+              key={category}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <CategoryIcon category={category} size={14} />
+              {category}
+            </span>
+          ))}
+        </span>
       </Fact>
       <Fact label="Sted">{projectPlace(project)}</Fact>
       {developer && <Fact label="Byggherre">{developer}</Fact>}
@@ -245,20 +256,6 @@ function EditFacts() {
           ))}
         </select>
       </EditField>
-      <EditField id="category">
-        <select
-          className={editInput}
-          aria-label="Kategori"
-          value={draft.category}
-          onChange={(event) =>
-            change({ category: event.target.value as Category })
-          }
-        >
-          {categories.map((category) => (
-            <option key={category}>{category}</option>
-          ))}
-        </select>
-      </EditField>
       <EditField
         id="year"
         label={draft.status === "completed" ? "Ferdigstilt" : "Ferdigstilles"}
@@ -273,7 +270,17 @@ function EditFacts() {
           onChange={(event) => change({ year: event.target.value })}
         />
       </EditField>
-      <EditField id="developer">
+      <EditField id="categories" wide>
+        <CategoryPicker
+          triggerClassName={cn(
+            editState,
+            "min-h-9 rounded-lg border-border-strong px-2.5 pointer-coarse:min-h-11 max-sm:text-base",
+          )}
+          value={draft.categories}
+          onChange={(categories) => change({ categories })}
+        />
+      </EditField>
+      <EditField id="developer" wide>
         <input
           className={editInput}
           aria-label="Byggherre"
@@ -492,7 +499,7 @@ function ProjectAside({ project }: { project: Project }) {
         />
       ) : (
         <div className={cover}>
-          <ProjectPlaceholder category={project.category} />
+          <ProjectPlaceholder category={leadCategory(project.categories)} />
         </div>
       )}
       <ProjectFacts project={project} />

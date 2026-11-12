@@ -12,7 +12,6 @@ import {
   X,
 } from "lucide-react";
 import {
-  categories,
   type Category,
   centroid,
   type Point,
@@ -27,6 +26,7 @@ import { errorMessage } from "../lib/api-client";
 import { cn } from "../lib/cn";
 import { controlBase, fieldControl } from "../lib/ui";
 import ImagePicker from "./image-picker";
+import CategoryPicker from "./category-picker";
 
 const ProjectMap = dynamic(() => import("./project-map"), { ssr: false });
 
@@ -91,7 +91,8 @@ export default function ProjectEditor({
   const [city, setCity] = useState("Oslo");
   const [district, setDistrict] = useState("");
   const [status, setStatus] = useState<Status>("planned");
-  const [category, setCategory] = useState<Category>(categories[0]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryMissing, setCategoryMissing] = useState(false);
   const [year, setYear] = useState("2028");
   const [developer, setDeveloper] = useState("");
   const [points, setPoints] = useState<Point[]>([]);
@@ -105,6 +106,11 @@ export default function ProjectEditor({
   async function save() {
     if (saving || uploading) return;
     if (!enoughPoints || !title.trim() || !description.trim()) return;
+    if (!categories.length) {
+      setStep(1);
+      setCategoryMissing(true);
+      return;
+    }
     const id = `prosjekt-${crypto.randomUUID().slice(0, 8)}`;
     const created = new Date().toISOString();
     const [cover = "", ...more] = images;
@@ -118,7 +124,7 @@ export default function ProjectEditor({
         website: website.trim() || undefined,
         city,
         district: district.trim() || city,
-        category,
+        categories,
         status,
         year,
         developer: developer.trim() || unknownDeveloper,
@@ -255,7 +261,8 @@ export default function ProjectEditor({
           className="flex flex-col gap-4.5 px-5 pt-5 pb-8 max-md:gap-4 max-md:px-4.5"
           onSubmit={(e) => {
             e.preventDefault();
-            if (title.trim() && description.trim()) setStep(2);
+            if (!categories.length) setCategoryMissing(true);
+            else if (title.trim() && description.trim()) setStep(2);
           }}
         >
           <label className={labelStyles}>
@@ -333,19 +340,27 @@ export default function ProjectEditor({
               />
             </label>
           </div>
+          <div className={labelStyles}>
+            Kategori <span className="text-muted">*</span>
+            <CategoryPicker
+              className="mt-1.75"
+              triggerClassName={cn(
+                "rounded-lg border-border-strong px-3 max-sm:text-base",
+                categoryMissing && "border-danger",
+              )}
+              value={categories}
+              onChange={(next) => {
+                setCategories(next);
+                if (next.length) setCategoryMissing(false);
+              }}
+            />
+            {categoryMissing && (
+              <span className="mt-1 block font-normal text-danger">
+                Velg minst én kategori
+              </span>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-4.5 @max-xl:gap-3.25">
-            <label className={labelStyles}>
-              Prosjekttype
-              <select
-                className={fieldStyles}
-                value={category}
-                onChange={(e) => setCategory(e.target.value as Category)}
-              >
-                {categories.map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-              </select>
-            </label>
             <label className={labelStyles}>
               Status
               <select
@@ -360,8 +375,6 @@ export default function ProjectEditor({
                 ))}
               </select>
             </label>
-          </div>
-          <div className="grid grid-cols-2 gap-4.5 @max-xl:gap-3.25">
             <label className={labelStyles}>
               Forventet ferdig
               <input
@@ -374,17 +387,17 @@ export default function ProjectEditor({
                 onChange={(e) => setYear(e.target.value)}
               />
             </label>
-            <label className={labelStyles}>
-              Byggherre
-              <input
-                className={fieldStyles}
-                placeholder="Valgfritt"
-                value={developer}
-                maxLength={100}
-                onChange={(e) => setDeveloper(e.target.value)}
-              />
-            </label>
           </div>
+          <label className={labelStyles}>
+            Byggherre
+            <input
+              className={fieldStyles}
+              placeholder="Valgfritt"
+              value={developer}
+              maxLength={100}
+              onChange={(e) => setDeveloper(e.target.value)}
+            />
+          </label>
           <div className="mt-1.25 flex items-center justify-between gap-3.75 border-t border-border pt-4.75 @max-xl:gap-3">
             <span className="text-xs text-muted @max-xl:text-[8px]">
               {suggest ? "Til moderering" : "Publiseres for alle"}

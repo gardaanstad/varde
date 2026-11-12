@@ -2,7 +2,12 @@
 import { useMemo, useState } from "react";
 import Image from "next/image";
 import { ArrowDownUp, ArrowLeft, Bell, BellOff } from "lucide-react";
-import { hasPhoto, type Project, statuses } from "../lib/data";
+import {
+  leadCategory,
+  hasPhoto,
+  type Project,
+  statuses,
+} from "../lib/data";
 import {
   compareFollowed,
   type FollowedProject,
@@ -88,7 +93,7 @@ function FollowedRow({
           />
         ) : (
           <ProjectPlaceholder
-            category={project.category}
+            category={leadCategory(project.categories)}
             iconSize={13}
             className="bg-size-[8px_8px] [&>span]:min-w-6.5"
           />

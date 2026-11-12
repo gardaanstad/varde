@@ -41,6 +41,7 @@ import {
   type DiffPart,
 } from "../lib/diff";
 import {
+  categoryLabels,
   projectHref,
   projectPhotos,
   type Project,
@@ -340,7 +341,7 @@ const changedIds = (changes: CorrectionChanges) =>
 function summary(suggestion: Suggestion): string {
   if (suggestion.kind === "update")
     return tipTitle(suggestion.data.text) || suggestion.data.text;
-  if (suggestion.kind === "project") return suggestion.data.project.category;
+  if (suggestion.kind === "project") return categoryLabels(suggestion.data.project.categories).join(", ");
   const ids = changedIds(suggestion.data.changes);
   const applied = suggestion.data.applied;
   const appliedIds = applied

@@ -20,6 +20,7 @@ import {
   Undo2,
 } from "lucide-react";
 import {
+  categoryLabels,
   cities,
   lineDotZoom,
   lineMidpoint,
@@ -77,7 +78,7 @@ function projectTooltip(project: Project) {
   const meta = document.createElement("span");
   meta.className = "mt-0.5 block text-xs text-muted";
   meta.textContent = [
-    project.category,
+    categoryLabels(project.categories).join(", "),
     statuses[project.status].label,
     project.year,
   ]

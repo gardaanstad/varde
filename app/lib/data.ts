@@ -1,15 +1,101 @@
 export type Status = "planned" | "construction" | "completed";
-export const categories = [
-  "Samferdsel",
-  "Energi",
-  "Vann og avløp",
-  "Offentlige bygg",
-  "Byutvikling",
-  "Bolig",
-  "Næring",
-  "Byrom og park",
+/**
+ * Main categories and their subcategories. A project holds a main category
+ * on its own, or narrowed to one or more of its subcategories; names are
+ * unique across the tree, so a name alone says where it belongs.
+ */
+export const categoryTree = [
+  {
+    name: "Samferdsel",
+    subcategories: [
+      "Vei",
+      "Jernbane",
+      "Kollektiv",
+      "Sykkel og gange",
+      "Havn",
+      "Luftfart",
+    ],
+  },
+  {
+    name: "Energi",
+    subcategories: ["Kraftproduksjon", "Strømnett", "Fjernvarme", "CO₂-lagring"],
+  },
+  {
+    name: "Vann og avløp",
+    subcategories: ["Drikkevann", "Avløp", "Overvann"],
+  },
+  {
+    name: "Offentlige bygg",
+    subcategories: ["Helse", "Skole", "Kultur og idrett", "Forvaltning"],
+  },
+  {
+    name: "Byutvikling",
+    subcategories: ["Bolig", "Næring", "Byrom og park"],
+  },
 ] as const;
-export type Category = (typeof categories)[number];
+type CategoryNode = (typeof categoryTree)[number];
+export type MainCategory = CategoryNode["name"];
+export type Subcategory = CategoryNode["subcategories"][number];
+export type Category = MainCategory | Subcategory;
+export const mainCategories: MainCategory[] = categoryTree.map(
+  (node) => node.name,
+);
+/** Every category in display order: each main followed by its subcategories. */
+export const categories: Category[] = categoryTree.flatMap((node) => [
+  node.name,
+  ...node.subcategories,
+]);
+const parents = new Map<string, MainCategory>(
+  categoryTree.flatMap((node) => [
+    [node.name, node.name] as const,
+    ...node.subcategories.map((sub) => [sub, node.name] as const),
+  ]),
+);
+export const isCategory = (value: string): value is Category =>
+  parents.has(value);
+/** The main category a category belongs to; a main is its own. */
+export const mainCategoryOf = (category: Category) => parents.get(category)!;
+export const isMainCategory = (category: string): category is MainCategory =>
+  parents.get(category) === category;
+/** Known categories, each with its main, deduplicated, in tree order. */
+export function normalizeCategories(values: readonly string[]): Category[] {
+  const known = values.filter(isCategory);
+  const kept = new Set<string>([...known, ...known.map(mainCategoryOf)]);
+  return categories.filter((category) => kept.has(category));
+}
+/**
+ * What a set of categories reads as: per main, its chosen subcategories, or
+ * the main itself when none is chosen.
+ */
+export function categoryLabels(values: readonly string[]): Category[] {
+  const kept = normalizeCategories(values);
+  return categoryTree.flatMap((node) => {
+    if (!kept.includes(node.name)) return [];
+    const subs = node.subcategories.filter((sub) => kept.includes(sub));
+    return subs.length ? subs : [node.name];
+  });
+}
+/** The category a project leads with: its first, most specific one. */
+export const leadCategory = (values: readonly Category[]): Category =>
+  categoryLabels(values)[0] ?? "Byutvikling";
+/**
+ * Whether a project's categories meet a filter: any chosen main, narrowed to
+ * its chosen subcategories when it has some. No filter matches everything.
+ */
+export function matchesCategories(
+  project: readonly Category[],
+  filter: readonly string[],
+) {
+  const chosen = normalizeCategories(filter);
+  if (!chosen.length) return true;
+  return categoryTree.some((node) => {
+    if (!chosen.includes(node.name)) return false;
+    const subs = node.subcategories.filter((sub) => chosen.includes(sub));
+    return subs.length
+      ? subs.some((sub) => project.includes(sub))
+      : project.some((category) => mainCategoryOf(category) === node.name);
+  });
+}
 export type Point = [number, number];
 export type ProjectImage = {
   src: string;
@@ -32,7 +118,8 @@ export type Project = {
   title: string;
   district: string;
   city: string;
-  category: Category;
+  /** Main categories, each optionally with subcategories; see categoryTree. */
+  categories: Category[];
   status: Status;
   /** Cover photo; empty when the project has none and shows a placeholder. */
   image: string;
@@ -264,7 +351,7 @@ export const seedProjects: Project[] = [
     title: "Bispevika sør",
     district: "Bjørvika",
     city: "Oslo",
-    category: "Byutvikling",
+    categories: ["Byutvikling", "Bolig", "Byrom og park"],
     status: "construction",
     image: "/images/bjorvika.jpg",
     imageCredit: "HAV Eiendom · Clemenskvartalet (illustrasjonsfoto)",
@@ -364,7 +451,7 @@ export const seedProjects: Project[] = [
     title: "Nytt regjeringskvartal",
     district: "Hammersborg",
     city: "Oslo",
-    category: "Offentlige bygg",
+    categories: ["Offentlige bygg", "Forvaltning"],
     status: "construction",
     image: "/images/regjeringskvartalet.jpg",
     imageCredit: "Haptic Architects",
@@ -384,7 +471,7 @@ export const seedProjects: Project[] = [
     title: "Follobanen",
     district: "Oslo S – Ski",
     city: "Oslo",
-    category: "Samferdsel",
+    categories: ["Samferdsel", "Jernbane"],
     status: "completed",
     image: "/images/railway.jpg",
     description:
@@ -409,7 +496,7 @@ export const seedProjects: Project[] = [
     title: "Fornebubanen",
     district: "Majorstuen – Fornebu",
     city: "Oslo",
-    category: "Samferdsel",
+    categories: ["Samferdsel", "Kollektiv"],
     status: "construction",
     image: "/images/fornebubanen.jpg",
     imageCredit: "L2 Arkitekter og Gottlieb Paludan Architects (illustrasjon)",
@@ -435,7 +522,7 @@ export const seedProjects: Project[] = [
     title: "Ny vannforsyning Oslo",
     district: "Holsfjorden – Huseby",
     city: "Oslo",
-    category: "Vann og avløp",
+    categories: ["Vann og avløp", "Drikkevann"],
     status: "construction",
     image: "",
     description:
@@ -459,7 +546,7 @@ export const seedProjects: Project[] = [
     title: "Nye Aker sykehus",
     district: "Sinsen",
     city: "Oslo",
-    category: "Offentlige bygg",
+    categories: ["Offentlige bygg", "Helse"],
     status: "construction",
     image: "",
     description:
@@ -477,7 +564,7 @@ export const seedProjects: Project[] = [
     title: "E39 Rogfast",
     district: "Randaberg – Bokn",
     city: "Stavanger",
-    category: "Samferdsel",
+    categories: ["Samferdsel", "Vei"],
     status: "construction",
     image: "",
     description:
@@ -502,7 +589,7 @@ export const seedProjects: Project[] = [
     title: "Sotrasambandet",
     district: "Bergen – Øygarden",
     city: "Bergen",
-    category: "Samferdsel",
+    categories: ["Samferdsel", "Vei"],
     status: "construction",
     image: "",
     description:
@@ -526,7 +613,7 @@ export const seedProjects: Project[] = [
     title: "Northern Lights",
     district: "Øygarden",
     city: "Bergen",
-    category: "Energi",
+    categories: ["Energi", "CO₂-lagring"],
     status: "completed",
     image: "",
     description:
@@ -545,7 +632,7 @@ export const seedProjects: Project[] = [
     title: "Hålogalandsbrua",
     district: "Rombaksfjorden",
     city: "Narvik",
-    category: "Samferdsel",
+    categories: ["Samferdsel", "Vei"],
     status: "completed",
     image: "",
     description:
@@ -568,7 +655,7 @@ export const seedProjects: Project[] = [
     title: "Grønlikaia",
     district: "Gamle Oslo",
     city: "Oslo",
-    category: "Byutvikling",
+    categories: ["Byutvikling", "Bolig"],
     status: "planned",
     image: "/images/bjorvika.jpg",
     description:
@@ -586,7 +673,7 @@ export const seedProjects: Project[] = [
     title: "Nye Middelalderparken",
     district: "Gamle Oslo",
     city: "Oslo",
-    category: "Byrom og park",
+    categories: ["Byutvikling", "Byrom og park"],
     status: "completed",
     image: "/images/park.jpg",
     description:
@@ -604,7 +691,7 @@ export const seedProjects: Project[] = [
     title: "Oslo Horisont",
     district: "Vaterland",
     city: "Oslo",
-    category: "Næring",
+    categories: ["Byutvikling", "Næring"],
     status: "planned",
     image: "/images/architecture.jpg",
     description:
@@ -622,7 +709,7 @@ export const seedProjects: Project[] = [
     title: "Filipstad",
     district: "Frogner",
     city: "Oslo",
-    category: "Byutvikling",
+    categories: ["Byutvikling"],
     status: "planned",
     image: "/images/bjorvika.jpg",
     description:
@@ -639,7 +726,7 @@ export const seedProjects: Project[] = [
     title: "Tullinkvartalet",
     district: "Sentrum",
     city: "Oslo",
-    category: "Næring",
+    categories: ["Byutvikling", "Næring"],
     status: "completed",
     image: "/images/architecture.jpg",
     description:
@@ -657,7 +744,7 @@ export const seedProjects: Project[] = [
     title: "Storgata og nye gaterom",
     district: "Grünerløkka",
     city: "Oslo",
-    category: "Samferdsel",
+    categories: ["Samferdsel", "Sykkel og gange", "Byutvikling", "Byrom og park"],
     status: "completed",
     image: "/images/railway.jpg",
     description:
@@ -679,7 +766,7 @@ export const seedProjects: Project[] = [
     title: "Ensjøbyen",
     district: "Ensjø",
     city: "Oslo",
-    category: "Bolig",
+    categories: ["Byutvikling", "Bolig"],
     status: "construction",
     image: "/images/architecture.jpg",
     description:
@@ -697,7 +784,7 @@ export const seedProjects: Project[] = [
     title: "Akerselva elvepark",
     district: "Grünerløkka",
     city: "Oslo",
-    category: "Byrom og park",
+    categories: ["Byutvikling", "Byrom og park"],
     status: "planned",
     image: "/images/park.jpg",
     description:
@@ -721,7 +808,7 @@ export const seedProjects: Project[] = [
     title: "Skøyen stasjonsområde",
     district: "Skøyen",
     city: "Oslo",
-    category: "Bolig",
+    categories: ["Samferdsel", "Jernbane", "Byutvikling", "Bolig"],
     status: "planned",
     image: "/images/architecture.jpg",
     description:
@@ -738,7 +825,7 @@ export const seedProjects: Project[] = [
     title: "Dokken",
     district: "Bergenhus",
     city: "Bergen",
-    category: "Byutvikling",
+    categories: ["Byutvikling"],
     status: "planned",
     image: "/images/bjorvika.jpg",
     description:
@@ -755,7 +842,7 @@ export const seedProjects: Project[] = [
     title: "Bybanen til Åsane",
     district: "Sentrum – Åsane",
     city: "Bergen",
-    category: "Samferdsel",
+    categories: ["Samferdsel", "Kollektiv"],
     status: "planned",
     image: "/images/railway.jpg",
     description:
@@ -777,7 +864,7 @@ export const seedProjects: Project[] = [
     title: "Nyhavna",
     district: "Nyhavna",
     city: "Trondheim",
-    category: "Byutvikling",
+    categories: ["Byutvikling"],
     status: "planned",
     image: "/images/bjorvika.jpg",
     description:
@@ -793,7 +880,7 @@ export const seedProjects: Project[] = [
     title: "Paradis",
     district: "Hillevåg",
     city: "Stavanger",
-    category: "Bolig",
+    categories: ["Byutvikling", "Bolig"],
     status: "construction",
     image: "/images/architecture.jpg",
     description:

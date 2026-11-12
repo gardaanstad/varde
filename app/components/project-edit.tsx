@@ -2,6 +2,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 import { ArrowRight, RotateCcw } from "lucide-react";
 import {
+  categoryLabels,
   centroid,
   projectPlace,
   statuses,
@@ -16,7 +17,7 @@ export type FieldId =
   | "description"
   | "status"
   | "year"
-  | "category"
+  | "categories"
   | "place"
   | "developer"
   | "website"
@@ -61,7 +62,12 @@ export const fields: Record<
     show: (p) => p.year || "–",
     error: (p) => (/^(\d{4})?$/.test(p.year) ? undefined : "Bruk fire sifre"),
   },
-  category: { label: "Kategori", keys: ["category"], show: (p) => p.category },
+  categories: {
+    label: "Kategori",
+    keys: ["categories"],
+    show: (p) => categoryLabels(p.categories).join(", "),
+    error: (p) => (p.categories.length ? undefined : "Velg en kategori"),
+  },
   place: {
     label: "Sted",
     keys: ["city", "district"],
