@@ -273,6 +273,14 @@ test.describe("desktop headers", () => {
     expect(Math.round((await box("[data-project-close]")).middle)).toBe(
       Math.round(full.middle),
     );
+    // The title's first line sits level with them.
+    const firstLine = await post.locator("#project-card-title").evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const line = parseFloat(getComputedStyle(element).lineHeight);
+      const top = rect.top + parseFloat(getComputedStyle(element).paddingTop);
+      return top + line / 2;
+    });
+    expect(Math.abs(firstLine - full.middle)).toBeLessThanOrEqual(1);
     const intro = await box('section[aria-label="Om prosjektet"]');
     const row = await box("[data-project-actions]");
     const tabs = await box("#project-sections");
