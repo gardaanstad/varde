@@ -85,7 +85,7 @@ export default function ActionSheet({
       tabIndex={-1}
       className={cn(
         "m-auto mb-0 w-full max-w-none overflow-visible border-0 bg-transparent p-0 text-ink outline-none",
-        "backdrop:bg-ink/25 motion-safe:backdrop:animate-backdrop-in",
+        "backdrop:bg-scrim/25 motion-safe:backdrop:animate-backdrop-in",
       )}
       onCancel={(event) => {
         event.preventDefault();

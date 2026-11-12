@@ -28,7 +28,7 @@ export default function Toast({
       ref={ref}
       popover="manual"
       className={cn(
-        "fixed inset-auto left-1/2 z-[2000] flex w-max max-w-[calc(100vw-30px)] -translate-x-1/2 items-center gap-2.5 rounded-lg bg-ink px-4 py-3 text-ui text-white shadow-[0_8px_24px_rgb(20_28_24/0.24)] motion-safe:animate-preview-in",
+        "fixed inset-auto left-1/2 z-[2000] flex w-max max-w-[calc(100vw-30px)] -translate-x-1/2 items-center gap-2.5 rounded-lg bg-inverse px-4 py-3 text-ui text-on-inverse shadow-[0_8px_24px_rgb(20_28_24/0.24)] motion-safe:animate-preview-in",
         mobile ? "bottom-[calc(76px+env(safe-area-inset-bottom))]" : "bottom-[45px]",
       )}
       role="status"
@@ -39,7 +39,7 @@ export default function Toast({
         <button
           className={cn(
             textButton,
-            "ml-1 min-h-11 px-1 text-xs text-white hover:text-white",
+            "ml-1 min-h-11 px-1 text-xs text-on-inverse hover:text-on-inverse",
           )}
           onClick={toast.undo}
         >
@@ -49,7 +49,7 @@ export default function Toast({
       <button
         className={cn(
           iconButton,
-          "ml-1 size-11 rounded-lg text-white/80 hover:bg-white/15 hover:text-white",
+          "ml-1 size-11 rounded-lg text-on-inverse/80 hover:bg-on-inverse/15 hover:text-on-inverse",
         )}
         aria-label="Lukk melding"
         onClick={onClose}

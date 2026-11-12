@@ -30,7 +30,7 @@ export const sortChoice = [
 
 export const primaryButton = [
   controlBase,
-  "border border-accent bg-accent text-white shadow-xs",
+  "border border-accent bg-accent text-on-accent shadow-xs",
   "hover:border-accent-strong hover:bg-accent-strong",
 ].join(" ");
 
@@ -62,7 +62,7 @@ export const composerSend = cn(
 
 export const dangerButton = [
   controlBase,
-  "border border-danger bg-danger text-white shadow-xs",
+  "border border-danger bg-danger text-on-danger shadow-xs",
   "hover:border-danger-strong hover:bg-danger-strong",
 ].join(" ");
 

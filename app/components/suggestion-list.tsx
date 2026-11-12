@@ -936,7 +936,7 @@ function SuggestionRow({
                       type="button"
                       className={cn(
                         iconAction,
-                        "border-status-completed bg-status-completed text-white hover:border-status-completed-ink hover:bg-status-completed-ink",
+                        "border-status-completed bg-status-completed text-on-accent hover:border-status-completed-ink hover:bg-status-completed-ink",
                       )}
                       aria-label="Godkjenn"
                       data-tooltip="Godkjenn"

@@ -107,6 +107,7 @@ import {
 } from "./panel";
 import { takeLoginIntent } from "../lib/login-intent";
 import { cn } from "../lib/cn";
+import ThemeToggle from "./theme-toggle";
 import { openProfileEvent } from "../lib/profile-overlay";
 import ProfileOverlay from "./profile-overlay";
 import SuggestionList from "./suggestion-list";
@@ -215,7 +216,7 @@ const chip =
 const reviewedDot =
   "absolute -top-0.5 -right-0.5 size-2.75 rounded-full border-2 border-surface bg-accent";
 const countBadge =
-  "inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums";
+  "inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-on-accent tabular-nums";
 
 // Under "Vis flere" in the category filter.
 const lessUsedCategories = new Set<string>([
@@ -2245,6 +2246,7 @@ export default memo(function Explorer({
                 </button>
               )}
               {followingButton}
+              <ThemeToggle tooltip={false} />
               {profileButton}
             </div>
           </div>
@@ -2444,6 +2446,7 @@ export default memo(function Explorer({
                   </button>
                 )}
                 {followingButton}
+                <ThemeToggle />
                 {profileButton}
                 <span
                   aria-hidden="true"

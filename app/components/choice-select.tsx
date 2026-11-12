@@ -549,7 +549,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
           "pointer-events-none invisible fixed inset-auto z-900 m-0 flex h-auto min-w-0 flex-col overflow-visible border-0 bg-transparent p-0 text-ink",
           "data-[open=true]:pointer-events-auto data-[open=true]:visible",
           sheet
-            ? "justify-end overscroll-contain bg-[color-mix(in_srgb,var(--color-ink)_calc(25%*(1-var(--sheet-progress))),transparent)] motion-safe:animate-backdrop-in"
+            ? "justify-end overscroll-contain bg-[color-mix(in_srgb,var(--color-scrim)_calc(25%*(1-var(--sheet-progress))),transparent)] motion-safe:animate-backdrop-in"
             : [
                 "max-w-[calc(100vw-28px)] origin-top -translate-y-1.25 scale-[0.98] opacity-0 transition-[opacity,transform,visibility] duration-200 ease-out motion-reduce:transition-none",
                 "data-[open=true]:translate-y-0 data-[open=true]:scale-100 data-[open=true]:opacity-100 data-[side=top]:origin-bottom",

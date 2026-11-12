@@ -219,8 +219,8 @@ export default function ImageGallery({
           go={go}
           size={18}
           className={cn(
-            "size-8.5 bg-white/88 text-ink shadow-control backdrop-blur-sm enabled:hover:bg-white",
-            "disabled:bg-white/60 disabled:text-ink/30 disabled:shadow-none",
+            "size-8.5 bg-surface/88 text-ink shadow-control backdrop-blur-sm enabled:hover:bg-surface",
+            "disabled:bg-surface/60 disabled:text-ink/30 disabled:shadow-none",
             "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100",
           )}
         />
@@ -342,7 +342,7 @@ function Lightbox({
       ref={dialog}
       className={cn(
         "fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none overflow-hidden bg-transparent p-0 text-white select-none",
-        "backdrop:bg-ink/55 backdrop:backdrop-blur-[3px] motion-safe:animate-lightbox-in",
+        "backdrop:bg-scrim/55 backdrop:backdrop-blur-[3px] motion-safe:animate-lightbox-in",
       )}
       aria-label={label}
       aria-modal="true"
