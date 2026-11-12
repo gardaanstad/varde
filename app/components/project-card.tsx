@@ -55,7 +55,7 @@ export default memo(function ProjectCard({
       }}
     >
       <div className="min-w-0 flex-1">
-        <h2 className="text-base leading-snug font-[620] tracking-[-0.25px] text-ink">
+        <h2 className="text-item text-ink">
           {/* Stretched over the whole card; other controls sit above it. */}
           <button
             type="button"
@@ -90,7 +90,9 @@ export default memo(function ProjectCard({
               )}
             />
             {statuses[project.status].label}
-            {project.year && ` · ${project.year}`}
+            {project.year && (
+              <span className="font-normal text-muted">· {project.year}</span>
+            )}
           </span>
           <span className={cardStat} data-tooltip={`${commentCount} innspill`}>
             <MessageCircle size={14} aria-hidden="true" />

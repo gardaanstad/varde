@@ -13,7 +13,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export default function PrivacyPage() {
   return (
     <AuthShell>
-      <h1 className="text-2xl leading-tight font-semibold tracking-tight text-ink">
+      <h1 className="text-display text-ink">
         Personvern
       </h1>
       <Section title="Hva vi lagrer">

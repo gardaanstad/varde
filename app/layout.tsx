@@ -28,7 +28,21 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="nb"
       className={`${geistSans.variable} ${geistMono.variable} h-full bg-canvas font-sans text-ink antialiased`}
+      // The script below sets a variable on it before hydration.
+      suppressHydrationWarning
     >
+      <head>
+        {/*
+          How wide a thin scrollbar is here (0 where they overlay), for
+          `px-gutter-scroll`: the same box as a `scrollbar-thin` scroller's,
+          off-screen rather than hidden, since hidden boxes get no scrollbar.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(()=>{const d=document.createElement("div");d.style.cssText="position:absolute;top:-200px;width:100px;height:100px;overflow-y:scroll;scrollbar-width:thin;scrollbar-gutter:stable";document.documentElement.append(d);document.documentElement.style.setProperty("--scrollbar-thin",d.offsetWidth-d.clientWidth+"px");d.remove()})()`,
+          }}
+        />
+      </head>
       <body className="flex min-h-full flex-col bg-canvas text-ink">
         <AuthProvider
           initialUser={session?.user ?? null}

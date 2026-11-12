@@ -23,6 +23,7 @@ import {
   composerSend,
   fieldControl,
   primaryButton,
+  sortChoice,
   textButton,
 } from "../lib/ui";
 import UserIdentity from "./user-identity";
@@ -30,12 +31,6 @@ import ChoiceSelect from "./choice-select";
 import EmptyState from "./empty-state";
 import styles from "./project-discussion.module.css";
 
-const sortChoiceClasses = [
-  "-mr-2 w-auto shrink-0",
-  "[&_[data-slot=choice-trigger]]:min-h-9 [&_[data-slot=choice-trigger]]:gap-1.5 [&_[data-slot=choice-trigger]]:border-transparent [&_[data-slot=choice-trigger]]:bg-transparent! [&_[data-slot=choice-trigger]]:px-2 [&_[data-slot=choice-trigger]]:text-ui [&_[data-slot=choice-trigger]]:text-muted",
-  "[&_[data-slot=choice-trigger]]:hover:bg-ink/[0.05]! [&_[data-slot=choice-trigger]]:hover:text-ink",
-  "[&_[data-slot=choice-menu]]:right-0 [&_[data-slot=choice-menu]]:left-auto [&_[data-slot=choice-menu]]:min-w-[180px] [&_[data-slot=choice-menu][data-open=false]]:hidden",
-].join(" ");
 const compactPrimaryAction = cn(
   primaryButton,
   "min-h-10 rounded-lg px-3 py-2 text-xs",
@@ -262,7 +257,7 @@ export default function ProjectDiscussion({
               </button>
             )}
           </UserIdentity>
-          <p className="mt-1.5 mb-1 ml-10.5 wrap-anywhere whitespace-pre-wrap text-body leading-[1.65] text-ink/90">
+          <p className="mt-1.5 mb-1 ml-10.5 wrap-anywhere whitespace-pre-wrap text-body leading-[1.65] text-ink-soft">
             {comment.text.split(/(https?:\/\/[^\s<>]+)/g).map((part, index) =>
               /^https?:\/\//.test(part) ? (
                 <a
@@ -589,7 +584,7 @@ export default function ProjectDiscussion({
           <ChoiceSelect
             label="Sorter diskusjon"
             value={sort}
-            className={sortChoiceClasses}
+            className={sortChoice}
             icon={<ArrowDownUp size={14} />}
             onChange={(value) => setSort(value as DiscussionSort)}
             options={[

@@ -637,7 +637,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
                 {/* Above the options' 15px: larger, heavier and in full ink. */}
                 <span
                   data-slot="choice-title"
-                  className="mt-4 self-start px-1 text-lg leading-6 font-semibold tracking-[-0.3px] text-ink"
+                  className="mt-4 self-start px-1 text-heading text-ink"
                 >
                   {label}
                 </span>
@@ -647,7 +647,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
               <span
                 aria-hidden="true"
                 data-slot="choice-title"
-                className="px-2.5 pt-1.5 pb-0.5 text-[15px] leading-5 font-semibold tracking-[-0.2px] text-ink"
+                className="px-2.5 pt-1.5 pb-0.5 text-body leading-5 font-semibold text-ink"
               >
                 {label}
               </span>

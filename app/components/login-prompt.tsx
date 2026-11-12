@@ -131,7 +131,7 @@ export default function LoginPrompt({
         </button>
         <h2
           id="login-prompt-title"
-          className="pr-10 text-lg leading-tight font-semibold tracking-tight max-md:mt-3"
+          className="pr-10 text-title max-md:mt-3"
         >
           Logg inn
         </h2>

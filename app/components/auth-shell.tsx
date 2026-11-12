@@ -17,7 +17,7 @@ export default function AuthShell({
         <Link
           href="/"
           className={cn(
-            "mx-auto mb-6 flex min-h-11 w-fit items-center gap-2.5 rounded-lg text-xl font-bold tracking-tight text-ink transition-colors hover:text-accent motion-reduce:transition-none",
+            "mx-auto mb-6 flex min-h-11 w-fit items-center gap-2.5 rounded-lg text-xl font-bold tracking-[-0.04em] text-ink transition-colors hover:text-accent motion-reduce:transition-none",
           )}
         >
           <span

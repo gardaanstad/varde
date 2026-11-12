@@ -88,7 +88,7 @@ export function ProfileContent({
           className="size-13 text-xl"
         />
         <div className="min-w-0">
-          <h3 className="text-xl leading-tight font-[650] tracking-[-0.4px] wrap-anywhere">
+          <h3 className="text-title wrap-anywhere">
             {profile.username}
           </h3>
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs leading-4.5 text-muted [&>span]:inline-flex [&>span]:min-w-0 [&>span]:items-center [&>span]:gap-1 [&_svg]:shrink-0">
@@ -107,7 +107,7 @@ export function ProfileContent({
         </div>
       </header>
       {profile.bio && (
-        <p className="mt-4 text-sm leading-normal whitespace-pre-wrap wrap-anywhere text-ink-soft">
+        <p className="mt-4 text-body leading-[1.65] whitespace-pre-wrap wrap-anywhere text-ink-soft">
           {profile.bio}
         </p>
       )}
@@ -132,7 +132,7 @@ export function ProfileContent({
       <section className="mt-6" aria-labelledby={`${id}-contributions`}>
         <h2
           id={`${id}-contributions`}
-          className="flex items-center gap-2 border-b border-border pb-2 text-body font-[650] tracking-[-0.2px]"
+          className="flex items-center gap-2 border-b border-border pb-2 text-body font-semibold"
         >
           Innspill
           {contributions.length > 0 && (

@@ -80,7 +80,7 @@ export default function ProfileOverlay({
       )}
       <div
         className={cn(
-          "min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-8 scrollbar-thin max-md:px-4.5",
+          "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4.5 pb-8 scrollbar-thin md:px-gutter-scroll",
           onClose ? "pt-7 max-sm:pt-1" : "pt-1",
         )}
         data-drawer-scroll

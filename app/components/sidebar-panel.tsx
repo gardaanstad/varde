@@ -151,7 +151,8 @@ export function SidebarPanel({
     >
       <div
         className={cn(
-          "flex h-14 shrink-0 items-center gap-0.5 px-3",
+          // The list's header height, so controls stay put as panels open.
+          "flex h-16 shrink-0 items-center gap-0.5 px-3",
           maximized && "px-[max(0.75rem,calc((100%-880px)/2))]",
         )}
       >

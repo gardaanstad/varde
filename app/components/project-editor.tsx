@@ -199,12 +199,12 @@ export default function ProjectEditor({
           void save();
         }}
       >
-        <div className="flex min-h-14 items-center px-6 max-md:min-h-12 max-md:px-4.5 max-md:pr-13">
-          <h1 className="text-xl leading-normal font-[650] tracking-[-0.4px] max-md:text-lg">
+        <div className="flex min-h-14 items-center px-4.5 md:px-gutter-scroll max-md:min-h-12 max-md:pr-13">
+          <h1 className="text-title max-md:text-[1.125rem]">
             {suggest ? "Foreslå prosjekt" : "Nytt prosjekt"}
           </h1>
         </div>
-        <div className="flex flex-1 flex-col gap-5 px-6 pt-3 pb-8 max-md:px-4.5">
+        <div className="flex flex-1 flex-col gap-5 px-4.5 pt-3 pb-8 md:px-gutter-scroll">
           <Field
             id="title"
             label="Prosjektnavn"

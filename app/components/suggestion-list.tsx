@@ -1075,7 +1075,7 @@ export default function SuggestionList({
     <Root
       className={
         embedded
-          ? "min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-8 scrollbar-thin max-md:px-4.5"
+          ? "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4.5 pb-8 scrollbar-thin md:px-gutter-scroll"
           : "min-h-dvh bg-canvas px-5 py-5 sm:px-10 sm:py-8 max-sm:px-3"
       }
       data-suggestion-list=""
@@ -1103,21 +1103,21 @@ export default function SuggestionList({
           <h1
             className={
               embedded
-                ? "text-xl leading-normal font-[650] tracking-[-0.4px] max-md:text-lg"
-                : "text-[26px] leading-tight font-semibold tracking-[-0.6px]"
+                ? "text-title max-md:text-[1.125rem]"
+                : "text-display"
             }
           >
             {moderator ? "Forslag" : "Mine forslag"}
           </h1>
           {!moderator && mine.length > 0 && (
-            <span className="text-sm text-muted tabular-nums">
+            <span className="text-ui text-muted tabular-nums">
               {mine.length}
             </span>
           )}
         </div>
         {tabs.length > 0 && (
           <nav
-            className="mb-4 flex gap-6 border-b border-border px-1"
+            className={cn("mb-4 flex gap-6 border-b border-border", !embedded && "px-1")}
             aria-label="Forslag"
           >
             {tabs.map(({ id, label, count }) => (

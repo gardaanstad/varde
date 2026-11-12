@@ -91,7 +91,7 @@ export default function AccountSettings({
     <div className={cn("flex min-h-0 flex-col", embedded && "h-full")}>
       {!embedded && (
         <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-display">
             Kontoinnstillinger
           </h1>
           <div className="mt-5 flex items-center gap-3">

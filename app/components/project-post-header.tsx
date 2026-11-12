@@ -15,31 +15,26 @@ import {
 } from "lucide-react";
 import type { Project } from "../lib/data";
 import { cn } from "../lib/cn";
-import { fieldControl, iconButton } from "../lib/ui";
+import { fieldControl, iconButton, pillButton } from "../lib/ui";
 import ActionSheet, { type SheetAction } from "./action-sheet";
 import { EditField, editState, useProjectEdit } from "./project-edit";
 
 const headerIconButton = cn(
   iconButton,
-  "size-10 rounded-lg active:scale-100 active:text-accent pointer-fine:active:scale-[0.97]",
+  "rounded-lg max-md:size-10 active:scale-100 active:text-accent pointer-fine:active:scale-[0.97]",
 );
 
 /** Desktop: the project's own actions, outlined pills with a label. */
-const actionPill = cn(
-  "inline-flex h-8.5 shrink-0 items-center gap-1.5 rounded-full border border-border-strong px-3 text-xs font-semibold text-ink",
-  "transition-[color,background-color,border-color] duration-150 hover:bg-surface-muted motion-reduce:transition-none",
-  "[&>svg]:shrink-0",
-);
+const actionPill = cn(pillButton, "px-3");
 
-const titleType =
-  "text-[24px] leading-[1.16] font-semibold tracking-[-0.65px] md:text-[26px] md:tracking-[-0.8px]";
+const titleType = "text-display max-md:text-[1.5rem]";
 
 // The full page's column: 1120px wide with 40px inside, centred beside the
 // scrollbar (see `--scrollbar-width` in project-post.tsx). The bar's pills
 // start on its edge; icon glyphs, not hit areas, end on it.
 const column = "(100% - var(--scrollbar-width, 0px) - 1120px) / 2 + 2.5rem";
 const columnStart = `max(1.5rem, calc(${column}))`;
-const columnEnd = `max(0.75rem, calc(${column} + var(--scrollbar-width, 0px) - 10px))`;
+const columnEnd = `max(0.75rem, calc(${column} + var(--scrollbar-width, 0px) - 12px))`;
 
 export type ProjectActionsProps = {
   /** Enters edit mode; members suggest their changes. */
@@ -105,7 +100,7 @@ export function DesktopActions({
       {onEdit && (
         <button
           type="button"
-          className={cn(actionPill, "@max-[430px]:size-8.5 @max-[430px]:justify-center @max-[430px]:px-0")}
+          className={cn(actionPill, "@max-[430px]:size-9 @max-[430px]:justify-center @max-[430px]:px-0")}
           aria-label={suggest ? "Foreslå endring" : "Rediger prosjekt"}
           data-tooltip={suggest ? "Foreslå endring" : "Rediger"}
           onClick={onEdit}
@@ -252,7 +247,7 @@ export default function ProjectPostHeader({
     <EditField
       id="title"
       inline
-      className={cn("min-w-0 flex-1 pb-1", mobile ? "pt-1.5" : "pt-[5px]")}
+      className={cn("min-w-0 flex-1 pb-1", mobile ? "pt-1.5" : "pt-[7px]")}
     >
       {/* Same type as the heading, with the field's padding outside the text. */}
       <textarea
@@ -280,8 +275,8 @@ export default function ProjectPostHeader({
       tabIndex={-1}
       className={cn(
         "m-0 line-clamp-2 min-w-0 flex-1 overflow-hidden text-ink outline-none wrap-break-word",
-        // Desktop: the first line centred on the 40px buttons beside it.
-        mobile ? "pt-1.5" : "pt-[5px]",
+        // The first line centred on the buttons beside it (44px, 40px on phones).
+        mobile ? "pt-1.5" : "pt-[7px]",
         titleType,
       )}
     >
@@ -331,7 +326,8 @@ export default function ProjectPostHeader({
       data-compact={compact}
     >
       <div
-        className="flex items-start gap-2 pt-2 pr-3 pb-2 pl-6"
+        // Controls centred 32px down, as on the list's header and every panel's.
+        className="flex items-start gap-2 pt-2.5 pr-3 pb-2 pl-6"
         style={
           wide
             ? { paddingLeft: columnStart, paddingRight: columnEnd }
