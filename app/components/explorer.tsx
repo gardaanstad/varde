@@ -19,12 +19,12 @@ import Link from "next/link";
 import {
   ArrowDownUp,
   Bell,
+  ChevronsLeft,
+  ChevronsRight,
   Inbox,
   RotateCcw,
   Map as MapIcon,
   MapPin,
-  PanelLeftClose,
-  PanelLeftOpen,
   Plus,
   LogIn,
   Search,
@@ -2066,9 +2066,9 @@ export default memo(function Explorer({
       onClick={toggleCollapsed}
     >
       {sidebarMode === "collapsed" ? (
-        <PanelLeftOpen size={20} />
+        <ChevronsRight size={18} />
       ) : (
-        <PanelLeftClose size={20} />
+        <ChevronsLeft size={18} />
       )}
     </button>
   );
@@ -2377,7 +2377,8 @@ export default memo(function Explorer({
               "absolute top-2.5 z-[35] transition-[left,opacity] duration-320 ease-out-soft motion-reduce:transition-none",
               "[[data-resizing]_&]:transition-none",
               sidebarMode !== "collapsed" &&
-                "left-[calc(var(--sidebar-width)-0.75rem-2.75rem)]",
+                // Left of the maximize button, the header's last.
+                "left-[calc(var(--sidebar-width)-0.75rem-5.625rem)]",
               sidebarMode === "maximized" && "pointer-events-none opacity-0",
             )}
             style={
@@ -2452,15 +2453,15 @@ export default memo(function Explorer({
                   aria-hidden="true"
                   className="mx-1.5 h-5 w-px shrink-0 bg-border"
                 />
+                {/* The sidebar toggle stands here (see below). */}
+                {sidebarMode !== "maximized" && (
+                  <span aria-hidden="true" className="size-11 shrink-0" />
+                )}
                 <MaximizeButton
                   maximized={sidebarMode === "maximized"}
                   onToggle={sidebarMode === "maximized" ? minimize : maximize}
                   labels={["Vis som helside", "Vis kart"]}
                 />
-                {/* The sidebar toggle stands here (see below). */}
-                {sidebarMode !== "maximized" && (
-                  <span aria-hidden="true" className="size-11 shrink-0" />
-                )}
               </nav>
             </header>
             <div className="relative min-h-0 flex-1">
