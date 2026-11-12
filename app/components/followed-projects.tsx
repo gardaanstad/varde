@@ -35,7 +35,7 @@ export function UnreadBadge({
   return (
     <span
       className={cn(
-        "inline-grid h-4.5 min-w-4.5 place-items-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums",
+        "inline-grid h-4.5 min-w-4.5 place-items-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-on-accent tabular-nums",
         className,
       )}
       aria-label={`${count} med nytt`}

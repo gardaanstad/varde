@@ -91,10 +91,10 @@ export default function LoginPrompt({
       tabIndex={-1}
       className={cn(
         "m-auto overflow-visible border-0 bg-transparent p-0 text-ink outline-none",
-        "backdrop:bg-ink/25 motion-safe:backdrop:animate-backdrop-in",
+        "backdrop:bg-scrim/25 motion-safe:backdrop:animate-backdrop-in",
         // Phones: a sheet along the bottom edge.
         "max-md:mb-0 max-md:w-full max-md:max-w-none",
-        "md:w-[380px] md:max-w-[calc(100vw-32px)] md:backdrop:bg-ink/33 md:backdrop:backdrop-blur-[4px]",
+        "md:w-[380px] md:max-w-[calc(100vw-32px)] md:backdrop:bg-scrim/33 md:backdrop:backdrop-blur-[4px]",
       )}
       onCancel={(event) => {
         event.preventDefault();
