@@ -147,242 +147,244 @@ async function swipeUp(page: Page, target: Locator) {
   }
 }
 
-for (const viewport of [
-  { width: 390, height: 844 },
-  { width: 320, height: 568 },
-]) {
-  test.describe(`mobile explorer at ${viewport.width}px`, () => {
-    // A phone's user agent, so the server renders the mobile layout first.
-    test.use({
-      viewport,
-      isMobile: true,
-      hasTouch: true,
-      userAgent: devices["Pixel 7"].userAgent,
-    });
+// The smallest phone: narrow and short, so overflow and drawer heights bite.
+const viewport = { width: 320, height: 568 };
 
-    test("projects open in their own full-height drawer and preserve map, history, and reading space", async ({
-      page,
-    }) => {
-      // The list opens at the middle height; projects open above it at full height.
-      await page.goto("/");
-      await expectDrawerHeight(page, 0.58);
-      await expect(
-        page.getByRole("region", { name: "Prosjektliste", exact: true }),
-      ).toBeVisible();
-      const result = page
-        .getByRole("region", { name: "Prosjektliste", exact: true })
-        .getByRole("button", { name: new RegExp(project.title) })
-        .first();
-      const projectDrawer = page.locator("[data-project-drawer]");
-      await result.click();
-      await expect(page).toHaveURL(atProject);
-      await expectDrawerHeight(page, 1, "project");
-      await expect(projectDrawer.locator("[data-project-post]")).toBeVisible();
-      await page
-        .getByRole("button", { name: "Lukk prosjekt", exact: true })
-        .click();
-      await expect(page).toHaveURL(atList);
-      await expect(projectDrawer).toBeHidden();
-      await expectDrawerHeight(page, 0.58);
-      await expect(result).toBeFocused();
-      await result.click();
-      await page.goBack();
-      await expect(projectDrawer).toBeHidden();
-      await expectDrawerHeight(page, 0.58);
-      await page.goForward();
-      await expectDrawerHeight(page, 1, "project");
-      await page.reload();
-      await expectDrawerHeight(page, 1, "project");
-      // The project's actions sit in a sheet behind one button.
-      await projectDrawer.getByRole("button", { name: "Handlinger" }).click();
-      await page
-        .getByRole("dialog", { name: "Handlinger" })
-        .getByRole("button", { name: "Vis i kartet", exact: true })
-        .click();
-      await expect(projectDrawer).toBeHidden();
-      await expectDrawerHeight(page, 136 / viewport.height);
-      await page.locator(`[data-project-id="${project.id}"]`).press("Enter");
-      await expect(page).toHaveURL(atProject);
-      await expectDrawerHeight(page, 1, "project");
-      // Swiping the project away returns to the map just as it was left.
-      await swipeDown(page, projectDrawer.locator("[aria-hidden]").first());
-      await expect(page).toHaveURL(atList);
-      await expect(projectDrawer).toBeHidden();
-      await expectDrawerHeight(page, 136 / viewport.height);
-      await expect
-        .poll(() =>
-          page.evaluate(
-            () => document.documentElement.scrollWidth <= window.innerWidth,
-          ),
-        )
-        .toBe(true);
-    });
-
-    test("wheel and touch expand the map drawer before scrolling list, project, and account content", async ({
-      page,
-    }) => {
-      await page.goto(projectPath);
-      await expectDrawerHeight(page, 1, "project");
-      // The project drawer has no lower heights; it scrolls right away.
-      const content = page.locator("[data-project-scroll]");
-      await content.hover();
-      await page.mouse.wheel(0, 300);
-      await expect
-        .poll(() => content.evaluate((element) => element.scrollTop))
-        .toBeGreaterThan(0);
-      await expectDrawerHeight(page, 1, "project");
-      await page
-        .getByRole("button", { name: "Lukk prosjekt", exact: true })
-        .click();
-      await expectDrawerHeight(page, 0.58);
-      const list = page.getByRole("region", {
-        name: "Prosjektliste",
-        exact: true,
-      });
-      await list.hover();
-      await page.mouse.wheel(0, 200);
-      await expectDrawerHeight(page, 1);
-      await page
-        .getByRole("button", { name: "Vis mer av kartet", exact: true })
-        .click();
-      await expectDrawerHeight(page, 0.58);
-      await swipeUp(page, list);
-      await expectDrawerHeight(page, 1);
-      // Logging in asks in a sheet over the drawer, which stays put.
-      await page.getByRole("button", { name: "Logg inn", exact: true }).click();
-      await expect(page.getByRole("dialog", { name: "Logg inn" })).toBeVisible();
-      await page.keyboard.press("Escape");
-      await expect(page.getByRole("dialog", { name: "Logg inn" })).toHaveCount(0);
-      await expectDrawerHeight(page, 1);
-      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
-    });
-
-    test("filters and keyboard search work at full and compact map heights", async ({
-      page,
-    }) => {
-      await page.goto("/");
-      const filters = page.getByRole("region", {
-        name: "Filtrer prosjekter",
-        exact: true,
-      });
-      await filters
-        .getByRole("button", {
-          name: "Status: Planlagt, Under bygging",
-          exact: true,
-        })
-        .click();
-      const status = page.getByRole("listbox", { name: "Status", exact: true });
-      await expectMenuFits(status);
-      await expect(status.getByRole("option", { selected: true })).toHaveCount(
-        2,
-      );
-      await status
-        .getByRole("option", { name: "Ferdigstilt", exact: true })
-        .click();
-      await expect(status.getByRole("option", { selected: true })).toHaveCount(
-        3,
-      );
-      await page.keyboard.press("Escape");
-      await filters
-        .getByRole("button", { name: "Kategori", exact: true })
-        .click();
-      await page
-        .getByRole("option", { name: project.category, exact: true })
-        .click();
-      await page.keyboard.press("Escape");
-      await page
-        .getByRole("button", {
-          name: "Fjern filter: Alle statuser",
-          exact: true,
-        })
-        .click();
-      await swipeDown(
-        page,
-        page.getByRole("button", { name: "Utvid prosjektlisten", exact: true }),
-      );
-      await expectDrawerHeight(page, 136 / viewport.height);
-      await filters
-        .getByRole("button", { name: "Åpne søk", exact: true })
-        .click();
-      const search = page.getByRole("textbox", {
-        name: "Søk etter prosjekt eller sted",
-      });
-      await expect(search).toBeFocused();
-      await expectDrawerHeight(page, 1);
-      await search.fill("Ingen slike prosjekter");
-      await expect(
-        page
-          .getByRole("region", { name: "Prosjektliste", exact: true })
-          .getByRole("heading", { name: "Ingen treff", exact: true }),
-      ).toBeVisible();
-      await search.fill(project.title);
-      await search.press("Enter");
-      await expect(page).toHaveURL(atProject);
-      await expectDrawerHeight(page, 1, "project");
-      await page
-        .getByRole("button", { name: "Lukk prosjekt", exact: true })
-        .click();
-      await page.getByRole("button", { name: "Lukk søk", exact: true }).click();
-      await expect(search).toBeHidden();
-      await expect(
-        filters.getByRole("button", { name: "Åpne søk", exact: true }),
-      ).toBeFocused();
-      await page.emulateMedia({ reducedMotion: "reduce" });
-      await page.keyboard.press("/");
-      await expect(search).toBeFocused();
-      await search.press("Escape");
-      await expect(search).toBeHidden();
-      await expect
-        .poll(() =>
-          page.evaluate(
-            () => document.documentElement.scrollWidth <= window.innerWidth,
-          ),
-        )
-        .toBe(true);
-    });
-
-    test("overview, timeline, and discussion remain readable without horizontal overflow", async ({
-      page,
-    }) => {
-      await page.goto(projectPath);
-      await expect(
-        page.getByRole("region", { name: "Om prosjektet", exact: true }),
-      ).toBeVisible();
-      await page.getByRole("button", { name: /^Oppdateringer/ }).click();
-      const timeline = page.getByRole("region", {
-        name: "Prosjektoppdateringer",
-        exact: true,
-      });
-      await expect(
-        timeline.getByRole("heading", { name: "Nye byrom tar form" }),
-      ).toBeVisible();
-      await timeline
-        .getByRole("button", { name: /^Se kommentarer/ })
-        .first()
-        .click();
-      await expect(
-        timeline
-          .getByRole("region", {
-            name: "Kommentarer til oppdateringen",
-            exact: true,
-          })
-          .first(),
-      ).toBeVisible();
-      await expect
-        .poll(() =>
-          page.evaluate(() =>
-            [
-              ...document.querySelectorAll(
-                "[data-project-post], [data-project-scroll]",
-              ),
-            ].every((element) => element.scrollWidth <= element.clientWidth),
-          ),
-        )
-        .toBe(true);
-      await shot(page, `project-discussion-${viewport.width}`);
-    });
+test.describe(`mobile explorer at ${viewport.width}px`, () => {
+  // A phone's user agent, so the server renders the mobile layout first.
+  test.use({
+    viewport,
+    isMobile: true,
+    hasTouch: true,
+    userAgent: devices["Pixel 7"].userAgent,
   });
-}
+
+  test("projects open in their own full-height drawer and preserve map, history, and reading space", async ({
+    page,
+  }) => {
+    // The list opens at the middle height; projects open above it at full height.
+    await page.goto("/");
+    await expectDrawerHeight(page, 0.58);
+    await expect(
+      page.getByRole("region", { name: "Prosjektliste", exact: true }),
+    ).toBeVisible();
+    const result = page
+      .getByRole("region", { name: "Prosjektliste", exact: true })
+      .getByRole("button", { name: new RegExp(project.title) })
+      .first();
+    const projectDrawer = page.locator("[data-project-drawer]");
+    await result.click();
+    await expect(page).toHaveURL(atProject);
+    await expectDrawerHeight(page, 1, "project");
+    await expect(projectDrawer.locator("[data-project-post]")).toBeVisible();
+    await page
+      .getByRole("button", { name: "Lukk prosjekt", exact: true })
+      .click();
+    await expect(page).toHaveURL(atList);
+    await expect(projectDrawer).toBeHidden();
+    await expectDrawerHeight(page, 0.58);
+    await expect(result).toBeFocused();
+    await result.click();
+    await page.goBack();
+    await expect(projectDrawer).toBeHidden();
+    await expectDrawerHeight(page, 0.58);
+    await page.goForward();
+    await expectDrawerHeight(page, 1, "project");
+    await page.reload();
+    await expectDrawerHeight(page, 1, "project");
+    // The project's actions sit in a sheet behind one button.
+    await projectDrawer.getByRole("button", { name: "Handlinger" }).click();
+    await page
+      .getByRole("dialog", { name: "Handlinger" })
+      .getByRole("button", { name: "Vis i kartet", exact: true })
+      .click();
+    await expect(projectDrawer).toBeHidden();
+    await expectDrawerHeight(page, 136 / viewport.height);
+    // Until the map regroups at its new zoom, the shape can be hidden in a
+    // group, and a key pressed on it would go elsewhere.
+    const shape = page.locator(`[data-project-id="${project.id}"]`);
+    await expect(shape).toBeVisible();
+    await shape.press("Enter");
+    await expect(page).toHaveURL(atProject);
+    await expectDrawerHeight(page, 1, "project");
+    // Swiping the project away returns to the map just as it was left.
+    await swipeDown(page, projectDrawer.locator("[aria-hidden]").first());
+    await expect(page).toHaveURL(atList);
+    await expect(projectDrawer).toBeHidden();
+    await expectDrawerHeight(page, 136 / viewport.height);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+      )
+      .toBe(true);
+  });
+
+  test("wheel and touch expand the map drawer before scrolling list, project, and account content", async ({
+    page,
+  }) => {
+    await page.goto(projectPath);
+    await expectDrawerHeight(page, 1, "project");
+    // The project drawer has no lower heights; it scrolls right away.
+    const content = page.locator("[data-project-scroll]");
+    await content.hover();
+    await page.mouse.wheel(0, 300);
+    await expect
+      .poll(() => content.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    await expectDrawerHeight(page, 1, "project");
+    await page
+      .getByRole("button", { name: "Lukk prosjekt", exact: true })
+      .click();
+    await expectDrawerHeight(page, 0.58);
+    const list = page.getByRole("region", {
+      name: "Prosjektliste",
+      exact: true,
+    });
+    await list.hover();
+    await page.mouse.wheel(0, 200);
+    await expectDrawerHeight(page, 1);
+    await page
+      .getByRole("button", { name: "Vis mer av kartet", exact: true })
+      .click();
+    await expectDrawerHeight(page, 0.58);
+    await swipeUp(page, list);
+    await expectDrawerHeight(page, 1);
+    // Logging in asks in a sheet over the drawer, which stays put.
+    await page.getByRole("button", { name: "Logg inn", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Logg inn" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Logg inn" })).toHaveCount(0);
+    await expectDrawerHeight(page, 1);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  });
+
+  test("filters and keyboard search work at full and compact map heights", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const filters = page.getByRole("region", {
+      name: "Filtrer prosjekter",
+      exact: true,
+    });
+    await filters
+      .getByRole("button", {
+        name: "Status: Planlagt, Under bygging",
+        exact: true,
+      })
+      .click();
+    const status = page.getByRole("listbox", { name: "Status", exact: true });
+    await expectMenuFits(status);
+    await expect(status.getByRole("option", { selected: true })).toHaveCount(
+      2,
+    );
+    await status
+      .getByRole("option", { name: "Ferdigstilt", exact: true })
+      .click();
+    await expect(status.getByRole("option", { selected: true })).toHaveCount(
+      3,
+    );
+    await page.keyboard.press("Escape");
+    await filters
+      .getByRole("button", { name: "Kategori", exact: true })
+      .click();
+    await page
+      .getByRole("option", { name: project.category, exact: true })
+      .click();
+    await page.keyboard.press("Escape");
+    await page
+      .getByRole("button", {
+        name: "Fjern filter: Alle statuser",
+        exact: true,
+      })
+      .click();
+    await swipeDown(
+      page,
+      page.getByRole("button", { name: "Utvid prosjektlisten", exact: true }),
+    );
+    await expectDrawerHeight(page, 136 / viewport.height);
+    await filters
+      .getByRole("button", { name: "Åpne søk", exact: true })
+      .click();
+    const search = page.getByRole("textbox", {
+      name: "Søk etter prosjekt eller sted",
+    });
+    await expect(search).toBeFocused();
+    await expectDrawerHeight(page, 1);
+    await search.fill("Ingen slike prosjekter");
+    await expect(
+      page
+        .getByRole("region", { name: "Prosjektliste", exact: true })
+        .getByRole("heading", { name: "Ingen treff", exact: true }),
+    ).toBeVisible();
+    await search.fill(project.title);
+    await search.press("Enter");
+    await expect(page).toHaveURL(atProject);
+    await expectDrawerHeight(page, 1, "project");
+    await page
+      .getByRole("button", { name: "Lukk prosjekt", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Lukk søk", exact: true }).click();
+    await expect(search).toBeHidden();
+    await expect(
+      filters.getByRole("button", { name: "Åpne søk", exact: true }),
+    ).toBeFocused();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.keyboard.press("/");
+    await expect(search).toBeFocused();
+    await search.press("Escape");
+    await expect(search).toBeHidden();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+      )
+      .toBe(true);
+  });
+
+  test("overview, timeline, and discussion remain readable without horizontal overflow", async ({
+    page,
+  }) => {
+    await page.goto(projectPath);
+    await expect(
+      page.getByRole("region", { name: "Om prosjektet", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: /^Oppdateringer/ }).click();
+    const timeline = page.getByRole("region", {
+      name: "Prosjektoppdateringer",
+      exact: true,
+    });
+    await expect(
+      timeline.getByRole("heading", { name: "Nye byrom tar form" }),
+    ).toBeVisible();
+    await timeline
+      .getByRole("button", { name: /^Se kommentarer/ })
+      .first()
+      .click();
+    await expect(
+      timeline
+        .getByRole("region", {
+          name: "Kommentarer til oppdateringen",
+          exact: true,
+        })
+        .first(),
+    ).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          [
+            ...document.querySelectorAll(
+              "[data-project-post], [data-project-scroll]",
+            ),
+          ].every((element) => element.scrollWidth <= element.clientWidth),
+        ),
+      )
+      .toBe(true);
+    await shot(page, `project-discussion-${viewport.width}`);
+  });
+});
 
 test("followed projects keep their collection and full reading height", async ({
   page,

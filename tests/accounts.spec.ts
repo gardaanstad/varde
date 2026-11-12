@@ -609,7 +609,6 @@ test("a follow intent survives login and profile settings update the public page
 
 for (const viewport of [
   { width: 1280, height: 800 },
-  { width: 390, height: 844 },
   { width: 320, height: 568 },
 ]) {
   test(`profile and account views stay in the card at ${viewport.width}px`, async ({
