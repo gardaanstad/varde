@@ -40,6 +40,8 @@ type ChoiceSelectBase = {
   /** Classes merged onto the trigger, e.g. to match a form's fields. */
   triggerClassName?: string;
   triggerLabel?: string;
+  /** Names the anchored menu above its options, as the phone sheet does. */
+  menuTitle?: boolean;
 };
 
 type ChoiceSelectProps =
@@ -62,6 +64,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
     className = "",
     triggerClassName,
     triggerLabel,
+    menuTitle = false,
   } = props;
   const multiple = props.multiple === true;
   const selectedValues = new Set(
@@ -551,6 +554,15 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
                   {label}
                 </span>
               </div>
+            )}
+            {!sheet && menuTitle && (
+              <span
+                aria-hidden="true"
+                data-slot="choice-title"
+                className="px-2.5 pt-1.5 pb-0.5 text-[15px] leading-5 font-semibold tracking-[-0.2px] text-ink"
+              >
+                {label}
+              </span>
             )}
             <div
               ref={content}
