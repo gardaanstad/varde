@@ -7,8 +7,8 @@ import {
   Check,
   Ellipsis,
   MapPin,
-  Maximize2,
-  Minimize2,
+  ChevronsRight,
+  ChevronsLeft,
   Pencil,
   Share2,
   X,
@@ -350,7 +350,7 @@ export default function ProjectPostHeader({
               data-project-full=""
               data-sidebar-maximize=""
             >
-              {full ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+              {full ? <ChevronsLeft size={18} /> : <ChevronsRight size={18} />}
             </button>
           )}
           {close}

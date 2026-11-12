@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useEffectEvent, type ReactNode } from "react";
-import { ArrowLeft, Maximize2, Minimize2, X } from "lucide-react";
+import { ArrowLeft, ChevronsRight, ChevronsLeft, X } from "lucide-react";
 import { cn } from "../lib/cn";
 import { iconButton } from "../lib/ui";
 
@@ -94,7 +94,7 @@ export function MaximizeButton({
       data-tooltip={label}
       data-sidebar-maximize=""
     >
-      {maximized ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+      {maximized ? <ChevronsLeft size={18} /> : <ChevronsRight size={18} />}
     </button>
   );
 }
