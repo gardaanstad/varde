@@ -1,15 +1,10 @@
 import { devices, expect, test, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { seedProjects } from "../app/lib/data";
-import { member, signIn } from "./support";
+import { member, shot, signIn } from "./support";
 
 const project = seedProjects[0];
 const projectPath = `/prosjekt/${project.id}`;
-// Set to a directory to save screenshots of the prompt and drawers.
-const shots = process.env.PANEL_SCREENSHOTS;
-async function shot(page: Page, name: string) {
-  if (shots) await page.screenshot({ path: `${shots}/${name}.png` });
-}
 const top = (page: Page, selector: string) =>
   page.locator(selector).evaluate((element) =>
     Math.round(element.getBoundingClientRect().top),
@@ -92,6 +87,7 @@ test.describe("desktop panels", () => {
   test("a project opened over the maximized list paints its full layout at once", async ({
     page,
   }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/?visning=full");
     const card = page.locator(`[data-card-id="${project.id}"]`).first();
     await expect(card).toBeVisible();
@@ -148,7 +144,6 @@ test.describe("mobile panels", () => {
         ),
       )
       .toBe(0);
-    await page.waitForTimeout(350);
     await shot(page, "mobile-actions-sheet");
     await follow.click();
     await expect(actions).toHaveCount(0);
@@ -183,7 +178,6 @@ test.describe("mobile panels", () => {
       .getByRole("button", { name: "Utvid prosjektlisten", exact: true })
       .click();
     await expect.poll(() => top(page, explorer)).toBeLessThan(40);
-    await page.waitForTimeout(600);
     const before = await top(page, explorer);
     const scale = () =>
       page

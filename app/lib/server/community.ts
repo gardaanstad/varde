@@ -13,6 +13,7 @@ import {
 import { getProjectUpdates, type Comment, type Project } from "../data";
 import { HttpError } from "./http";
 import { credit, readCredits } from "./credits";
+import { serverNow } from "./clock";
 
 /**
  * Everything the explorer shows. `suggestions` counts pending suggestions:
@@ -110,7 +111,7 @@ export async function throttle(
     message = "Litt mange endringer på kort tid. Vent et minutt og prøv igjen.",
   } = {},
 ) {
-  const now = Date.now();
+  const now = serverNow().getTime();
   const expired = sql`${rateLimit.lastRequest} < ${now - window}`;
   const [row] = await getDb()
     .insert(rateLimit)
@@ -138,7 +139,7 @@ export async function findProject(id: string) {
 /** Edit and creation times always come from the server. */
 export async function saveProject(data: Project, create: boolean) {
   const db = getDb();
-  const now = new Date().toISOString();
+  const now = serverNow().toISOString();
   if (create) {
     const [inserted] = await db
       .insert(project)
@@ -184,7 +185,7 @@ export async function castVote(
 
 /** A follow that starts now, with nothing before it unread. */
 function newFollow(userId: string, projectId: string, following = true) {
-  const now = new Date();
+  const now = serverNow();
   return { userId, projectId, following, createdAt: now, seenAt: now };
 }
 
@@ -246,7 +247,7 @@ export async function addComment(
       updateId: input.updateId || "",
       parentId: input.parentId,
       text: input.text,
-      date: new Date().toISOString(),
+      date: serverNow().toISOString(),
       userId,
     }),
     db

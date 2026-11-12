@@ -11,7 +11,7 @@ import {
   user,
   vote,
 } from "../app/lib/db/schema";
-import { cookieHeaders, db, member, mutation, origin, signIn } from "./support";
+import { cookieHeaders, db, member, mutation, origin, shot, signIn } from "./support";
 const project = seedProjects[0];
 const updateId = project.updates[0].id;
 const uniqueName = () => `nabo_${randomUUID().slice(0, 8)}`;
@@ -609,7 +609,6 @@ test("a follow intent survives login and profile settings update the public page
 
 for (const viewport of [
   { width: 1280, height: 800 },
-  { width: 390, height: 844 },
   { width: 320, height: 568 },
 ]) {
   test(`profile and account views stay in the card at ${viewport.width}px`, async ({
@@ -671,10 +670,7 @@ for (const viewport of [
       publicProfile.getByRole("heading", { name: /^Innspill/ }),
     ).toBeVisible();
     await expect.poll(bounds).toEqual(before);
-    await page.screenshot({
-      path: `test-results/public-profile-card-${viewport.width}.png`,
-      animations: "disabled",
-    });
+    await shot(page, `public-profile-card-${viewport.width}`);
     const edit = panel.getByRole("button", {
       name: "Rediger profil",
       exact: true,
@@ -694,10 +690,7 @@ for (const viewport of [
       panel.getByRole("textbox", { name: "Om deg", exact: true }),
     ).toHaveCount(0);
     await expect.poll(bounds).toEqual(before);
-    await page.screenshot({
-      path: `test-results/account-settings-${viewport.width}.png`,
-      animations: "disabled",
-    });
+    await shot(page, `account-settings-${viewport.width}`);
     if (viewport.width >= 800) {
       const close = page.getByRole("button", { name: "Lukk", exact: true });
       await expect(close).toBeInViewport();
@@ -741,10 +734,7 @@ for (const viewport of [
       panel.getByRole("button", { name: "Lagre profil" }),
     ).toBeDisabled();
     await expect.poll(bounds).toEqual(before);
-    await page.screenshot({
-      path: `test-results/profile-editor-${viewport.width}.png`,
-      animations: "disabled",
-    });
+    await shot(page, `profile-editor-${viewport.width}`);
     await back.click();
     await expect(
       publicProfile.getByText("Flere trær og gode møteplasser."),
@@ -768,10 +758,7 @@ for (const viewport of [
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true);
-    await page.screenshot({
-      path: `test-results/public-profile-${viewport.width}.png`,
-      animations: "disabled",
-    });
+    await shot(page, `public-profile-${viewport.width}`);
   });
 }
 

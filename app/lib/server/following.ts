@@ -6,6 +6,7 @@ import { comment, follow, project } from "../db/schema";
 import { getProjectUpdates } from "../data";
 import type { FollowedProject, Following } from "../following";
 import { HttpError } from "./http";
+import { serverNow } from "./clock";
 
 /** One unread item on a followed project. */
 export type UnreadItem = {
@@ -96,7 +97,7 @@ export async function unreadActivity(
 
 /** Each followed project with its unread counts and latest activity. */
 export async function readFollowing(userId: string): Promise<Following> {
-  const readAt = new Date().toISOString();
+  const readAt = serverNow().toISOString();
   const follows = await followedProjects(userId);
   if (follows.length === 0) return { projects: [], readAt };
   const ids = follows.map((row) => row.projectId);
@@ -155,7 +156,7 @@ export async function markProjectSeen(
   projectId: string,
   readAt: string,
 ) {
-  const until = Math.min(Date.parse(readAt), Date.now());
+  const until = Math.min(Date.parse(readAt), serverNow().getTime());
   if (!Number.isFinite(until)) throw new HttpError(400, "Ugyldig tidspunkt.");
   await getDb()
     .update(follow)

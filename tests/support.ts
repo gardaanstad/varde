@@ -3,7 +3,7 @@ import { deflateSync } from "node:zlib";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { user, session } from "../app/lib/db/schema";
-import type { APIRequestContext, BrowserContext } from "@playwright/test";
+import type { APIRequestContext, BrowserContext, Page } from "@playwright/test";
 export const origin = `http://127.0.0.1:${process.env.TEST_PORT}`;
 export const secret = "test-only-secret-never-use-in-production-72f9d1";
 export const db = drizzle(
@@ -78,6 +78,13 @@ export function mutation(
 export function cookieHeaders(account: Awaited<ReturnType<typeof member>>) {
   return { Cookie: `${account.cookie.name}=${account.cookie.value}` };
 }
+/** Saves a screenshot for review when TEST_SCREENSHOTS names a directory. */
+export async function shot(page: Page, name: string) {
+  const directory = process.env.TEST_SCREENSHOTS;
+  if (directory)
+    await page.screenshot({ path: `${directory}/${name}.png`, animations: "disabled" });
+}
+
 /** A real, decodable PNG of one solid colour. */
 export function png(width = 40, height = 30) {
   const crcTable = Array.from({ length: 256 }, (_, n) => {
