@@ -215,6 +215,13 @@ const reviewedDot =
 const countBadge =
   "inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums";
 
+// Under "Vis flere" in the category filter.
+const lessUsedCategories = new Set<string>([
+  "Energi",
+  "Vann og avløp",
+  "Offentlige bygg",
+]);
+
 function categorySummary(values: string[]) {
   const labels = categoryLabels(values);
   return labels.length === 0
@@ -1538,6 +1545,7 @@ export default memo(function Explorer({
     value: node.name,
     label: node.name,
     icon: <CategoryIcon category={node.name} size={16} />,
+    more: lessUsedCategories.has(node.name),
     ...categoryCount((project) =>
       project.categories.some((value) => mainCategoryOf(value) === node.name),
     ),

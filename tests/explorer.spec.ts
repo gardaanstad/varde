@@ -461,6 +461,11 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
       page.getByRole("listbox", { name: "Kategori", exact: true }),
     ).toBeVisible();
     await shot(page, "mobile-390-category-sheet");
+    await page
+      .getByRole("listbox", { name: "Kategori", exact: true })
+      .getByRole("button", { name: "Vis flere" })
+      .click();
+    await shot(page, "mobile-390-category-sheet-more");
     await page.keyboard.press("Escape");
     await filters.getByRole("button", { name: /^Sted/ }).click();
     const placeSheet = page.getByRole("listbox", { name: "Sted", exact: true });
@@ -839,6 +844,15 @@ test.describe("desktop explorer", () => {
       name: "Kategori",
       exact: true,
     });
+    // Less used categories wait under "Vis flere".
+    const energy = categoryMenu.getByRole("option", { name: /^Energi/ });
+    const more = categoryMenu.getByRole("button", { name: "Vis flere" });
+    await expect(energy).toBeHidden();
+    await more.click();
+    await expect(energy).toBeVisible();
+    await shot(page, "category-menu-more");
+    await categoryMenu.getByRole("button", { name: "Vis færre" }).click();
+    await expect(energy).toBeHidden();
     const subOption = categoryMenu.getByRole("option", {
       name: new RegExp(`^${sub}`),
     });
@@ -853,6 +867,13 @@ test.describe("desktop explorer", () => {
     await subOption.click();
     await expect(mainOption).toHaveAttribute("aria-selected", "false");
     await expect(subOption).toBeVisible();
+    // Unchoosing its last subcategory unchooses the main too.
+    await subOption.click();
+    await expect(subOption).toBeHidden();
+    await expect(page).not.toHaveURL(/kategori=/);
+    await mainOption.click();
+    await subOption.click();
+    await expect(subOption).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("Escape");
     await expect(
       active.getByRole("button", { name: /^Fjern filter/ }),

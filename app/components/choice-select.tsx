@@ -27,6 +27,8 @@ type Option = {
    * option again clears them along with it.
    */
   children?: Option[];
+  /** Kept under "Vis flere" until asked for, or while it's chosen. */
+  more?: boolean;
 };
 
 const flatten = (options: Option[]): Option[] =>
@@ -84,6 +86,11 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
       0,
     );
   const [open, setOpen] = useState(false);
+  const primary = options.filter((option) => !option.more);
+  const extra = options.filter((option) => option.more);
+  const extraChosen = extra.some((option) => selectedValues.has(option.value));
+  // Opens expanded when something under it is chosen.
+  const [expanded, setExpanded] = useState(false);
   // Grouped menus get room for their subcategories to sit side by side.
   const grouped = options.some((option) => option.children?.length);
   const [sheet, setSheet] = useState(false);
@@ -110,7 +117,10 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
   const focusSelectedOption = useEffectEvent(() => {
     const focusIndex = Math.max(
       0,
-      options.findIndex((option) => selectedValues.has(option.value)),
+      // In the order they're shown, the extras last.
+      [...primary, ...extra].findIndex((option) =>
+        selectedValues.has(option.value),
+      ),
     );
     list.current
       ?.querySelectorAll<HTMLButtonElement>('[data-slot="choice-option"]')
@@ -239,6 +249,28 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
       props.onChange([...props.value, value]);
       return;
     }
+    // Unchoosing the last chosen child takes its parent along.
+    const owner = options.find((option) =>
+      option.children?.some((child) => child.value === value),
+    );
+    if (owner) {
+      const left = props.value.filter((item) => item !== value);
+      const siblingsLeft = owner.children!.some((child) =>
+        left.includes(child.value),
+      );
+      if (siblingsLeft) {
+        props.onChange(left);
+        return;
+      }
+      // Its row closes under focus; keep focus, and the menu, on the parent.
+      list.current
+        ?.querySelector<HTMLButtonElement>(
+          `[data-slot="choice-option"][data-value="${CSS.escape(owner.value)}"]`,
+        )
+        ?.focus({ preventScroll: true });
+      props.onChange(left.filter((item) => item !== owner.value));
+      return;
+    }
     const children = new Set(
       (parent?.children ?? []).map((child) => child.value),
     );
@@ -274,6 +306,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
         key={option.value}
         type="button"
         data-slot="choice-option"
+        data-value={option.value}
         data-label={option.label}
         role="option"
         aria-selected={chosen}
@@ -381,6 +414,57 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
     );
   }
 
+  /** An option, or a group holding its children underneath it. */
+  function renderEntry(option: Option) {
+    const open = selectedValues.has(option.value);
+    if (!option.children?.length) return renderOption(option);
+    return (
+      <div
+        key={option.value}
+        role="group"
+        aria-label={option.label}
+        data-slot="choice-group"
+        data-open={open}
+        className="relative shrink-0 rounded-[10px] border border-transparent"
+      >
+        {renderOption(option)}
+        {/* Rows ease from 0fr to 1fr, so the group opens smoothly. */}
+        <div
+          className={cn(
+            "grid transition-[grid-template-rows,opacity,visibility] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+            open
+              ? "grid-rows-[1fr] opacity-100"
+              : "invisible grid-rows-[0fr] opacity-0",
+          )}
+          inert={!open}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div
+              className={cn(
+                // A plain guide under the parent's icon.
+                "relative flex flex-col gap-0.5 px-1 pt-1 pb-1",
+                "before:absolute before:top-1 before:bottom-1 before:border-l-[1.5px] before:border-border",
+                // Centred under the parent's icon; rows start right of it.
+                sheet ? "before:left-[20.25px]" : "before:left-[18.25px]",
+              )}
+            >
+              {option.children.map(renderSuboption)}
+            </div>
+          </div>
+        </div>
+        <GroupOutline
+          runs={
+            !open
+              ? []
+              : narrowed(option)
+                ? chosenRuns(option.children, selectedValues)
+                : [whole]
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       ref={root}
@@ -426,10 +510,14 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open) setExpanded(extraChosen);
+          setOpen(!open);
+        }}
         onKeyDown={(event) => {
           if (["ArrowDown", "ArrowUp"].includes(event.key)) {
             event.preventDefault();
+            if (!open) setExpanded(extraChosen);
             setOpen(true);
           }
         }}
@@ -500,7 +588,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
               // Options under a closed group are out of reach.
               const items = [
                 ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
-                  '[role="option"]',
+                  '[role="option"], [data-slot="choice-more"]',
                 ),
               ].filter((item) => !item.closest("[inert]"));
               const current = items.indexOf(
@@ -556,57 +644,58 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
               ref={content}
               className={cn("flex flex-col", sheet ? "gap-0.5" : "gap-1")}
             >
-              {options.map((option) => {
-                const open = selectedValues.has(option.value);
-                if (!option.children?.length) return renderOption(option);
-                return (
-                  <div
-                    key={option.value}
-                    role="group"
-                    aria-label={option.label}
-                    data-slot="choice-group"
-                    data-open={open}
-                    className="relative shrink-0 rounded-[10px] border border-transparent"
+              {primary.map(renderEntry)}
+              {extra.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    data-slot="choice-more"
+                    tabIndex={-1}
+                    aria-expanded={expanded}
+                    className={cn(
+                      "flex w-full shrink-0 items-center rounded-lg border border-transparent text-left text-muted -outline-offset-2",
+                      "transition-colors duration-150 motion-reduce:transition-none",
+                      "hover:text-ink focus-visible:bg-surface-muted focus-visible:text-ink",
+                      sheet
+                        ? "min-h-12 gap-3 px-3 text-body active:bg-surface-muted"
+                        : "min-h-9 gap-2 px-2.5 py-1.5 text-ui hover:bg-surface-muted",
+                    )}
+                    onClick={() => setExpanded(!expanded)}
                   >
-                    {renderOption(option)}
-                    {/* Rows ease from 0fr to 1fr, so the group opens smoothly. */}
-                    <div
+                    <ChevronDown
+                      size={16}
+                      aria-hidden="true"
                       className={cn(
-                        "grid transition-[grid-template-rows,opacity,visibility] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
-                        open
-                          ? "grid-rows-[1fr] opacity-100"
-                          : "invisible grid-rows-[0fr] opacity-0",
+                        "shrink-0 transition-transform duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+                        expanded && "rotate-180",
                       )}
-                      inert={!open}
-                    >
-                      <div className="min-h-0 overflow-hidden">
-                        <div
-                          className={cn(
-                            // A plain guide under the parent's icon.
-                            "relative flex flex-col gap-0.5 px-1 pt-1 pb-1",
-                            "before:absolute before:top-1 before:bottom-1 before:border-l-[1.5px] before:border-border",
-                            // Centred under the parent's icon; rows start right of it.
-                            sheet
-                              ? "before:left-[20.25px]"
-                              : "before:left-[18.25px]",
-                          )}
-                        >
-                          {option.children.map(renderSuboption)}
-                        </div>
+                    />
+                    <span>{expanded ? "Vis færre" : "Vis flere"}</span>
+                  </button>
+                  {/* Eases open like a group's subcategories. */}
+                  <div
+                    data-slot="choice-extra"
+                    className={cn(
+                      "grid transition-[grid-template-rows,opacity,visibility] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+                      expanded
+                        ? "grid-rows-[1fr] opacity-100"
+                        : "invisible grid-rows-[0fr] opacity-0",
+                    )}
+                    inert={!expanded}
+                  >
+                    <div className="min-h-0 overflow-hidden">
+                      <div
+                        className={cn(
+                          "flex flex-col",
+                          sheet ? "gap-0.5" : "gap-1",
+                        )}
+                      >
+                        {extra.map(renderEntry)}
                       </div>
                     </div>
-                    <GroupOutline
-                      runs={
-                        !open
-                          ? []
-                          : narrowed(option)
-                            ? chosenRuns(option.children, selectedValues)
-                            : [whole]
-                      }
-                    />
                   </div>
-                );
-              })}
+                </>
+              )}
             </div>
           </div>
           {sheet && (
