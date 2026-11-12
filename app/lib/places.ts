@@ -108,14 +108,6 @@ const mercatorY = (lat: number) =>
 function area([south, west, north, east]: Extent) {
   return Math.max(0, east - west) * Math.max(0, mercatorY(north) - mercatorY(south)) * (180 / Math.PI);
 }
-function overlap(a: Extent, b: Extent): Extent {
-  return [
-    Math.max(a[0], b[0]),
-    Math.max(a[1], b[1]),
-    Math.min(a[2], b[2]),
-    Math.min(a[3], b[3]),
-  ];
-}
 const size = new Map(places.map((place) => [place, area(place.extent)]));
 
 /**
@@ -136,36 +128,34 @@ export function projectPlaces(city: string, center: Point): string[] {
   return county ? [county.name] : [];
 }
 
+// Below this zoom the view is too wide to name a place it shows.
+const placeZoom = 11;
+
 /**
- * The place a map view shows, if one. A place qualifies when most of the
- * view lies in it (zoomed into it), or when most of it is in view and it
- * fills a good part of the view (framed on it). Of those, the smallest wins,
- * so zooming into Bergen shows Bergen and not Vestland. The current place
- * stays on looser terms, so views near a threshold don't flicker.
+ * The place a map view shows, if one: the smallest place most of the
+ * projects in view belong to, so zooming into Bergen shows Bergen and not
+ * Vestland. Only close views gain a place. The current one, picked or
+ * gained, stays while most projects in view are still in it, so views don't
+ * flicker; a wide view keeps it only until it zooms out, so a picked county
+ * survives panning its framing but zooming out of it clears it.
  */
 export function placeInView(
-  view: { south: number; west: number; north: number; east: number },
+  inView: string[][],
+  zoom: number,
   current = "",
+  previousZoom = zoom,
 ): string {
-  const extent: Extent = [view.south, view.west, view.north, view.east];
-  const viewArea = area(extent);
-  if (!viewArea) return current;
-  const center: Point = [
-    (view.south + view.north) / 2,
-    (view.west + view.east) / 2,
-  ];
+  if (!inView.length) return "";
+  if (zoom < placeZoom && zoom < previousZoom) return "";
+  const counts = new Map<string, number>();
+  for (const names of inView)
+    for (const name of names) counts.set(name, (counts.get(name) ?? 0) + 1);
   let best: Place | null = null;
-  for (const place of places) {
-    const shared = area(overlap(extent, place.extent));
-    const ofView = shared / viewArea;
-    const ofPlace = shared / size.get(place)!;
-    const qualifies =
-      place.name === current
-        ? ofView >= 0.4 || (ofPlace >= 0.6 && ofView >= 0.15)
-        : contains(place.extent, center) &&
-          (ofView >= 0.6 || (ofPlace >= 0.75 && ofView >= 0.3));
-    if (qualifies && (!best || size.get(place)! < size.get(best)!))
-      best = place;
+  for (const [name, count] of counts) {
+    const place = byName.get(name);
+    if (!place || count * 2 <= inView.length) continue;
+    if (name !== current && zoom < placeZoom) continue;
+    if (!best || size.get(place)! < size.get(best)!) best = place;
   }
   return best?.name ?? "";
 }

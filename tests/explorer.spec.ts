@@ -1071,8 +1071,8 @@ test.describe("the place follows the map", () => {
       page,
     }) => {
       await page.goto("/?kart=59.9100,10.7500,9");
-      // Zoomed out over Oslo, the view is mostly Akershus.
-      await expect(place(page, "Akershus")).toBeVisible();
+      // Zoomed out over Oslo, the view names no place yet.
+      await expect(place(page, "Hele Norge")).toHaveText("Velg sted");
       const zoomIn = page.getByRole("button", { name: "Zoom inn", exact: true });
       await zoomIn.click();
       await expect.poll(() => zoomOf(page)).toBe(10);
@@ -1087,12 +1087,28 @@ test.describe("the place follows the map", () => {
       await expect(place(page, "Bergen")).toBeVisible();
       await expect(listed(page, "Bybanen til Åsane")).toBeVisible();
       await expect(listed(page, seedProjects[0].title)).toHaveCount(0);
-      // Zooming out of Bergen passes Vestland's view, then none.
+      // Zooming out of Bergen clears it once the view is wide. A picked
+      // place holds while the map moves to it.
+      await page.waitForTimeout(1600);
       const zoomOut = page.getByRole("button", { name: "Zoom ut", exact: true });
       await expect(async () => {
         await zoomOut.click();
-        await expect(place(page, "Vestland")).toBeVisible({ timeout: 1500 });
+        await expect.poll(() => zoomOf(page), { timeout: 1500 }).toBeLessThan(11);
       }).toPass();
+      await expect(place(page, "Hele Norge")).toHaveText("Velg sted");
+      // A picked county holds its wide framing until zoomed out of.
+      await place(page, "Hele Norge").click();
+      await options.getByRole("option", { name: /^Vestland/ }).click();
+      await expect(place(page, "Vestland")).toBeVisible();
+      await expect.poll(() => zoomOf(page)).toBeLessThan(9);
+      await page.waitForTimeout(1600);
+      await expect(place(page, "Vestland")).toBeVisible();
+      const framed = zoomOf(page);
+      await expect(async () => {
+        await zoomOut.click();
+        await expect.poll(() => zoomOf(page), { timeout: 1500 }).toBeLessThan(framed);
+      }).toPass();
+      await expect(place(page, "Hele Norge")).toHaveText("Velg sted");
       await expect(async () => {
         await zoomOut.click();
         await expect.poll(() => zoomOf(page), { timeout: 1500 }).toBeLessThan(6);

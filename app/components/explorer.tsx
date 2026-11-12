@@ -395,6 +395,7 @@ export default memo(function Explorer({
   );
   // A picked place holds while the map flies there.
   const placeHold = useRef<{ name: string; until: number } | null>(null);
+  const lastZoom = useRef<number | null>(null);
   const [profileName, setProfileName] = useState<string | null>(
     initialProfile || null,
   );
@@ -824,28 +825,33 @@ export default memo(function Explorer({
 
   function onMapView(view: MapViewChange) {
     mapViewRef.current = view;
-    const key = projects
-      .filter((project) => projectInBounds(project, view.bounds))
-      .map((project) => project.id)
-      .join();
+    const shown = projects.filter((project) =>
+      projectInBounds(project, view.bounds),
+    );
+    const key = shown.map((project) => project.id).join();
     if (key !== inViewKey.current) {
       inViewKey.current = key;
       setViewBounds(view.bounds);
     }
     if (!postView.current) setFrozenBounds(null);
-    followPlace(view);
+    followPlace(view, shown);
     window.clearTimeout(urlTimer.current);
     urlTimer.current = window.setTimeout(syncUrl, 300);
   }
   /** Beside the map, "Velg sted" names the place the view shows. */
-  function followPlace(view: MapViewChange) {
+  function followPlace(view: MapViewChange, shown: Project[]) {
     // Maximized, the place filters the list; an open project's framing
     // is passing.
     if ((maximized && !isMobile) || postView.current) return;
+    const previousZoom = lastZoom.current ?? view.zoom;
+    lastZoom.current = view.zoom;
     const hold = placeHold.current;
     if (hold && Date.now() < hold.until) return setPlace(hold.name);
     placeHold.current = null;
-    setPlace((current) => placeInView(view.bounds, current));
+    const inView = shown.map((project) => placesOf.get(project.id) ?? []);
+    setPlace((current) =>
+      placeInView(inView, view.zoom, current, previousZoom),
+    );
   }
   /** Moves the map to a place, or out to Norway for none. */
   function goToPlace(name: string) {
