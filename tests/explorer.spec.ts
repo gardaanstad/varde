@@ -1068,6 +1068,28 @@ test.describe("desktop explorer", () => {
       page.getByRole("main", { name: "Utforsk prosjekter" }),
     ).not.toHaveAttribute("inert");
   });
+
+  test("restoring the maximized list keeps the map's view", async ({ page }) => {
+    await page.goto("/?kart=59.9100,10.7500,16");
+    await expect(
+      page
+        .getByRole("region", { name: "Filtrer prosjekter", exact: true })
+        .getByRole("button", { name: "Sted: Oslo", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Vis som helside", exact: true }).click();
+    await expect(page.locator("#project-panel")).toHaveAttribute(
+      "data-sidebar-mode",
+      "maximized",
+    );
+    await page.getByRole("button", { name: "Vis kart", exact: true }).click();
+    await expect(page.locator("#project-panel")).toHaveAttribute(
+      "data-sidebar-mode",
+      "normal",
+    );
+    // Long enough for a fly to the place to have moved the map.
+    await page.waitForTimeout(800);
+    expect(mapParam(page)).toBe("59.9100,10.7500,16");
+  });
 });
 
 test.describe("the place follows the map", () => {
