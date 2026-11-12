@@ -1099,14 +1099,18 @@ export default memo(function Explorer({
       layer?.removeAttribute("data-sidebar-transition-layer");
     });
   }
+  // The place the map showed when maximized; restoring keeps the view unless
+  // another was picked meanwhile. Unknown when the page opened maximized.
+  const placeOnMap = useRef<string | null>(null);
   function maximize() {
     if (isMobile || maximized) return;
+    placeOnMap.current = place;
     changeMode(() => setMaximized(true), "maximize");
   }
   /** Back beside the map, which now shows the place picked while maximized. */
   function restore() {
     setMaximized(false);
-    if (place) pendingFit.current = place;
+    if (place && place !== placeOnMap.current) pendingFit.current = place;
   }
   function minimize() {
     if (!maximized) return;

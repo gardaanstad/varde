@@ -248,6 +248,18 @@ test("moderators edit the reference page and publish sourced updates without new
   await expect(bar).toContainText("4 endringer");
   await page.getByRole("button", { name: "Angre", exact: true }).click();
   await expect(bar).toContainText("3 endringer");
+  // Clearing the outline asks first, with keeping it as the default.
+  await page
+    .getByRole("button", { name: "Fjern alle punkter", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Behold", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("button", { name: "Fjern alle punkter", exact: true }),
+  ).toBeFocused();
+  await expect(bar).toContainText("3 endringer");
   await bar.getByRole("button", { name: "Lagre", exact: true }).click();
   const review = bar.getByRole("list", { name: "Endringer", exact: true });
   await expect(review.getByRole("listitem")).toHaveCount(3);

@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useContext, type ReactNode } from "react";
-import { ArrowRight, RotateCcw } from "lucide-react";
+import { AlertCircle, ArrowRight, RotateCcw } from "lucide-react";
 import {
   categoryLabels,
   centroid,
@@ -140,6 +140,28 @@ function fieldError(draft: Project, id: FieldId) {
   return fields[id].error?.(finalize(draft));
 }
 
+/** The fields of a draft that can't be saved as they are, in form order. */
+export function invalidFields(draft: Project) {
+  return fieldOrder.filter((id) => fieldError(draft, id));
+}
+
+/** Scrolls a field into view and puts the cursor in it. */
+export function focusField(id: FieldId, root: ParentNode = document) {
+  const field = root.querySelector(`[data-field="${id}"]`);
+  if (!field) return;
+  field.scrollIntoView({
+    block: "center",
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "auto"
+      : "smooth",
+  });
+  field
+    .querySelector<HTMLElement>(
+      "input, textarea, select, button:not([data-revert])",
+    )
+    ?.focus({ preventScroll: true });
+}
+
 /** The changed fields of a draft, ready to lay over the saved project. */
 export function changesToSave(draft: Project, changed: FieldId[]) {
   const next = finalize(draft);
@@ -195,6 +217,7 @@ function RevertButton({
       )}
       aria-label={`Tilbakestill ${fields[id].label.toLowerCase()}`}
       data-tooltip="Tilbakestill"
+      data-revert=""
       onClick={() => edit?.revert(id)}
     >
       <RotateCcw size={14} aria-hidden="true" />
@@ -231,6 +254,7 @@ export function EditField({
   return (
     <div
       className={cn(wide && "col-span-full", className)}
+      data-field={id}
       data-changed={changed || undefined}
       data-invalid={error ? true : undefined}
       data-wide={wide || undefined}
@@ -267,21 +291,33 @@ export function EditField({
 
 const barButton = cn(
   controlBase,
-  "min-h-9 rounded-lg px-3 text-ui pointer-coarse:min-h-11",
+  "min-h-9 rounded-lg px-3.5 text-ui pointer-coarse:min-h-11",
 );
-const quietBarButton = cn(
+export const primaryBarButton = cn(primaryButton, barButton);
+export const quietBarButton = cn(
   barButton,
   "border border-transparent font-medium text-muted hover:bg-ink/[0.06] hover:text-ink",
 );
-const dangerBarButton = cn(
+export const dangerBarButton = cn(
   barButton,
   "border border-danger bg-danger text-white hover:border-danger-strong hover:bg-danger-strong",
 );
-
-const barRow = "flex items-center gap-1.5";
-const barStatus = "text-ui font-medium text-ink";
+/** The bar pinned under a form: status on the left, actions on the right. */
+export const actionBar = cn(
+  "sticky bottom-0 z-30 border-t border-border bg-surface px-6 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))] shadow-bar max-md:px-4.5",
+);
+export const barRow = "flex min-h-9 items-center gap-1.5 pointer-coarse:min-h-11";
+const barStatus = "mr-auto min-w-0 truncate text-ui font-medium text-ink";
+/** A status that jumps to the first field needing attention. */
+export const barProblem = cn(
+  "mr-auto inline-flex min-h-9 min-w-0 items-center gap-1.5 rounded-lg px-2 -ml-2 text-ui font-medium text-danger",
+  "hover:bg-danger-soft pointer-coarse:min-h-11 [&>svg]:shrink-0",
+);
 
 export type EditStage = "edit" | "review" | "discard";
+
+const plural = (count: number, one: string, many: string) =>
+  `${count} ${count === 1 ? one : many}`;
 
 /**
  * Pinned to the bottom while editing: the change count, then a review of
@@ -306,44 +342,57 @@ export function EditBar({
   const edit = useProjectEdit();
   if (!edit) return null;
   const { changed } = edit;
-  const invalid = fieldOrder.filter((id) => fieldError(edit.draft, id));
-  const count = `${changed.length} ${changed.length === 1 ? "endring" : "endringer"}`;
+  const invalid = invalidFields(edit.draft);
+  const count = plural(changed.length, "endring", "endringer");
   const reviewing = stage === "review" && changed.length > 0;
   return (
     <div
-      className="sticky bottom-0 z-30 border-t border-border bg-surface px-7 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))] shadow-bar max-md:px-4.5"
+      className={actionBar}
       role="region"
       aria-label="Redigering"
       data-stage={reviewing ? "review" : stage}
       data-base-ui-swipe-ignore
     >
       {reviewing ? (
-        <>
-          <h2 className="text-body font-semibold">
+        <div className="motion-safe:animate-preview-in">
+          <h2 className="flex min-h-8 items-center text-body font-semibold">
             {suggestion ? "Foreslå" : "Lagre"} {count}?
           </h2>
           <ul
-            className="mt-2 mb-3 max-h-[min(40dvh,280px)] overflow-y-auto border-t border-border"
+            className="mt-1.5 mb-3 max-h-[min(42dvh,320px)] divide-y divide-border overflow-y-auto overscroll-contain rounded-xl border border-border [scrollbar-width:thin]"
             aria-label="Endringer"
           >
             {changed.map((id) => (
-              // Narrow screens put the label above the values.
               <li
                 key={id}
-                className="grid min-h-10 grid-cols-[120px_minmax(0,1fr)_auto] items-center gap-3 border-b border-border py-1 text-ui max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-2 max-md:gap-y-0.5 max-md:py-2"
+                className="flex items-center gap-2 py-2 pr-1.5 pl-3"
               >
-                <span className="text-muted max-md:col-span-full max-md:text-xs max-md:leading-normal">
-                  {fields[id].label}
-                </span>
-                <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 wrap-anywhere [&>svg]:shrink-0 [&>svg]:text-muted">
-                  <del className="text-muted">
-                    {fields[id].show(edit.original)}
-                  </del>
-                  <ArrowRight size={13} aria-label="til" />
-                  <ins className="font-medium text-accent-strong no-underline">
-                    {fields[id].show(finalize(edit.draft))}
-                  </ins>
-                </span>
+                <div className="min-w-0 flex-1">
+                  {/* Opens the field to adjust it further. */}
+                  <button
+                    type="button"
+                    className="-mx-1 rounded px-1 text-xs leading-normal font-medium text-muted hover:text-ink hover:underline hover:underline-offset-2"
+                    onClick={() => {
+                      onStage("edit");
+                      requestAnimationFrame(() => focusField(id));
+                    }}
+                  >
+                    {fields[id].label}
+                  </button>
+                  <p className="flex flex-wrap items-baseline gap-x-1.5 text-ui leading-snug wrap-anywhere">
+                    <del className="text-muted decoration-muted/60">
+                      {fields[id].show(edit.original)}
+                    </del>
+                    <ArrowRight
+                      size={12}
+                      className="shrink-0 self-center text-muted"
+                      aria-label="til"
+                    />
+                    <ins className="font-medium text-ink no-underline">
+                      {fields[id].show(finalize(edit.draft))}
+                    </ins>
+                  </p>
+                </div>
                 <RevertButton id={id} />
               </li>
             ))}
@@ -352,10 +401,10 @@ export function EditBar({
             <textarea
               className={cn(
                 fieldControl,
-                "mb-3 block min-h-16 resize-y rounded-lg px-2.5 py-2 text-ui max-sm:text-base",
+                "mb-3 block field-sizing-content min-h-16 max-h-40 resize-none rounded-lg px-3 py-2 text-ui max-sm:text-base",
               )}
               aria-label="Merknad"
-              placeholder="Merknad (valgfritt)"
+              placeholder="Merknad til moderator (valgfritt)"
               maxLength={500}
               rows={2}
               value={suggestion.note}
@@ -365,14 +414,14 @@ export function EditBar({
           <div className={barRow}>
             <button
               type="button"
-              className={cn(quietBarButton, "mr-auto")}
+              className={cn(quietBarButton, "-ml-3.5 mr-auto")}
               onClick={() => onStage("edit")}
             >
               Tilbake
             </button>
             <button
               type="button"
-              className={cn(primaryButton, barButton)}
+              className={primaryBarButton}
               disabled={saving}
               onClick={onConfirm}
             >
@@ -385,10 +434,10 @@ export function EditBar({
                   : "Bekreft og lagre"}
             </button>
           </div>
-        </>
+        </div>
       ) : stage === "discard" ? (
         <div className={barRow}>
-          <p className={cn(barStatus, "mr-auto")}>Forkaste {count}?</p>
+          <p className={barStatus}>Forkaste {count}?</p>
           <button
             type="button"
             className={quietBarButton}
@@ -402,17 +451,24 @@ export function EditBar({
         </div>
       ) : (
         <div className={barRow}>
-          <p
-            className={cn(barStatus, "mr-auto data-invalid:text-danger")}
-            data-invalid={invalid.length > 0 || undefined}
-            role="status"
-          >
-            {invalid.length
-              ? `${invalid.length} ${invalid.length === 1 ? "felt" : "felter"} må rettes`
-              : changed.length
-                ? count
-                : "Ingen endringer"}
-          </p>
+          <div className="mr-auto flex min-w-0" role="status">
+            {invalid.length ? (
+              <button
+                type="button"
+                className={barProblem}
+                onClick={() => focusField(invalid[0])}
+              >
+                <AlertCircle size={15} aria-hidden="true" />
+                <span className="truncate">
+                  {plural(invalid.length, "felt", "felter")} må rettes
+                </span>
+              </button>
+            ) : (
+              <p className={cn(barStatus, !changed.length && "text-muted")}>
+                {changed.length ? count : "Ingen endringer"}
+              </p>
+            )}
+          </div>
           <button
             type="button"
             className={quietBarButton}
@@ -422,7 +478,7 @@ export function EditBar({
           </button>
           <button
             type="button"
-            className={cn(primaryButton, barButton)}
+            className={primaryBarButton}
             disabled={!changed.length || invalid.length > 0}
             onClick={() => onStage("review")}
           >
