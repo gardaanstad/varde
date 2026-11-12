@@ -10,6 +10,7 @@ import {
 } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "../lib/cn";
+import { useSwipeDismiss } from "./use-swipe-dismiss";
 
 // Phones get a bottom sheet instead of an anchored menu.
 const sheetQuery = "(width < 48rem)";
@@ -91,7 +92,9 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
   const menu = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
-  const fade = useRef<HTMLDivElement>(null);
+  const sheetPanel = useRef<HTMLDivElement>(null);
+  const topFade = useRef<HTMLDivElement>(null);
+  const bottomFade = useRef<HTMLDivElement>(null);
   // Touch browsers don't focus tapped buttons, so a press inside (the trigger,
   // the scrim) blurs to nothing first; let its click decide instead.
   const pressing = useRef(false);
@@ -175,20 +178,26 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
   }, [open, grouped]);
 
   /**
-   * The sheet's fade shows what is left below: whole a fade's height or more
-   * from the end, none at it, and none when everything fits. Clamped, so a
-   * bounce past either end doesn't flash it.
+   * The sheet's fades show there is more past either end: whole while a
+   * fade's height or more is left that way, gone at that end, and gone when
+   * everything fits. Clamped, so a bounce past an end doesn't flash them.
    */
   function updateFade() {
     const scroller = list.current;
-    const overlay = fade.current;
-    if (!scroller || !overlay) return;
-    const height =
-      parseFloat(getComputedStyle(overlay).getPropertyValue("--fade-height")) ||
-      40;
-    const left =
+    if (!scroller) return;
+    const below =
       scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
-    overlay.style.opacity = String(Math.min(1, Math.max(0, left / height)));
+    for (const [overlay, left] of [
+      [topFade.current, scroller.scrollTop],
+      [bottomFade.current, below],
+    ] as const) {
+      if (!overlay) continue;
+      const height =
+        parseFloat(
+          getComputedStyle(overlay).getPropertyValue("--fade-height"),
+        ) || 40;
+      overlay.style.opacity = String(Math.min(1, Math.max(0, left / height)));
+    }
   }
   const refreshFade = useEffectEvent(updateFade);
   // Opening, resizing and groups opening underneath all change what's left.
@@ -205,6 +214,14 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
     setOpen(false);
     trigger.current?.focus({ preventScroll: true });
   }
+  // Dragged down like the drawers, from its handle or a list at its top.
+  useSwipeDismiss({
+    enabled: open && sheet,
+    sheet: sheetPanel,
+    scroller: list,
+    backdrop: menu,
+    onDismiss: close,
+  });
 
   /** A parent narrowed to some of its children, rather than all of it. */
   const narrowed = (option: Option) =>
@@ -440,7 +457,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
           "pointer-events-none invisible fixed inset-auto z-900 m-0 flex h-auto min-w-0 flex-col overflow-visible border-0 bg-transparent p-0 text-ink",
           "data-[open=true]:pointer-events-auto data-[open=true]:visible",
           sheet
-            ? "justify-end overscroll-contain bg-ink/25 motion-safe:animate-backdrop-in"
+            ? "justify-end overscroll-contain bg-[color-mix(in_srgb,var(--color-ink)_calc(25%*(1-var(--sheet-progress))),transparent)] motion-safe:animate-backdrop-in"
             : [
                 "max-w-[calc(100vw-28px)] origin-top -translate-y-1.25 scale-[0.98] opacity-0 transition-[opacity,transform,visibility] duration-200 ease-out motion-reduce:transition-none",
                 "data-[open=true]:translate-y-0 data-[open=true]:scale-100 data-[open=true]:opacity-100 data-[side=top]:origin-bottom",
@@ -455,6 +472,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
         }}
       >
         <div
+          ref={sheetPanel}
           className={cn(
             "relative flex min-h-0 flex-col",
             sheet && [
@@ -470,7 +488,8 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
             aria-multiselectable={multiple || undefined}
             aria-label={label}
             className={cn(
-              "flex min-h-0 flex-col overflow-y-auto overscroll-contain",
+              "flex min-h-0 flex-col overflow-y-auto",
+              sheet ? "overscroll-none" : "overscroll-contain",
               sheet
                 ? "flex-1 gap-0.5 px-2 pb-[calc(10px+env(safe-area-inset-bottom))]"
                 : "gap-1 rounded-xl border border-border bg-surface p-1.5 shadow-[0_12px_40px_rgb(20_28_24/0.14),0_2px_6px_rgb(20_28_24/0.04)]",
@@ -512,8 +531,16 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
             {sheet && (
               <div
                 aria-hidden="true"
-                className="sticky top-0 z-1 -mx-2 flex shrink-0 flex-col items-center bg-surface px-4 pt-2 pb-2.5"
+                data-swipe-handle
+                className="sticky top-0 z-1 -mx-2 flex shrink-0 touch-none flex-col items-center bg-surface px-4 pt-2 pb-2.5"
               >
+                {/* Under the title: more above, once scrolled. */}
+                <div
+                  ref={topFade}
+                  data-slot="choice-fade"
+                  data-edge="top"
+                  className="pointer-events-none absolute inset-x-0 top-full h-(--fade-height) bg-[linear-gradient(to_top,transparent,var(--color-surface))] opacity-0 [--fade-height:40px]"
+                />
                 <span className="h-1 w-9 rounded-full bg-ink/15" />
                 {/* Above the options' 15px: larger, heavier and in full ink. */}
                 <span
@@ -580,9 +607,10 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
             // More below: fades out over the last stretch of scrolling. Over
             // the bottom padding it is solid, so options pass under it there.
             <div
-              ref={fade}
+              ref={bottomFade}
               aria-hidden="true"
               data-slot="choice-fade"
+              data-edge="bottom"
               className="pointer-events-none absolute inset-x-0 bottom-0 z-2 h-[calc(var(--fade-height)+10px+env(safe-area-inset-bottom))] bg-[linear-gradient(to_bottom,transparent,var(--color-surface)_var(--fade-height))] opacity-0 [--fade-height:40px]"
             />
           )}

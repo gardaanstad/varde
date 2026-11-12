@@ -147,6 +147,47 @@ async function swipeUp(page: Page, target: Locator) {
   }
 }
 
+/**
+ * Drags a finger `dy` pixels from the middle of `target`, `steps` moves of
+ * `stepMs` each; `before` runs while it is still down.
+ */
+async function drag(
+  page: Page,
+  target: Locator,
+  dy: number,
+  { steps = 12, stepMs = 16, before }: {
+    steps?: number;
+    stepMs?: number;
+    before?: () => Promise<void>;
+  } = {},
+) {
+  const box = await target.boundingBox();
+  if (!box) throw new Error("Drag target is not visible");
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x, y }],
+    });
+    for (let step = 1; step <= steps; step++) {
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x, y: y + (dy * step) / steps }],
+      });
+      await page.waitForTimeout(stepMs);
+    }
+    await before?.();
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  } finally {
+    await session.detach();
+  }
+}
+
 // The smallest phone: narrow and short, so overflow and drawer heights bite.
 const viewport = { width: 320, height: 568 };
 
@@ -260,6 +301,76 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   });
 
+  test("a sheet is dragged closed from its top, and springs back from a short drag", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const filters = page.getByRole("region", {
+      name: "Filtrer prosjekter",
+      exact: true,
+    });
+    const offset = (menu: Locator) =>
+      menu.evaluate(
+        (element) => element.parentElement!.getBoundingClientRect().top,
+      );
+    // A tap still chooses.
+    await filters.getByRole("button", { name: /^Status:/ }).click();
+    const status = page.getByRole("listbox", { name: "Status", exact: true });
+    await expect(status).toBeVisible();
+    const rest = await offset(status);
+    await status.getByRole("option", { name: /^Ferdigstilt/ }).tap();
+    await expect(status.getByRole("option", { selected: true })).toHaveCount(3);
+    // A short, slow drag follows the finger, then springs back.
+    let dragged = 0;
+    await drag(page, status.getByRole("option").first(), 60, {
+      steps: 20,
+      stepMs: 40,
+      before: async () => {
+        dragged = (await offset(status)) - rest;
+      },
+    });
+    expect(dragged).toBeGreaterThan(30);
+    await expect(status).toBeVisible();
+    await expect.poll(() => offset(status)).toBeCloseTo(rest, 0);
+    // Up never moves it up.
+    await drag(page, status.getByRole("option").first(), -80, {
+      before: async () => {
+        expect(await offset(status)).toBeCloseTo(rest, 0);
+      },
+    });
+    await expect(status).toBeVisible();
+    // A quick drag down closes it, from a list that doesn't scroll.
+    await drag(page, status.getByRole("option").nth(1), 120);
+    await expect(status).toBeHidden();
+    await expect(
+      filters.getByRole("button", { name: "Status: Planlagt, Under bygging, Ferdigstilt", exact: true }),
+    ).toBeVisible();
+    // A list that scrolls closes from its top.
+    await filters.getByRole("button", { name: /^Sted/ }).click();
+    const place = page.getByRole("listbox", { name: "Sted", exact: true });
+    await expect(place).toBeVisible();
+    // Past half its height.
+    await drag(page, place.getByRole("option").first(), 220, { steps: 8 });
+    await expect(place).toBeHidden();
+    // Scrolled down, a drag first scrolls the list back to its top.
+    await filters.getByRole("button", { name: /^Sted/ }).click();
+    await expect(place).toBeVisible();
+    await place.evaluate((element) => (element.scrollTop = 120));
+    await drag(page, place.getByRole("option").nth(4), 60, {
+      steps: 10,
+      stepMs: 30,
+    });
+    await expect(place).toBeVisible();
+    await expect.poll(() => place.evaluate((element) => element.scrollTop)).toBeLessThan(120);
+    // Its handle drags it wherever the list is.
+    await place.evaluate((element) => (element.scrollTop = 120));
+    await drag(page, place.locator("[data-swipe-handle]"), 220, { steps: 8 });
+    await expect(place).toBeHidden();
+    await expect(
+      filters.getByRole("button", { name: "Sted: Hele Norge", exact: true }),
+    ).toBeVisible();
+  });
+
   test("a sheet fades out at its end only while there is more below", async ({
     page,
   }) => {
@@ -272,7 +383,9 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
       menu.evaluate((element) =>
         Number(
           getComputedStyle(
-            element.parentElement!.querySelector("[data-slot=choice-fade]")!,
+            element.parentElement!.querySelector(
+              "[data-slot=choice-fade][data-edge=bottom]",
+            )!,
           ).opacity,
         ),
       );
@@ -287,6 +400,23 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     const place = page.getByRole("listbox", { name: "Sted", exact: true });
     await expect(place).toBeVisible();
     await expect.poll(() => opacity(place)).toBe(1);
+    // Nothing above yet; scrolled, the top fades in under the title.
+    const topFade = (menu: Locator) =>
+      menu.evaluate((element) =>
+        Number(
+          getComputedStyle(
+            element.querySelector("[data-slot=choice-fade][data-edge=top]")!,
+          ).opacity,
+        ),
+      );
+    await expect.poll(() => topFade(place)).toBe(0);
+    await place.evaluate((element) => (element.scrollTop = 20));
+    await expect.poll(() => topFade(place)).toBeCloseTo(0.5, 1);
+    await place.evaluate((element) => (element.scrollTop = 60));
+    // Mid-list, both ends show more.
+    await expect.poll(() => topFade(place)).toBe(1);
+    await expect.poll(() => opacity(place)).toBe(1);
+    await shot(page, "mobile-sheet-both-fades");
     await place.evaluate((element) => {
       element.scrollTop = element.scrollHeight - element.clientHeight - 20;
     });
@@ -336,6 +466,11 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     const placeSheet = page.getByRole("listbox", { name: "Sted", exact: true });
     await expect(placeSheet).toBeVisible();
     await shot(page, "mobile-390-place-sheet-top");
+    await placeSheet.evaluate(
+      (element) =>
+        (element.scrollTop = (element.scrollHeight - element.clientHeight) / 2),
+    );
+    await shot(page, "mobile-390-place-sheet-mid");
     await placeSheet.evaluate((element) => {
       element.scrollTop = element.scrollHeight;
     });

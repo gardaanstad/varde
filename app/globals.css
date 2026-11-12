@@ -181,6 +181,12 @@
   inherits: false;
   initial-value: 0px;
 }
+/* How far a phone's option sheet is dragged closed, for its scrim. */
+@property --sheet-progress {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
 /* The snap offset a drawer's content is sized for, set once it settles. */
 @property --drawer-rest-offset {
   syntax: "<length>";
