@@ -109,6 +109,7 @@ import {
   animateVisibleWidth,
   MaximizeButton,
   type SidebarMode,
+  sidebarTiming,
 } from "./sidebar-panel";
 import {
   iconButton,
@@ -1135,6 +1136,32 @@ export default memo(function Explorer({
           : undefined,
       );
     });
+    // Collapsing or expanding, the toggle rides the list's edge, so it is
+    // never left over the map, and waits in the corner tab. Keyframe offsets
+    // are in eased progress, the same the edge moves by.
+    const toggle = aside.querySelector<HTMLElement>("[data-explorer-toggle]");
+    const rest = aside.querySelector<HTMLElement>("[data-toggle-rest]");
+    const modes = [modeFrom, sidebarMode];
+    if (
+      toggle &&
+      rest &&
+      modes.includes("collapsed") &&
+      modes.includes("normal")
+    ) {
+      const end = `${sidebar - 56}px`; // At the header's end.
+      const left = `${rest.offsetLeft}px`;
+      const meet = Math.min(
+        1,
+        Math.max(0, (sidebar - 56 - rest.offsetLeft) / sidebar),
+      );
+      const frames =
+        sidebarMode === "collapsed"
+          ? [{ left: end }, { left, offset: meet }, { left }]
+          : [{ left }, { left, offset: 1 - meet }, { left: end }];
+      animations.push(
+        toggle.animate(frames, { ...sidebarTiming, fill: "forwards" }),
+      );
+    }
     Promise.all(animations.map((animation) => animation.finished)).then(
       () => setModeFrom(null),
       () => {
@@ -2269,6 +2296,7 @@ export default memo(function Explorer({
                 }}
                 aria-hidden="true"
                 className="size-11 shrink-0"
+                data-toggle-rest=""
               />
             </div>
           )}
