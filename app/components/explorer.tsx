@@ -1406,7 +1406,8 @@ export default memo(function Explorer({
     <div
       className={cn(
         "flex h-full w-full min-w-0 items-center gap-2 rounded-full border border-border bg-surface pl-3.5 text-muted",
-        "transition-[border-color,box-shadow] duration-150 focus-within:border-accent/50 focus-within:ring-3 focus-within:ring-accent/10 motion-reduce:transition-none",
+        isMobile &&
+          "transition-[border-color,box-shadow] duration-150 focus-within:border-accent/50 focus-within:ring-3 focus-within:ring-accent/10 motion-reduce:transition-none",
       )}
       data-base-ui-swipe-ignore
       onBlur={(event) => {
@@ -1462,13 +1463,12 @@ export default memo(function Explorer({
       type="button"
       className={cn(
         "relative flex shrink-0 items-center justify-center rounded-full text-muted",
-        "transition-[color,border-color,background-color] duration-150 motion-reduce:transition-none",
+        "transition-colors duration-150 motion-reduce:transition-none",
         isMobile
           ? "size-11 [-webkit-tap-highlight-color:transparent]"
           : [
-              "size-9 border border-border bg-surface hover:border-border-strong hover:bg-surface-subtle hover:text-ink",
-              searchActive &&
-                "border-accent/30 bg-accent-soft/60 text-accent hover:border-accent/40 hover:bg-accent-soft hover:text-accent-strong",
+              "size-9 hover:text-ink",
+              searchActive && "text-accent hover:text-accent-strong",
             ],
       )}
       aria-label="Åpne søk"
@@ -1591,19 +1591,19 @@ export default memo(function Explorer({
       value={statusValue}
       onChange={pickStatus}
       triggerLabel="Status"
+      menuTitle
       icon={<StatusDots values={status} />}
       className={cn(
         isMobile
           ? [
               inlineChoiceClasses,
               "[&_[data-slot=choice-trigger]>span]:sr-only [&_[data-slot=choice-trigger]]:gap-1 [&_[data-slot=choice-menu]]:min-w-[200px]",
-              !statusChanged && "[&_[data-slot=choice-trigger]]:text-muted",
             ]
           : [
               panelChoiceClasses,
               "shrink-0",
-              // Its dots alone where the row is short of room for the word.
-              "@max-[27.5rem]:[&_[data-slot=choice-trigger]>span]:sr-only",
+              // Its dots alone; the menu carries the name.
+              "[&_[data-slot=choice-trigger]>span]:sr-only [&_[data-slot=choice-trigger]]:pr-2.75 [&_[data-slot=choice-trigger]]:pl-3.25 [&_[data-slot=choice-menu]]:min-w-[200px]",
               statusChanged && panelChoiceActive,
             ],
       )}
@@ -1620,8 +1620,7 @@ export default memo(function Explorer({
         className={cn(
           inlineChoiceClasses,
           "[&_[data-slot=choice-trigger]>span:nth-of-type(2)]:hidden",
-          !place &&
-            "[&_[data-slot=choice-trigger]]:font-medium [&_[data-slot=choice-trigger]]:text-muted",
+          !place && "[&_[data-slot=choice-trigger]]:font-medium",
         )}
         options={placeOptions}
       />
@@ -1634,8 +1633,7 @@ export default memo(function Explorer({
         className={cn(
           inlineChoiceClasses,
           "[&_[data-slot=choice-trigger]>span:nth-of-type(2)]:hidden",
-          category.length === 0 &&
-            "[&_[data-slot=choice-trigger]]:font-medium [&_[data-slot=choice-trigger]]:text-muted",
+          category.length === 0 && "[&_[data-slot=choice-trigger]]:font-medium",
         )}
         options={categoryOptions}
       />
@@ -1681,7 +1679,7 @@ export default memo(function Explorer({
       />
       <span
         className="flex shrink-0"
-        data-tooltip={statusSummary(status)}
+        data-tooltip="Status"
       >
         {statusFilter}
       </span>
