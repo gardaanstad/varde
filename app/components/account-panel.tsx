@@ -120,7 +120,7 @@ export default function AccountPanel({
       <span className="flex-1">Forslag</span>
       {reviewedCount > 0 ? (
         <span
-          className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums"
+          className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-on-accent tabular-nums"
           data-reviewed
         >
           {reviewedCount}

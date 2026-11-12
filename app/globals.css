@@ -24,6 +24,14 @@
   --color-danger-strong: #88332e;
   --color-danger-soft: #fbf0ee;
   --color-warning: #9a681e;
+  /* Text and icons on solid accent and danger fills. */
+  --color-on-accent: #ffffff;
+  --color-on-danger: #ffffff;
+  /* Tooltips and toasts: the page's colours swapped. */
+  --color-inverse: var(--color-ink);
+  --color-on-inverse: var(--color-surface);
+  /* Behind dialogs and sheets, and over photos; never lightens. */
+  --color-scrim: #141c18;
   /*
    * Suggestion diffs. Mixed from the surface and the danger / accent
    * colours, so they follow any dark palette without their own values.
@@ -147,6 +155,72 @@
 }
 
 /*
+ * Dark mode: the system's, or the one picked with the toggle (`data-theme`
+ * on <html>, see lib/theme.ts). `dark:` utilities follow the same rule.
+ */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+}
+
+/*
+ * Canvas and surface are black; subtle and muted surfaces, borders and
+ * hovers step up from it. Status fills stay as they are (the map draws
+ * them); their text colours lighten to read on dark.
+ */
+@layer theme {
+  :root {
+    @variant dark {
+      --color-canvas: #000000;
+      --color-surface: #000000;
+      --color-surface-subtle: #0b0d0c;
+      --color-surface-muted: #161a18;
+      --color-ink: #e6ebe8;
+      --color-ink-soft: color-mix(in srgb, var(--color-ink) 80%, black);
+      --color-muted: #8f9893;
+      --color-accent: #5fb38c;
+      --color-accent-strong: #86caa9;
+      --color-accent-soft: #15291f;
+      --color-focus: var(--color-accent);
+      --color-border: #222826;
+      --color-border-strong: #343c38;
+      --color-danger: #e5766d;
+      --color-danger-strong: #f09a93;
+      --color-danger-soft: #2b1513;
+      --color-warning: #dda54f;
+      --color-on-accent: #04140c;
+      --color-on-danger: #1f0705;
+      --color-scrim: #000000;
+      --color-status-planned-ink: #a3b0dd;
+      --color-status-construction-ink: #e3b062;
+      --color-status-completed-ink: #7cc0a5;
+      --color-avatar-sage: #1b3227;
+      --color-avatar-sage-ink: #9ccfb4;
+      --color-avatar-clay: #3b241b;
+      --color-avatar-clay-ink: #e8ab92;
+      --color-avatar-blue: #1b2638;
+      --color-avatar-blue-ink: #a5bbdb;
+
+      /* Shadows barely show on black; borders do most of the lifting. */
+      --shadow-control: 0 2px 8px rgb(0 0 0 / 0.5);
+      --shadow-overlay: 0 2px 10px rgb(0 0 0 / 0.3);
+      --shadow-popover: 0 4px 14px rgb(0 0 0 / 0.5);
+      --shadow-float: 0 6px 20px rgb(0 0 0 / 0.5);
+      --shadow-bar: 0 -8px 24px rgb(0 0 0 / 0.4);
+      --shadow-card: 0 12px 34px rgb(0 0 0 / 0.4);
+      --shadow-panel: 0 20px 60px rgb(0 0 0 / 0.5);
+      --shadow-dialog: 0 24px 80px rgb(0 0 0 / 0.6);
+    }
+  }
+}
+
+/*
  * The drawer's per-frame variables (see drawer.tsx) stay on the element that
  * declares them. Inherited, every pointermove would restyle the whole list or
  * project inside; Base UI registers its own swipe variables the same way.
@@ -201,6 +275,17 @@
 }
 
 @layer base {
+  /* Native controls, scrollbars and form fields follow the palette. */
+  :root {
+    color-scheme: light dark;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+  }
+
   /* One focus indicator everywhere; controls with their own opt out. */
   :focus-visible {
     outline: 2px solid var(--color-focus);
@@ -228,6 +313,13 @@
   scrollbar-width: thin;
   scrollbar-color: var(--color-border-strong) transparent;
   scrollbar-gutter: stable;
+}
+
+/* Switching themes: the whole page cross-fades (`setTheme` in lib/theme.ts). */
+:root[data-theme-transition]::view-transition-old(root),
+:root[data-theme-transition]::view-transition-new(root) {
+  animation-duration: 360ms;
+  animation-timing-function: var(--ease-out-soft);
 }
 
 /*

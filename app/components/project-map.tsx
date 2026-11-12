@@ -7,6 +7,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { maplibreGL } from "@maplibre/maplibre-gl-leaflet";
 import type maplibregl from "maplibre-gl";
 import "./project-map.css";
+import { useTheme } from "./theme-toggle";
 import {
   Building2,
   Layers,
@@ -93,7 +94,7 @@ const layerOptions: ReadonlyArray<{
     value: "standard",
     label: "Oversiktskart",
     swatch:
-      "bg-[linear-gradient(32deg,#e0e9d4_0_35%,white_35%_45%,#e9e4d8_45%_65%,#d4e4e0_65%)] saturate-[0.3]",
+      "bg-[linear-gradient(32deg,#e0e9d4_0_35%,white_35%_45%,#e9e4d8_45%_65%,#d4e4e0_65%)] saturate-[0.3] dark:bg-[linear-gradient(32deg,#1d201e_0_35%,#3b3e3c_35%_45%,#252826_45%_65%,#161a1c_65%)]",
   },
   {
     value: "streets",
@@ -118,8 +119,8 @@ const layerOptionButton = cn(
   "motion-reduce:transition-none",
 );
 
-// Leaflet sets SVG attributes, which can't read CSS variables: --color-accent.
-const drawStroke = { color: "#1f5a43", interactive: false };
+// The outline's colour follows the base map: `.draw-shape` in project-map.css.
+const drawStroke = { className: "draw-shape", interactive: false };
 // Hit areas are larger than the dots, so points are easy to grab on touch.
 const vertexIcon = L.divIcon({
   className: "draw-vertex",
@@ -156,17 +157,41 @@ const reducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 // Vector maps from OpenFreeMap: free, without keys or limits, and drawn
 // by the browser, so labels and lines are sharp at any pixel density and at
-// half zoom steps. Positron is a quiet grey base for the projects; Liberty
-// is a street map.
+// half zoom steps. Positron is a quiet grey base for the projects, and Dark
+// its counterpart in dark mode; Liberty is a street map, light in both.
 const mapStyles: Record<MapLayer, string> = {
   standard: "https://tiles.openfreemap.org/styles/positron",
   streets: "https://tiles.openfreemap.org/styles/liberty",
 };
+const darkStandardStyle = "https://tiles.openfreemap.org/styles/dark";
 const norwegianName: maplibregl.ExpressionSpecification = [
   "coalesce",
   ["get", "name:no"],
   ["get", "name"],
 ];
+/**
+ * Norwegian place names, not the English ones the styles prefer. On the
+ * overview map the labels step back behind the projects.
+ */
+function localize(
+  style: maplibregl.StyleSpecification,
+  standard: boolean,
+): maplibregl.StyleSpecification {
+  return {
+    ...style,
+    layers: style.layers.map((layer) => {
+      if (layer.type !== "symbol") return layer;
+      const named = JSON.stringify(layer.layout?.["text-field"] ?? "").includes("name");
+      return {
+        ...layer,
+        layout: named ? { ...layer.layout, "text-field": norwegianName } : layer.layout,
+        paint: standard
+          ? { ...layer.paint, "text-opacity": 0.8, "icon-opacity": 0.8 }
+          : layer.paint,
+      };
+    }),
+  };
+}
 const mapAttribution =
   '<a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/" target="_blank" rel="noreferrer">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
 // The parts of the MapLibre bridge that follow the map's size.
@@ -278,10 +303,16 @@ export default function ProjectMap({
   const syncRef = useRef(() => {});
   // Resizes, places and draws the base map at once.
   const refreshBase = useRef<() => boolean>(() => false);
+  // The base map, and the style it was last given.
+  const glRef = useRef<maplibregl.Map | null>(null);
+  const glStyle = useRef<string | null>(null);
   const [ready, setReady] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
   const [layer, setLayer] = useState<MapLayer>(draw ? "streets" : "standard");
   const [mapMessage, setMapMessage] = useState("");
+  // Shapes outlined to stand out from the base map; see project-map.css.
+  const darkBase = useTheme() === "dark" && layer === "standard";
+  const baseStyle = darkBase ? darkStandardStyle : mapStyles[layer];
   const layerMenu = useRef<HTMLDivElement>(null);
   const layerButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -402,8 +433,8 @@ export default function ProjectMap({
       idle(true);
       return;
     }
+    // The style follows below, so a theme change restyles this map in place.
     const base = maplibreGL({
-      style: mapStyles[layer],
       attributionControl: { customAttribution: mapAttribution },
       // Draws a margin around the view, so panning shows map, not blank.
       padding: 0.15,
@@ -431,20 +462,8 @@ export default function ProjectMap({
     base.addTo(mapRef.current);
     let failures = 0;
     const gl = base.getMaplibreMap();
-    gl.on("style.load", () => {
-      for (const style of gl.getStyle().layers) {
-        if (style.type !== "symbol") continue;
-        // Norwegian place names, not the English ones the styles prefer.
-        const field = gl.getLayoutProperty(style.id, "text-field");
-        if (JSON.stringify(field ?? "").includes("name"))
-          gl.setLayoutProperty(style.id, "text-field", norwegianName);
-        // The base's labels step back behind the projects.
-        if (layer === "standard") {
-          gl.setPaintProperty(style.id, "text-opacity", 0.8);
-          gl.setPaintProperty(style.id, "icon-opacity", 0.8);
-        }
-      }
-    });
+    glRef.current = gl;
+    glStyle.current = null;
     gl.on("error", () => {
       if (++failures > 4)
         setMapMessage("Kartet kunne ikke lastes. Prøv et annet kartlag.");
@@ -461,9 +480,22 @@ export default function ProjectMap({
     });
     return () => {
       refreshBase.current = () => false;
+      glRef.current = null;
       base.remove();
     };
   }, [ready, layer]);
+  // Overview and dark overview share their tiles, so switching between them
+  // only repaints: the map changes colour with the page, without reloading.
+  useEffect(() => {
+    const gl = glRef.current;
+    if (!ready || !gl || glStyle.current === baseStyle) return;
+    const standard = layer === "standard";
+    gl.setStyle(baseStyle, {
+      diff: glStyle.current !== null,
+      transformStyle: (_, next) => localize(next, standard),
+    });
+    glStyle.current = baseStyle;
+  }, [ready, layer, baseStyle]);
   useEffect(() => {
     projectsRef.current = projects;
   }, [projects]);
@@ -604,12 +636,12 @@ export default function ProjectMap({
         dashArray: project.status === "planned" ? "7, 5" : undefined,
         ...shapeStyle(line, selected),
       };
-      // A white casing keeps thin alignments crisp over any basemap.
+      // A casing in the base map's tone keeps thin alignments crisp.
       if (line)
         casingsRef.current.set(
           project.id,
           L.polyline(project.geometry, {
-            color: "#fff",
+            className: "project-casing",
             weight: lineWeight(selected) + 4,
             opacity: 0.95,
             lineCap: "round",
@@ -676,7 +708,6 @@ export default function ProjectMap({
         {
           className: "project-dot",
           radius: dotRadius(selected),
-          color: "#fff",
           weight: 2,
           fillColor: color,
           fillOpacity: 1,
@@ -1190,6 +1221,7 @@ export default function ProjectMap({
       data-selection={!draw && selectedId ? "" : undefined}
       data-drawing={draw ? "true" : undefined}
       data-map-style={layer}
+      data-base-tone={darkBase ? "dark" : "light"}
       // After a pointer press, focus moved by it shows no ring.
       onPointerDown={(event) =>
         event.currentTarget.setAttribute("data-pointer", "")

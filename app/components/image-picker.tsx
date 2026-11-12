@@ -70,7 +70,7 @@ export default function ImagePicker({
             />
             <button
               type="button"
-              className="absolute top-1.5 right-1.5 grid size-7 place-items-center rounded-full bg-ink/60 text-white transition-colors hover:bg-ink/80"
+              className="absolute top-1.5 right-1.5 grid size-7 place-items-center rounded-full bg-scrim/60 text-white transition-colors hover:bg-scrim/80"
               aria-label={`Fjern bilde ${index + 1}`}
               onClick={() =>
                 onChange((current) => current.filter((item) => item !== src))

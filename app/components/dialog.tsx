@@ -9,7 +9,7 @@ const dialogStyles = [
   "overflow-y-auto overscroll-contain rounded-[18px] border border-border bg-surface p-0 text-ink",
   "shadow-dialog scrollbar-thin",
   "motion-safe:animate-dialog-enter",
-  "backdrop:bg-ink/33 backdrop:backdrop-blur-[4px]",
+  "backdrop:bg-scrim/33 backdrop:backdrop-blur-[4px]",
   "max-sm:max-h-[calc(100dvh-32px)] max-sm:w-full max-sm:max-w-[calc(100vw-20px)] max-sm:rounded-2xl",
 ].join(" ");
 
