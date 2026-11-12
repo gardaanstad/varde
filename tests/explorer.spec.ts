@@ -7,7 +7,7 @@ import {
 } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { seedProjects } from "../app/lib/data";
-import { member, mutation, signIn } from "./support";
+import { member, mutation, shot, signIn } from "./support";
 
 const project = seedProjects[0];
 const projectPath = `/prosjekt/${project.id}`;
@@ -379,9 +379,7 @@ for (const viewport of [
           ),
         )
         .toBe(true);
-      await page.screenshot({
-        path: `test-results/project-discussion-${viewport.width}.png`,
-      });
+      await shot(page, `project-discussion-${viewport.width}`);
     });
   });
 }
@@ -609,6 +607,7 @@ test.describe("desktop explorer", () => {
   test("a group flies in to frame its projects beside the list", async ({
     page,
   }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/?kart=59.9100,10.7500,10");
     const group = page.locator(`.project-cluster[data-cluster~="${project.id}"]`);
     const members = (await group.getAttribute("data-cluster"))!.split(" ");
@@ -931,6 +930,7 @@ test.describe("desktop explorer", () => {
   test("the base map moves with the list's edge, in the same frame", async ({
     page,
   }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
     // Specs run without the base map unless they ask for it.
     await page.addInitScript(() => localStorage.setItem("varde:basemap", "on"));
     await page.goto(oslo);
@@ -980,6 +980,7 @@ test.describe("desktop explorer", () => {
   test("maximized, the list filters by place and the map follows it back", async ({
     page,
   }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto(oslo);
     await expect(card(page, "Nyhavna")).toHaveCount(0);
     const filters = page.getByRole("region", {
