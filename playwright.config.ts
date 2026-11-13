@@ -54,6 +54,7 @@ export default defineConfig({
           "suggestion-moderator@example.test",
           "suggestion-project-moderator@example.test",
           "panel-moderator@example.test",
+          "menu-moderator@example.test",
           "header-moderator@example.test",
           "osm-api-moderator@example.test",
           "osm-create-moderator@example.test",

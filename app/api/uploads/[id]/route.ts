@@ -1,5 +1,5 @@
 import { readSession } from "@/app/lib/auth";
-import { isModerator } from "@/app/lib/server/http";
+import { moderates } from "@/app/lib/server/http";
 import { readUpload } from "@/app/lib/server/uploads";
 
 export async function GET(
@@ -13,7 +13,8 @@ export async function GET(
     const session = await readSession(request.headers);
     if (
       !session ||
-      (session.user.id !== image.userId && !isModerator(session.user))
+      (session.user.id !== image.userId &&
+        !moderates(session.user, request.headers))
     )
       return new Response("Not found", { status: 404 });
   }

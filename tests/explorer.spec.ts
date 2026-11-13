@@ -7,7 +7,7 @@ import {
 } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { seedProjects } from "../app/lib/data";
-import { member, mutation, shot, signIn } from "./support";
+import { member, mutation, openOwnProfile, shot, signIn } from "./support";
 
 const project = seedProjects[0];
 const projectPath = `/prosjekt/${project.id}`;
@@ -742,7 +742,7 @@ test("saved projects keep their collection and full reading height", async ({
   await page.goto("/");
   // Desktop markup comes first here, then the mobile drawer replaces it.
   await expect(page.locator("[data-explorer-drawer]")).toBeVisible();
-  await page.getByRole("button", { name: "Din profil", exact: true }).click();
+  await openOwnProfile(page);
   await page.getByRole("button", { name: /^Lagret/ }).click();
   // Panels open in drawers of their own, over the explorer where it was.
   await expectDrawerHeight(page, 1, "saved");
@@ -1945,12 +1945,18 @@ test.describe("desktop sidebar panels", () => {
     const list = page.getByRole("region", { name: "Prosjektliste", exact: true });
     await expect(list).toBeVisible();
     const sidebar = page.locator("#project-panel");
-    const inner = await sidebar.evaluate((element) => element.clientWidth);
     const box = async (name: string) => {
       const found = await page
         .locator(`[data-sidebar-layer="${name}"]`)
         .boundingBox();
       return found && [found.x, found.y, Math.round(found.width), found.height];
+    };
+    // Covering the sidebar: the width is relative to the sidebar's, read
+    // each time, since the sidebar widens to fit its header as it hydrates.
+    const besideMap = async (name: string) => {
+      const found = await box(name);
+      const inner = await sidebar.evaluate((element) => element.clientWidth);
+      return found && [found[0], found[1], found[2] - inner, found[3]];
     };
 
     // Forslag: a panel on its own URL, covering the whole sidebar.
@@ -1961,7 +1967,7 @@ test.describe("desktop sidebar panels", () => {
     await expect(
       suggestions.getByRole("heading", { name: "Forslag", exact: true }),
     ).toBeVisible();
-    await expect.poll(() => box("suggestions")).toEqual([0, 0, inner, 800]);
+    await expect.poll(() => besideMap("suggestions")).toEqual([0, 0, 0, 800]);
     await expect(page.getByRole("dialog")).toHaveCount(0);
     // The same maximize control as a project.
     await suggestions
@@ -1972,7 +1978,7 @@ test.describe("desktop sidebar panels", () => {
     await suggestions
       .getByRole("button", { name: "Vis i sidepanel", exact: true })
       .click();
-    await expect.poll(() => box("suggestions")).toEqual([0, 0, inner, 800]);
+    await expect.poll(() => besideMap("suggestions")).toEqual([0, 0, 0, 800]);
     // A direct link opens the explorer with the panel on it.
     await page.reload();
     await expect(suggestions).toBeVisible();
@@ -1986,10 +1992,10 @@ test.describe("desktop sidebar panels", () => {
     await page.getByRole("button", { name: "Lagret", exact: true }).click();
     const saved = page.locator('[data-sidebar-panel="saved"]');
     await expect(saved).toBeVisible();
-    await expect.poll(() => box("saved")).toEqual([0, 0, inner, 800]);
+    await expect.poll(() => besideMap("saved")).toEqual([0, 0, 0, 800]);
     await page.keyboard.press("Escape");
     await expect(saved).toHaveCount(0);
-    await page.getByRole("button", { name: "Din profil", exact: true }).click();
+    await openOwnProfile(page);
     const account = page.locator('[data-sidebar-panel="account"]');
     await expect(account).toBeVisible();
     await expect(account.locator("[data-account-panel]")).toBeVisible();

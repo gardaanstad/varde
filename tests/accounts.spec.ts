@@ -11,7 +11,16 @@ import {
   user,
   vote,
 } from "../app/lib/db/schema";
-import { cookieHeaders, db, member, mutation, origin, shot, signIn } from "./support";
+import {
+  cookieHeaders,
+  db,
+  member,
+  mutation,
+  openOwnProfile,
+  origin,
+  shot,
+  signIn,
+} from "./support";
 const project = seedProjects[0];
 const updateId = project.updates[0].id;
 const uniqueName = () => `nabo_${randomUUID().slice(0, 8)}`;
@@ -631,11 +640,9 @@ for (const viewport of [
     // Desktop markup comes first here; phones wait for the drawer to replace it.
     if (viewport.width < 800)
       await expect(page.locator("[data-explorer-drawer]")).toBeVisible();
-    const trigger = page.getByRole("button", {
-      name: "Din profil",
-      exact: true,
-    });
-    await trigger.click();
+    // The avatar opens a menu; the panel returns focus to it.
+    const trigger = page.getByRole("button", { name: "Konto", exact: true });
+    await openOwnProfile(page);
     const panel = page.locator("[data-account-panel]");
     await expect(panel).toBeVisible();
     const bounds = () =>

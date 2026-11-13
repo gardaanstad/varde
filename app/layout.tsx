@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { cookies } from "next/headers";
+import { memberViewCookie } from "./lib/member-view";
 import "./globals.css";
 import { parseTheme, themeCookie, themeColors } from "./lib/theme";
 import { getPageSession, googleConfigured } from "./lib/auth";
@@ -30,6 +31,9 @@ export const metadata: Metadata = {
 async function chosenTheme() {
   return parseTheme((await cookies()).get(themeCookie)?.value);
 }
+async function memberView() {
+  return (await cookies()).get(memberViewCookie)?.value === "1";
+}
 
 // The browser's own chrome matches the canvas. Kept static (reading the
 // cookie here broke in-place flows such as choosing a username in the
@@ -43,7 +47,11 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const [session, theme] = await Promise.all([getPageSession(), chosenTheme()]);
+  const [session, theme, viewAsMember] = await Promise.all([
+    getPageSession(),
+    chosenTheme(),
+    memberView(),
+  ]);
   return (
     <html
       lang="nb"
@@ -67,7 +75,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col bg-canvas text-ink">
         <AuthProvider
           initialUser={session?.user ?? null}
-          canModerate={!!session && isModerator(session.user)}
+          isModerator={!!session && isModerator(session.user)}
+          initialMemberView={viewAsMember}
           googleEnabled={googleConfigured()}
         >
           {children}

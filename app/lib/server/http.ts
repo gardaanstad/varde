@@ -1,6 +1,7 @@
 import "server-only";
 import { ZodError } from "zod";
 import { readSession, siteURL } from "../auth";
+import { memberViewOn } from "../member-view";
 
 export class HttpError extends Error {
   constructor(
@@ -80,4 +81,14 @@ export function isModerator(user: { email: string; emailVerified: boolean }) {
       .filter(Boolean)
       .includes(user.email.toLowerCase())
   );
+}
+/**
+ * Whether the user acts as a moderator now: a moderator who views the app as
+ * a member has a member's rights until they switch back.
+ */
+export function moderates(
+  user: { email: string; emailVerified: boolean },
+  headers: Headers,
+) {
+  return isModerator(user) && !memberViewOn(headers.get("cookie"));
 }

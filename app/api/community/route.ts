@@ -11,7 +11,7 @@ import {
 import {
   api,
   HttpError,
-  isModerator,
+  moderates,
   json,
   readBody,
   requireUser,
@@ -22,7 +22,7 @@ export function GET(request: Request) {
     return json(
       await readCommunity(
         session?.user.id,
-        !!session && isModerator(session.user),
+        !!session && moderates(session.user, request.headers),
       ),
     );
   });
@@ -34,7 +34,7 @@ export function POST(request: Request) {
     await throttle(member.id);
     switch (body.action) {
       case "project":
-        if (!isModerator(member))
+        if (!moderates(member, request.headers))
           throw new HttpError(403, "Bare moderatorer kan endre prosjekter.");
         await saveProject(body.project, body.create);
         break;
@@ -48,6 +48,8 @@ export function POST(request: Request) {
         await addComment(member.id, body);
         break;
     }
-    return json(await readCommunity(member.id, isModerator(member)));
+    return json(
+      await readCommunity(member.id, moderates(member, request.headers)),
+    );
   });
 }

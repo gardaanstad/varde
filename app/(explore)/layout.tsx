@@ -4,7 +4,7 @@ import { userAgent } from "next/server";
 import { getPageSession } from "../lib/auth";
 import { readCommunity } from "../lib/server/community";
 import { readUnread } from "../lib/server/unread";
-import { isModerator } from "../lib/server/http";
+import { moderates } from "../lib/server/http";
 import { CommunityProvider } from "../components/community-provider";
 import { UnreadProvider } from "../components/unread-provider";
 import ExplorerShell from "../components/explorer-shell";
@@ -19,9 +19,10 @@ export default async function ExploreLayout({
   const userId = session?.user.id;
   const member = session?.user.username ? userId : undefined;
   // Phones get the mobile layout in the first HTML, so it doesn't swap after load.
-  const { device } = userAgent({ headers: await headers() });
+  const requestHeaders = await headers();
+  const { device } = userAgent({ headers: requestHeaders });
   const [community, unread] = await Promise.all([
-    readCommunity(userId, !!session && isModerator(session.user)),
+    readCommunity(userId, !!session && moderates(session.user, requestHeaders)),
     member ? readUnread(member) : null,
   ]);
   return (
