@@ -1893,7 +1893,7 @@ export default memo(function Explorer({
         )}
       >
         {isMobile ? mobileFilters : desktopFilters}
-        <div className="sticky top-0 z-10 flex min-h-12 items-center justify-between gap-3 border-b border-border bg-surface py-1.5 max-md:static max-md:bg-transparent">
+        <div className="flex min-h-12 items-center justify-between gap-3 border-b border-border py-1.5">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
             <h1 className="sr-only">Prosjekter</h1>
             <span

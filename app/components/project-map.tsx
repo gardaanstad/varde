@@ -1362,7 +1362,10 @@ export default function ProjectMap({
           role="group"
           aria-label="Kartlag"
           onBlur={(event) => {
+            // Safari moves focus nowhere on a press, not to the pressed
+            // option; presses outside close the menu in `dismiss`.
             if (
+              event.relatedTarget &&
               !event.currentTarget.contains(event.relatedTarget) &&
               event.relatedTarget !== layerButton.current
             )

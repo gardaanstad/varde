@@ -124,20 +124,27 @@
       & > p + p::before {
         content: none;
       }
+    }
 
+    /* Fading starts with the collapse, not once it lands. */
+    &[data-photo="false"][data-expanded="false"] {
       --intro-fade: 1;
     }
 
     /*
-     * The fade eases in once the text clamps again, and out as it expands,
-     * rather than popping. Unclamped, the mask is solid and changes nothing.
+     * The fade eases in as the text collapses, and out as it expands, rather
+     * than popping. Unclamped, the mask is solid and changes nothing. The fade
+     * is a fixed length at the mask's bottom, and the animation sizes the mask
+     * to the visible text, so the fade rides the edge as it moves.
      */
     &[data-photo="false"][data-overflows="true"] {
       mask-image: linear-gradient(
         to bottom,
-        #000 35%,
+        #000 calc(100% - var(--intro-lines) * 1.65em * 0.65),
         rgb(0 0 0 / calc(1 - var(--intro-fade)))
       );
+      mask-size: 100% 100%;
+      mask-repeat: no-repeat;
       transition: --intro-fade 320ms var(--ease-out-soft);
 
       @media (prefers-reduced-motion: reduce) {
