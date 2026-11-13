@@ -961,7 +961,10 @@ export default memo(function Explorer({
     event.preventDefault();
     openProfile();
   });
-  useEffect(() => {
+  // A layout effect, so the listeners are there in the commit that hydrates
+  // the page: a click just after hydration would otherwise go unanswered and
+  // fall back to the full-page welcome flow.
+  useLayoutEffect(() => {
     window.addEventListener(openProfileEvent, onOpenProfile);
     window.addEventListener(chooseUsernameEvent, onChooseUsername);
     return () => {

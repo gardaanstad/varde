@@ -22,7 +22,6 @@ import {
 import {
   categoryLabels,
   formatDateYear,
-  leadCategory,
   getProjectUpdates,
   presetPlaces,
   type Project,
@@ -72,7 +71,6 @@ import {
 import EmptyState from "./empty-state";
 import ImageGallery from "./image-gallery";
 import ImagePicker from "./image-picker";
-import ProjectPlaceholder from "./project-placeholder";
 import styles from "./project-post.module.css";
 import { takeLoginIntent } from "../lib/login-intent";
 
@@ -482,7 +480,7 @@ function ProjectAside({ project }: { project: Project }) {
   const photos = projectPhotos(project);
   return (
     <aside className="sticky top-0 pt-3 pb-10" aria-label="Prosjektfakta">
-      {photos.length > 0 ? (
+      {photos.length > 0 && (
         <ImageGallery
           images={photos}
           label={`Bilder av ${project.title}`}
@@ -490,10 +488,6 @@ function ProjectAside({ project }: { project: Project }) {
           sizes="(max-width: 768px) 100vw, 560px"
           className={cover}
         />
-      ) : (
-        <div className={cover}>
-          <ProjectPlaceholder category={leadCategory(project.categories)} />
-        </div>
       )}
       <ProjectFacts project={project} />
       <p className={note}>Sist redigert {formatDateYear(project.updated)}</p>

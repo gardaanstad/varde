@@ -66,7 +66,7 @@ test("only real images are stored; members' photos stay private", async ({
     ).toBe(200);
 });
 
-test("moderators add photos while creating a project; without one it shows the placeholder", async ({
+test("moderators add photos while creating a project; without one it shows no image", async ({
   page,
   context,
 }) => {
