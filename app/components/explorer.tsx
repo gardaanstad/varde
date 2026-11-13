@@ -720,10 +720,6 @@ export default memo(function Explorer({
         : !listPlace || !!placesOf.get(project.id)?.includes(listPlace),
     [listBounds, listPlace, placesOf],
   );
-  const inView = useMemo(
-    () => projects.filter(inPlace),
-    [inPlace, projects],
-  );
   const statusMatch = useCallback(
     (project: Project) =>
       status.length === 0 || status.includes(project.status),
@@ -1564,39 +1560,18 @@ export default memo(function Explorer({
     </section>
   );
 
-  // Counts follow the map: each filter counts what the other leaves in view.
   const statusOptions = statusOrder.map((value) => ({
     value,
     label: statuses[value].label,
     dot: statusTone[value].dot,
-    ...(!isMobile && {
-      count: inView.filter(
-        (project) => project.status === value && categoryMatch(project),
-      ).length,
-    }),
   }));
-  const categoryCount = (test: (project: Project) => boolean) =>
-    isMobile
-      ? {}
-      : {
-          count: inView.filter(
-            (project) => test(project) && statusMatch(project),
-          ).length,
-        };
   // Main categories; their subcategories open underneath once chosen.
   const categoryOptions = categoryTree.map((node) => ({
     value: node.name,
     label: node.name,
     icon: <CategoryIcon category={node.name} size={16} />,
     more: lessUsedCategories.has(node.name),
-    ...categoryCount((project) =>
-      project.categories.some((value) => mainCategoryOf(value) === node.name),
-    ),
-    children: node.subcategories.map((sub) => ({
-      value: sub,
-      label: sub,
-      ...categoryCount((project) => project.categories.includes(sub)),
-    })),
+    children: node.subcategories.map((sub) => ({ value: sub, label: sub })),
   }));
   // Cities and counties with projects, counted by the other filters.
   const placeOptions = useMemo(() => {
@@ -1629,11 +1604,11 @@ export default memo(function Explorer({
   };
   const statusFilter = (
     <ChoiceSelect
-      label="Status"
+      label="Prosjektstatus"
       multiple
       value={statusValue}
       onChange={pickStatus}
-      triggerLabel="Status"
+      triggerLabel="Prosjektstatus"
       menuTitle
       icon={<StatusDots values={status} />}
       className={cn(
@@ -1746,7 +1721,7 @@ export default memo(function Explorer({
       />
       <span
         className="flex shrink-0"
-        data-tooltip="Status"
+        data-tooltip="Prosjektstatus"
       >
         {statusFilter}
       </span>

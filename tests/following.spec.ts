@@ -205,15 +205,32 @@ for (const [viewport, project, direct] of [
     ).toHaveAccessibleName("1 med nytt");
 
     // Opening a followed project any other way reads it too.
+    // On phones the follow button moves into the actions sheet once the page
+    // is interactive, so the server-rendered one can't be checked.
+    const followed = async () => {
+      if (!mobile)
+        return expect(
+          page.getByRole("button", { name: "Følger", exact: true, pressed: true }),
+        ).toBeVisible();
+      const menu = page
+        .locator('[data-panel-drawer="project"]')
+        .getByRole("button", { name: "Handlinger" });
+      const actions = page.getByRole("dialog", { name: "Handlinger" });
+      await expect(async () => {
+        await menu.click();
+        await expect(actions).toBeVisible({ timeout: 1000 });
+      }).toPass();
+      await expect(
+        actions.getByRole("button", { name: "Slutt å følge", exact: true }),
+      ).toHaveAttribute("aria-pressed", "true");
+      await page.keyboard.press("Escape");
+      await expect(actions).toHaveCount(0);
+    };
     await page.goto(`/prosjekt/${direct.id}`);
-    await expect(
-      page.getByRole("button", { name: "Følger", exact: true, pressed: true }),
-    ).toBeVisible();
+    await followed();
     await expect(page.locator("[data-unread-badge]")).toHaveCount(0);
     await page.reload();
-    await expect(
-      page.getByRole("button", { name: "Følger", exact: true, pressed: true }),
-    ).toBeVisible();
+    await followed();
     await expect(page.locator("[data-unread-badge]")).toHaveCount(0);
   });
 }
