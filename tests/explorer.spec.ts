@@ -7,7 +7,7 @@ import {
 } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { seedProjects } from "../app/lib/data";
-import { member, mutation, shot, signIn } from "./support";
+import { member, mutation, openOwnProfile, shot, signIn } from "./support";
 
 const project = seedProjects[0];
 const projectPath = `/prosjekt/${project.id}`;
@@ -654,7 +654,7 @@ test("followed projects keep their collection and full reading height", async ({
   await page.goto("/");
   // Desktop markup comes first here, then the mobile drawer replaces it.
   await expect(page.locator("[data-explorer-drawer]")).toBeVisible();
-  await page.getByRole("button", { name: "Din profil", exact: true }).click();
+  await openOwnProfile(page);
   await page.getByRole("button", { name: /^Følger/ }).click();
   // Panels open in drawers of their own, over the explorer where it was.
   await expectDrawerHeight(page, 1, "following");
@@ -1811,7 +1811,7 @@ test.describe("desktop sidebar panels", () => {
     await expect.poll(() => box("following")).toEqual([0, 0, inner, 800]);
     await page.keyboard.press("Escape");
     await expect(followed).toHaveCount(0);
-    await page.getByRole("button", { name: "Din profil", exact: true }).click();
+    await openOwnProfile(page);
     const account = page.locator('[data-sidebar-panel="account"]');
     await expect(account).toBeVisible();
     await expect(account.locator("[data-account-panel]")).toBeVisible();

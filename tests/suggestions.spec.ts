@@ -431,7 +431,7 @@ test("members suggest corrections and tips; moderators review a diff, approve, a
   expect(unseen.reviewed).toBe(2);
   await page.goto("/");
   await expect(
-    page.getByRole("button", { name: "Din profil (2 behandlet)" }),
+    page.getByRole("button", { name: "Konto (2 behandlet)" }),
   ).toBeVisible();
   await page.goto("/forslag");
   await expect(own.first()).toContainText("Ny");

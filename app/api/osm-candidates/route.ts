@@ -2,8 +2,8 @@ import { z } from "zod";
 import {
   api,
   HttpError,
-  isModerator,
   json,
+  moderates,
   readBody,
   requireUser,
 } from "@/app/lib/server/http";
@@ -18,7 +18,7 @@ export const maxDuration = 300;
 
 async function requireModerator(request: Request) {
   const member = await requireUser(request);
-  if (!isModerator(member))
+  if (!moderates(member, request.headers))
     throw new HttpError(403, "Bare moderatorer har tilgang.");
   return member;
 }
