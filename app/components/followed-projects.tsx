@@ -3,7 +3,6 @@ import { useMemo, useState } from "react";
 import Image from "next/image";
 import { ArrowDownUp, ArrowLeft, Bell, BellOff } from "lucide-react";
 import {
-  leadCategory,
   hasPhoto,
   type Project,
   statuses,
@@ -19,7 +18,6 @@ import { cn } from "../lib/cn";
 import { iconButton, sortChoice, statusTone } from "../lib/ui";
 import ChoiceSelect from "./choice-select";
 import EmptyState from "./empty-state";
-import ProjectPlaceholder from "./project-placeholder";
 import RelativeTime from "./relative-time";
 
 export type FollowedTarget = {
@@ -78,8 +76,8 @@ function FollowedRow({
       data-followed-project={project.id}
       data-unread={unread > 0 || undefined}
     >
-      <div className="relative size-11 shrink-0 overflow-hidden rounded-lg bg-surface-muted">
-        {hasPhoto(project) ? (
+      {hasPhoto(project) && (
+        <div className="relative size-11 shrink-0 overflow-hidden rounded-lg bg-surface-muted">
           <Image
             src={project.image}
             alt=""
@@ -87,14 +85,8 @@ function FollowedRow({
             sizes="44px"
             className="object-cover"
           />
-        ) : (
-          <ProjectPlaceholder
-            category={leadCategory(project.categories)}
-            iconSize={13}
-            className="bg-size-[8px_8px] [&>span]:min-w-6.5"
-          />
-        )}
-      </div>
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         {/* Stretched over the whole row; the unfollow button sits above it. */}
         <button
