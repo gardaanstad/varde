@@ -1,5 +1,4 @@
 "use client";
-import { navigateWithFreshSession } from "../lib/auth-navigation";
 import {
   createContext,
   useCallback,
@@ -9,7 +8,6 @@ import {
   type ReactNode,
 } from "react";
 import { authClient } from "../lib/auth-client";
-import { safeReturnPath, welcomeHref } from "../lib/account-rules";
 import { storeLoginIntent, type LoginIntent } from "../lib/login-intent";
 import LoginPrompt from "./login-prompt";
 
@@ -29,8 +27,6 @@ const subscribeHydration = () => () => {};
 const clientHydrated = () => true;
 const serverHydrated = () => false;
 const Context = createContext<AuthContext | null>(null);
-/** Asks the explorer, if it is there, to open its account panel instead. */
-export const chooseUsernameEvent = "varde-choose-username";
 export function AuthProvider({
   initialUser,
   canModerate,
@@ -54,23 +50,14 @@ export function AuthProvider({
   const [prompt, setPrompt] = useState<{ reason?: string } | null>(null);
   const closePrompt = useCallback(() => setPrompt(null), []);
   function requireLogin(reason?: string, intent?: LoginIntent) {
-    const next = safeReturnPath(
-      window.location.pathname + window.location.search + window.location.hash,
-    );
     if (!user) {
       storeLoginIntent(intent);
       setPrompt({ reason });
       return false;
     }
+    // UsernamePrompt is over the page until a username is chosen.
     if (!user.username) {
       storeLoginIntent(intent);
-      // The explorer picks a username in its account panel, in place.
-      if (
-        window.dispatchEvent(
-          new Event(chooseUsernameEvent, { cancelable: true }),
-        )
-      )
-        navigateWithFreshSession(welcomeHref(next));
       return false;
     }
     return true;

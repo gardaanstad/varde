@@ -1,7 +1,7 @@
 "use client";
 import { navigateWithFreshSession } from "../lib/auth-navigation";
 import { useEffect, useState } from "react";
-import { ArrowRight, Check, LoaderCircle } from "lucide-react";
+import { Check, LoaderCircle } from "lucide-react";
 import { usernameSchema } from "../lib/account-rules";
 import { apiRequest, errorMessage } from "../lib/api-client";
 import { authClient } from "../lib/auth-client";
@@ -12,43 +12,48 @@ export function currentPath() {
   return window.location.pathname + window.location.search;
 }
 
-/** Without `next`, the page reloads where it is, signed in. */
-export default function UsernameForm({ next }: { next?: string }) {
+// Names already checked, so typing back to one answers at once.
+const checked = new Map<string, boolean>();
+
+/** Claims a username, then reloads the page where it is, signed in. */
+export default function UsernameForm() {
   const [username, setUsername] = useState("");
-  const [check, setCheck] = useState<{
-    username: string;
-    available?: boolean;
-    error?: string;
-  } | null>(null);
+  const [, setVersion] = useState(0);
+  const [failed, setFailed] = useState<{ username: string; error: string }>();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const validation = usernameSchema.safeParse(username);
   const normalized = validation.success ? validation.data : "";
   useEffect(() => {
-    if (!normalized) return;
+    if (!normalized || checked.has(normalized)) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       apiRequest<{ available: boolean }>(
         `/api/account/username?username=${encodeURIComponent(normalized)}`,
         { signal: controller.signal },
       )
-        .then((result) =>
-          setCheck({ username: normalized, available: result.available }),
-        )
+        .then((result) => {
+          checked.set(normalized, result.available);
+          setVersion((version) => version + 1);
+        })
         .catch((error) => {
+          // Not kept: a failed check is tried again on the next change.
           if (!controller.signal.aborted)
-            setCheck({ username: normalized, error: error.message });
+            setFailed({ username: normalized, error: error.message });
         });
-    }, 350);
+    }, 120);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
   }, [normalized]);
-  const result = check?.username === normalized ? check : null;
+  const available = normalized ? checked.get(normalized) : undefined;
+  const failure = failed?.username === normalized ? failed.error : "";
+  const checking = !!normalized && available === undefined && !failure;
+  const ready = available === true;
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (pending || !validation.success) return;
+    if (pending || !ready) return;
     setPending(true);
     setError("");
     try {
@@ -57,27 +62,37 @@ export default function UsernameForm({ next }: { next?: string }) {
         body: JSON.stringify({ username: normalized }),
       });
       await authClient.getSession({ query: { disableCookieCache: true } });
-      navigateWithFreshSession(next ?? currentPath());
+      navigateWithFreshSession(currentPath());
     } catch (error) {
       setError(errorMessage(error, "Prøv igjen."));
       setPending(false);
     }
   }
+  const status =
+    username && !validation.success ? (
+      <span className="text-danger">{validation.error.issues[0].message}</span>
+    ) : failure ? (
+      <span className="text-danger">{failure}</span>
+    ) : available === false ? (
+      <span className="text-danger">Brukernavnet er allerede tatt.</span>
+    ) : ready ? (
+      <span className="flex items-center gap-1 text-accent">
+        <Check size={13} aria-hidden="true" />Ledig
+      </span>
+    ) : null;
   return (
-    <form onSubmit={submit} className="mt-7">
-      <label htmlFor="username" className="text-sm font-semibold text-ink">
-        Brukernavn
-      </label>
-      <div className="relative mt-2">
+    <form onSubmit={submit} className="mt-3">
+      <div className="relative">
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute top-3.5 left-4 text-muted"
+          className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted"
         >
           @
         </span>
         <input
           id="username"
           name="username"
+          aria-label="Brukernavn"
           autoComplete="username"
           autoCapitalize="none"
           spellCheck={false}
@@ -88,72 +103,46 @@ export default function UsernameForm({ next }: { next?: string }) {
           value={username}
           onChange={(event) => {
             setUsername(event.target.value);
+            setFailed(undefined);
             setError("");
           }}
-          aria-describedby="username-help username-status"
+          aria-describedby="username-status username-help"
           aria-invalid={
-            !!username && (!validation.success || result?.available === false)
+            !!username && (!validation.success || available === false)
           }
-          className={cn(
-            fieldControl,
-            "min-h-13 rounded-xl py-3 pr-4 pl-9 text-base",
-          )}
+          className={cn(fieldControl, "pl-7.5")}
           placeholder="ditt_brukernavn"
         />
       </div>
-      <p id="username-help" className="mt-2 text-xs leading-5 text-muted">
-        3–24 tegn. Bokstaver, tall og understrek. Du kan bruke æ, ø og å.
-        Brukernavnet er permanent.
-      </p>
-      <div
+      <p
         id="username-status"
         aria-live="polite"
-        className="mt-2 min-h-7 text-xs"
+        className="mt-1.5 min-h-4.5 text-xs leading-4.5"
       >
-        {username && !validation.success ? (
-          <span className="text-danger">
-            {validation.error.issues[0].message}
-          </span>
-        ) : normalized ? (
-          result?.error ? (
-            <span className="text-danger">{result.error}</span>
-          ) : result?.available === false ? (
-            <span className="text-danger">
-              Brukernavnet er opptatt. Prøv et annet.
-            </span>
-          ) : result?.available ? (
-            <span className="flex items-center gap-1.5 text-accent">
-              <Check size={14} />@{normalized} er ledig
-            </span>
-          ) : (
-            <span className="text-muted">Sjekker brukernavnet …</span>
-          )
-        ) : null}
-      </div>
+        {status}
+      </p>
+      <p id="username-help" className="text-xs leading-4.5 text-muted">
+        3–24 tegn: bokstaver, tall og understrek. Kan ikke endres.
+      </p>
       {error && (
-        <p role="alert" className="mb-3 text-sm text-danger">
+        <p role="alert" className="mt-2 text-sm text-danger">
           {error}
         </p>
       )}
       <button
         type="submit"
-        disabled={pending || !validation.success || result?.available === false}
-        className={cn(primaryButton, "mt-3 min-h-13 w-full rounded-xl text-sm")}
+        disabled={pending || !ready}
+        aria-busy={checking || pending}
+        className={cn(primaryButton, "mt-4 w-full")}
       >
-        {pending ? (
-          <>
-            <LoaderCircle
-              size={17}
-              className="animate-spin motion-reduce:animate-none"
-            />
-            Gjør klart …
-          </>
-        ) : (
-          <>
-            Fortsett
-            <ArrowRight size={17} />
-          </>
+        {(checking || pending) && (
+          <LoaderCircle
+            size={16}
+            aria-hidden="true"
+            className="animate-spin motion-reduce:animate-none"
+          />
         )}
+        Fortsett
       </button>
     </form>
   );

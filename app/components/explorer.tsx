@@ -76,7 +76,7 @@ import {
 } from "../lib/places";
 import { errorMessage } from "../lib/api-client";
 import { profileHref } from "../lib/profiles";
-import { chooseUsernameEvent, useAuth } from "./auth-provider";
+import { useAuth } from "./auth-provider";
 import { useCommunity } from "./community-provider";
 import AccountPanel from "./account-panel";
 import ProfileAvatar from "./profile-avatar";
@@ -951,21 +951,11 @@ export default memo(function Explorer({
   const onOpenProfile = useEffectEvent((event: Event) =>
     showProfile((event as CustomEvent<string>).detail),
   );
-  // Signed in without a username: it is chosen in the account panel.
-  const onChooseUsername = useEffectEvent((event: Event) => {
-    event.preventDefault();
-    openProfile();
-  });
-  // A layout effect, so the listeners are there in the commit that hydrates
-  // the page: a click just after hydration would otherwise go unanswered and
-  // fall back to the full-page welcome flow.
+  // A layout effect, so the listener is there in the commit that hydrates
+  // the page: a click just after hydration would otherwise go unanswered.
   useLayoutEffect(() => {
     window.addEventListener(openProfileEvent, onOpenProfile);
-    window.addEventListener(chooseUsernameEvent, onChooseUsername);
-    return () => {
-      window.removeEventListener(openProfileEvent, onOpenProfile);
-      window.removeEventListener(chooseUsernameEvent, onChooseUsername);
-    };
+    return () => window.removeEventListener(openProfileEvent, onOpenProfile);
   }, []);
   // Forslag's link, opened without an account: the list, and why not.
   const askForSuggestions = useEffectEvent(() => {

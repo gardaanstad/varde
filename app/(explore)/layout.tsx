@@ -8,6 +8,7 @@ import { isModerator } from "../lib/server/http";
 import { CommunityProvider } from "../components/community-provider";
 import { FollowingProvider } from "../components/following-provider";
 import ExplorerShell from "../components/explorer-shell";
+import UsernamePrompt from "../components/username-prompt";
 
 export default async function ExploreLayout({
   children,
@@ -28,6 +29,7 @@ export default async function ExploreLayout({
       <FollowingProvider initialFollowing={following} initialUserId={member}>
         <ExplorerShell mobileHint={device.type === "mobile"} />
         {children}
+        <UsernamePrompt />
       </FollowingProvider>
     </CommunityProvider>
   );

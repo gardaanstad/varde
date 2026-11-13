@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { authClient } from "../lib/auth-client";
-import { safeReturnPath, welcomeHref } from "../lib/account-rules";
+import { safeReturnPath } from "../lib/account-rules";
 import { cn } from "../lib/cn";
 
 import { useAuth } from "./auth-provider";
@@ -52,7 +52,8 @@ export default function GoogleSignIn({
     setPending(true);
     setError("");
     const destination = safeReturnPath(next);
-    const callbackURL = welcomeHref(destination);
+    // New users choose a username over the page they return to.
+    const callbackURL = destination;
     try {
       const result = await authClient.signIn.social({
         provider: "google",

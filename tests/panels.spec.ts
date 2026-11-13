@@ -344,16 +344,15 @@ test.describe("flows stay in the explorer", () => {
     ).toBeVisible();
   });
 
-  test("without a username, it is chosen in the account panel, in place", async ({
+  test("without a username, it is chosen over the page, in place", async ({
     page,
     context,
   }) => {
     await signIn(context, await member());
     await page.goto(projectPath);
-    const post = page.locator("[data-project-post]");
-    await post.getByRole("button", { name: "Følg", exact: true }).click();
-    const account = page.locator('[data-sidebar-panel="account"]');
-    await expect(account.getByLabel("Brukernavn", { exact: true })).toBeVisible();
+    const prompt = page.getByRole("dialog", { name: "Hva skal vi kalle deg?" });
+    await expect(prompt.getByLabel("Brukernavn", { exact: true })).toBeFocused();
+    await expect(page.locator("[data-project-post]")).toBeVisible();
     await expect(page).toHaveURL(new RegExp(projectPath));
   });
 
