@@ -71,6 +71,7 @@ import type { MapApi, MapViewChange } from "./project-map";
 import {
   extentPoints,
   findPlace,
+  placeContains,
   placeInView,
   places,
   projectPlaces,
@@ -1144,8 +1145,13 @@ export default memo(function Explorer({
     });
   }
   // The place the map showed when maximized; restoring keeps the view unless
-  // another was picked meanwhile. Unknown when the page opened maximized.
-  const placeOnMap = useRef<string | null>(null);
+  // another was picked meanwhile. Opened maximized, the URL's view shows the
+  // URL's place if it lies within it.
+  const placeOnMap = useRef<string | null>(
+    initial.full && initial.view && placeContains(place, initial.view.center)
+      ? place
+      : null,
+  );
   function maximize() {
     if (isMobile || maximized) return;
     placeOnMap.current = place;

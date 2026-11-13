@@ -102,6 +102,12 @@ export function extentPoints([south, west, north, east]: Extent): Point[] {
 const contains = ([south, west, north, east]: Extent, [lat, lng]: Point) =>
   lat >= south && lat <= north && lng >= west && lng <= east;
 
+/** Whether a point lies within the named place. */
+export function placeContains(name: string, point: Point) {
+  const place = byName.get(name);
+  return Boolean(place && contains(place.extent, point));
+}
+
 // Areas are compared as drawn on the map (Web Mercator), not on the globe.
 const mercatorY = (lat: number) =>
   Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));

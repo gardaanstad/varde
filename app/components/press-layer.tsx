@@ -47,13 +47,15 @@ export default function PressLayer() {
       event.preventDefault();
       event.stopPropagation();
     }
-    window.addEventListener("pointerdown", down, true);
-    window.addEventListener("mousedown", mouseDown, true);
-    window.addEventListener("click", click, true);
+    // On the document, not the window: listeners that capture on the window
+    // (Playwright's hit-target check among them) see the press before it acts.
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("mousedown", mouseDown, true);
+    document.addEventListener("click", click, true);
     return () => {
-      window.removeEventListener("pointerdown", down, true);
-      window.removeEventListener("mousedown", mouseDown, true);
-      window.removeEventListener("click", click, true);
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("mousedown", mouseDown, true);
+      document.removeEventListener("click", click, true);
     };
   }, []);
   return null;

@@ -1340,7 +1340,7 @@ test.describe("desktop explorer", () => {
     await expect.poll(() => mapParam(page)).toMatch(/,15$/);
     const panelView = mapParam(page);
     const top = async () => Math.round((await layer.boundingBox())!.y);
-    await page.getByRole("button", { name: "Vis som helside", exact: true }).click();
+    await layer.getByRole("button", { name: "Vis som helside", exact: true }).click();
     await expect(page).toHaveURL(/[?&]visning=full/);
     await expect(layer).toHaveAttribute("data-full", "true");
     // It fills the window and uses the width: facts beside the text. It
@@ -1368,7 +1368,7 @@ test.describe("desktop explorer", () => {
     await page.getByRole("button", { name: "Lukk prosjekt", exact: true }).click();
     await expect(layer).toHaveCount(0);
     await card(page, project.title).click();
-    await page.getByRole("button", { name: "Vis som helside", exact: true }).click();
+    await layer.getByRole("button", { name: "Vis som helside", exact: true }).click();
     await expect(layer).toHaveAttribute("data-full", "true");
     await page.getByRole("button", { name: "Lukk prosjekt", exact: true }).click();
     await expect(layer).toHaveCount(0);
