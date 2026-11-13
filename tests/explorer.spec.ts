@@ -1306,7 +1306,7 @@ test.describe("desktop explorer", () => {
       )
       .toBeLessThanOrEqual(1);
     await shot(page, "header-overflow-narrow");
-    await page.locator("[data-card-id]").first().click();
+    await page.locator("[data-card-id]").first().getByRole("heading").click();
     await expect(page.locator("[data-project-layer]")).toBeVisible();
     await shot(page, "header-overflow-project");
     await page.keyboard.press("Escape");
