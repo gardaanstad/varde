@@ -141,8 +141,8 @@ import {
 } from "../lib/ui";
 
 const densityOptions = [
-  { value: "compact", label: "Kompakt", Icon: LayoutList },
   { value: "expanded", label: "Utvidet", Icon: GalleryVertical },
+  { value: "compact", label: "Kompakt", Icon: LayoutList },
 ] as const;
 
 // Tailwind's `max-md`: the drawer layout below 768px.
@@ -432,7 +432,7 @@ export default memo(function Explorer({
   const density = useSyncExternalStore(
     subscribeDensity,
     storedDensity,
-    (): ListDensity => "compact",
+    (): ListDensity => "expanded",
   );
   // Desktop: the OSM mode wants the whole map, so the list steps aside,
   // without its toggle, until the mode is off.
@@ -1743,6 +1743,7 @@ export default memo(function Explorer({
           aria-label={label}
           aria-pressed={density === value}
           data-tooltip={label}
+          data-press=""
           onClick={() => storeDensity(value)}
         >
           <Icon size={15} aria-hidden="true" />

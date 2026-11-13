@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { Toast } from "@base-ui/react/toast";
 import { Check, CircleAlert, X } from "lucide-react";
 import { cn } from "../lib/cn";
@@ -15,20 +15,31 @@ type Options = {
   error?: boolean;
 };
 
+// The provider starts listening in an effect after hydration, so a click
+// that lands first would lose its toast. Until then, toasts wait here.
+let listening = false;
+let waiting: (() => void)[] = [];
+let nextId = 0;
+
 /** Shows a short confirmation, or an error, from anywhere on the client. */
 export function notify(message: string, { undo, error }: Options = {}) {
-  const id: string = manager.add({
-    title: message,
-    type: error ? "error" : "success",
-    timeout: undo ? 8000 : error ? 7000 : 5000,
-    actionProps: undo && {
-      children: "Angre",
-      onClick: () => {
-        manager.close(id);
-        undo();
+  const id = `toast-${++nextId}`;
+  const show = () =>
+    manager.add({
+      id,
+      title: message,
+      type: error ? "error" : "success",
+      timeout: undo ? 8000 : error ? 7000 : 5000,
+      actionProps: undo && {
+        children: "Angre",
+        onClick: () => {
+          manager.close(id);
+          undo();
+        },
       },
-    },
-  });
+    });
+  if (listening) show();
+  else waiting.push(show);
   return id;
 }
 
@@ -66,6 +77,16 @@ function subscribeModals(onChange: () => void) {
 
 /** Renders every toast. Mounted once, in the root layout. */
 export function Toaster() {
+  // Runs after the provider's own effect has subscribed to the manager.
+  useEffect(() => {
+    listening = true;
+    const queued = waiting;
+    waiting = [];
+    queued.forEach((show) => show());
+    return () => {
+      listening = false;
+    };
+  }, []);
   return (
     <Toast.Provider toastManager={manager} limit={3}>
       <Viewport />
