@@ -441,6 +441,30 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     await expect(place).toBeHidden();
   });
 
+  test("a tap switches the map layer, though Safari doesn't focus what it taps", async ({
+    page,
+  }) => {
+    // As in Safari: pressing a button leaves focus on the body, not the button.
+    await page.addInitScript(() =>
+      document.addEventListener(
+        "mousedown",
+        (event) => {
+          if (!(event.target as Element).closest("button")) return;
+          event.preventDefault();
+          (document.activeElement as HTMLElement | null)?.blur();
+        },
+        true,
+      ),
+    );
+    await page.goto("/");
+    const map = page.locator("[data-project-map]");
+    await expect(map).toHaveAttribute("data-map-style", "standard");
+    await page.getByRole("button", { name: "Kartlag", exact: true }).tap();
+    await page.getByRole("button", { name: "Gatekart", exact: true }).tap();
+    await expect(map).toHaveAttribute("data-map-style", "streets");
+    await expect(page.getByRole("group", { name: "Kartlag" })).toBeHidden();
+  });
+
   test("review screenshots at 390px", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
