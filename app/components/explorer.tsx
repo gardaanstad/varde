@@ -212,6 +212,8 @@ const mapBottomGap = 124;
 /** The map the middle-height drawer covers; the list holds what is above it. */
 const mobileMapInset = () =>
   Math.max(0, Math.round(window.innerHeight * middleSnapPoint - mapBottomGap));
+/** The map the drawer covers at its compact height. */
+const compactMapInset = Number.parseInt(compactSnapPoint) - mapBottomGap;
 const drawerSnapPoints: DrawerSnapPoint[] = [
   compactSnapPoint,
   middleSnapPoint,
@@ -366,6 +368,7 @@ export default memo(function Explorer({
   const [snapPoint, setSnapPoint] = useState<DrawerSnapPoint | null>(
     middleSnapPoint,
   );
+  const snapRef = useRef(snapPoint);
   const drawerContentRef = useRef<HTMLDivElement>(null);
   const drawerHandleRef = useRef<HTMLButtonElement>(null);
   const projectTriggerRef = useRef<HTMLElement | SVGElement | null>(null);
@@ -911,15 +914,23 @@ export default memo(function Explorer({
       setViewBounds(view.bounds);
     }
     if (!postView.current) setFrozenBounds(null);
-    followPlace(view, shown);
+    followPlace(view);
     window.clearTimeout(urlTimer.current);
     urlTimer.current = window.setTimeout(syncUrl, 300);
   }
   /** Beside the map, "Velg sted" names the place the view shows. */
-  function followPlace(view: MapViewChange, shown: Project[]) {
+  function followPlace(view: MapViewChange) {
     // Maximized, the place filters the list; an open project's framing
-    // is passing.
+    // is passing. Under the full drawer the map is out of sight.
     if ((maximized && !isMobile) || postView.current) return;
+    if (isMobile && snapRef.current === 1) return;
+    // On phones, what the drawer leaves open right now, which is more than
+    // the list's bounds while it sits at its compact height.
+    const bounds =
+      isMobile && snapRef.current === compactSnapPoint && mapApi.current
+        ? mapApi.current.boundsAbove(compactMapInset)
+        : view.bounds;
+    const shown = projects.filter((project) => projectInBounds(project, bounds));
     const previousZoom = lastZoom.current ?? view.zoom;
     lastZoom.current = view.zoom;
     const hold = placeHold.current;
@@ -930,6 +941,13 @@ export default memo(function Explorer({
       placeInView(inView, view.zoom, current, previousZoom),
     );
   }
+  // The drawer's height changes what of the map is in sight.
+  const placeUnderDrawer = useEffectEvent(() => {
+    if (snapRef.current === snapPoint) return;
+    snapRef.current = snapPoint;
+    if (mapViewRef.current) followPlace(mapViewRef.current);
+  });
+  useEffect(() => placeUnderDrawer(), [snapPoint]);
   /** Moves the map to a place, or out to Norway for none. */
   function goToPlace(name: string) {
     setPlace(name);
