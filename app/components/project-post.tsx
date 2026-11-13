@@ -419,15 +419,19 @@ function morph(
   const animations: Animation[] = [];
   all.forEach((el, i) => {
     const dy = before[i].top - el.getBoundingClientRect().top;
-    // A part's clip starts at its old height: inside its new box when it
-    // grows, past it (a negative inset) when it shrinks.
-    const inset = i < parts.length ? el.offsetHeight - before[i].height : 0;
-    if (Math.abs(dy) < 0.5 && Math.abs(inset) < 0.5) return;
+    // A part's clip runs from its old height to its new one: inside its new
+    // box when it grows, past it (a negative inset) when it shrinks. A part
+    // can keep its box and give up the space with a negative margin instead.
+    const box = el.offsetHeight;
+    const height = box + (parseFloat(el.style.marginBottom) || 0);
+    const inset = i < parts.length ? box - before[i].height : 0;
+    const end = i < parts.length ? box - height : 0;
+    if (Math.abs(dy) < 0.5 && Math.abs(inset - end) < 0.5) return;
     const from: Keyframe = { transform: `translateY(${dy}px)` };
     const to: Keyframe = { transform: "translateY(0)" };
     if (i < parts.length) {
       from.clipPath = `inset(0 0 ${inset}px 0)`;
-      to.clipPath = "inset(0 0 0 0)";
+      to.clipPath = `inset(0 0 ${end}px 0)`;
     }
     animations.push(el.animate([from, to], introMotion));
   });
@@ -584,23 +588,26 @@ function ProjectIntro({ project }: { project: Project }) {
     const reset = () => {
       for (const el of parts) {
         el.style.height = "";
+        el.style.marginBottom = "";
         el.style.overflow = "";
       }
       scroller.style.overflowAnchor = "";
     };
     // Scroll anchoring would shift the post under the animation.
     scroller.style.overflowAnchor = "none";
+    const copyHeight = copy.offsetHeight;
     let animations: Animation[];
     let done: () => void;
     if (open) {
-      // The text keeps its full layout under a clip until it can clamp.
+      // The text keeps its full layout under a clip until it can clamp. Its
+      // box stays whole too, so the fade's mask still covers every line.
       const style = getComputedStyle(copy);
       const lines =
         parseFloat(style.lineHeight) *
         (Number(style.getPropertyValue("--intro-lines")) || 2);
       const target = Math.min(lines, copy.scrollHeight);
       animations = morph(parts, movers, () => {
-        copy.style.height = `${target}px`;
+        copy.style.marginBottom = `${target - copy.offsetHeight}px`;
         for (const el of parts) el.style.overflow = "visible";
         flushSync(() => setOpen(false));
       });
@@ -617,6 +624,20 @@ function ProjectIntro({ project }: { project: Project }) {
         }),
       );
       done = reset;
+    }
+    // The fade's mask follows the clip, so the fade sits on the visible edge.
+    if (!photo) {
+      animations.push(
+        copy.animate(
+          {
+            maskSize: [
+              `100% ${copyHeight}px`,
+              `100% ${copy.offsetHeight + (parseFloat(copy.style.marginBottom) || 0)}px`,
+            ],
+          },
+          introMotion,
+        ),
+      );
     }
     const change = { animations, done };
     running.current = change;
@@ -637,6 +658,7 @@ function ProjectIntro({ project }: { project: Project }) {
           ref={text}
           className={styles.introText}
           data-clamped={clamped}
+          data-expanded={open}
           data-photo={photo}
           data-overflows={overflows}
         >
