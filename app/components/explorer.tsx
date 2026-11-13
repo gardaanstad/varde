@@ -77,7 +77,7 @@ import {
 } from "../lib/places";
 import { errorMessage } from "../lib/api-client";
 import { profileHref } from "../lib/profiles";
-import { chooseUsernameEvent, useAuth } from "./auth-provider";
+import { useAuth } from "./auth-provider";
 import { useCommunity } from "./community-provider";
 import AccountPanel from "./account-panel";
 import ProfileAvatar from "./profile-avatar";
@@ -95,7 +95,7 @@ import FollowedProjects, {
 import { useFollowing } from "./following-provider";
 import { unreadCount, unreadProjects } from "../lib/following";
 import EmptyState from "./empty-state";
-import Toast, { type ToastMessage } from "./toast";
+import { notify } from "./toast";
 import {
   Drawer,
   DrawerContent,
@@ -439,8 +439,6 @@ export default memo(function Explorer({
   const [editorOpen, setEditorOpen] = useState(false);
   // The editor's own close, which asks before dropping a draft.
   const editorClose = useRef<(() => void) | null>(null);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
-  const notify = (message: string) => setToast({ message });
   const searchRef = useRef<HTMLInputElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLElement>(null);
@@ -659,12 +657,6 @@ export default memo(function Explorer({
       window.removeEventListener("popstate", onPopState);
     };
   }, [openSearch]);
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 6000);
-    return () => clearTimeout(timer);
-  }, [toast]);
 
   // "Aktuelt" ranks by discussion over the past week, then by latest update.
   const [weekAgo] = useState(() =>
@@ -952,21 +944,11 @@ export default memo(function Explorer({
   const onOpenProfile = useEffectEvent((event: Event) =>
     showProfile((event as CustomEvent<string>).detail),
   );
-  // Signed in without a username: it is chosen in the account panel.
-  const onChooseUsername = useEffectEvent((event: Event) => {
-    event.preventDefault();
-    openProfile();
-  });
-  // A layout effect, so the listeners are there in the commit that hydrates
-  // the page: a click just after hydration would otherwise go unanswered and
-  // fall back to the full-page welcome flow.
+  // A layout effect, so the listener is there in the commit that hydrates
+  // the page: a click just after hydration would otherwise go unanswered.
   useLayoutEffect(() => {
     window.addEventListener(openProfileEvent, onOpenProfile);
-    window.addEventListener(chooseUsernameEvent, onChooseUsername);
-    return () => {
-      window.removeEventListener(openProfileEvent, onOpenProfile);
-      window.removeEventListener(chooseUsernameEvent, onChooseUsername);
-    };
+    return () => window.removeEventListener(openProfileEvent, onOpenProfile);
   }, []);
   // Forslag's link, opened without an account: the list, and why not.
   const askForSuggestions = useEffectEvent(() => {
@@ -1340,20 +1322,23 @@ export default memo(function Explorer({
       return;
     const exists = followingIds.has(id);
     void mutate({ action: "follow", projectId: id, following: !exists }).catch(
-      (error) => notify(errorMessage(error, "Kunne ikke følge prosjektet.")),
+      (error) =>
+        notify(errorMessage(error, "Kunne ikke følge prosjektet."), {
+          error: true,
+        }),
     );
     const title =
       projects.find((project) => project.id === id)?.title || "Prosjektet";
-    setToast({
-      message: exists ? `Følger ikke ${title}` : `Følger ${title}`,
+    notify(exists ? `Sluttet å følge ${title}` : `Følger ${title}`, {
       undo: () => {
-        setToast(null);
         void mutate({
           action: "follow",
           projectId: id,
           following: exists,
         }).catch((error) =>
-          notify(errorMessage(error, "Kunne ikke angre endringen.")),
+          notify(errorMessage(error, "Kunne ikke angre endringen."), {
+            error: true,
+          }),
         );
       },
     });
@@ -1371,7 +1356,9 @@ export default memo(function Explorer({
       projectId: follow.projectId,
       following: true,
     }).catch((error) =>
-      notify(errorMessage(error, "Kunne ikke følge prosjektet.")),
+      notify(errorMessage(error, "Kunne ikke følge prosjektet."), {
+        error: true,
+      }),
     );
     // An intent is consumed once when the account is ready.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1394,10 +1381,6 @@ export default memo(function Explorer({
     setFollowingOnly(false);
     setSnapPoint(1);
   }
-
-  const feedback = toast && (
-    <Toast toast={toast} mobile={isMobile} onClose={() => setToast(null)} />
-  );
 
   const brand = (
     <Link
@@ -2209,30 +2192,21 @@ export default memo(function Explorer({
         return (
           <Panel
             {...frame}
-            floatingClose
-            onBack={!isMobile && sectionFrom === "profile" ? leaveFollowing : undefined}
+            titled
+            onBack={sectionFrom === "profile" ? leaveFollowing : undefined}
           >
-            <div
-              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4.5 pb-8 scrollbar-thin md:px-gutter-scroll"
-              data-followed-scroll=""
-              data-drawer-scroll
-            >
-              <FollowedProjects
-                projects={projects}
-                followingIds={following}
-                following={followed}
-                onBack={
-                  isMobile && sectionFrom === "profile" ? leaveFollowing : undefined
-                }
-                onOpen={openPost}
-                onUnfollow={toggleFollow}
-              />
-            </div>
+            <FollowedProjects
+              projects={projects}
+              followingIds={following}
+              following={followed}
+              onOpen={openPost}
+              onUnfollow={toggleFollow}
+            />
           </Panel>
         );
       case "editor":
         return (
-          <Panel {...frame} floatingClose>
+          <Panel {...frame} titled>
             {canModerate ? (
               <ProjectEditor
                 closeRef={editorClose}
@@ -2268,20 +2242,15 @@ export default memo(function Explorer({
         return (
           <Panel
             {...frame}
-            floatingClose
+            titled
             onBack={
-              !isMobile && sectionFrom === "profile"
+              sectionFrom === "profile"
                 ? () => closeSuggestions(true)
                 : undefined
             }
           >
             <SuggestionList
               embedded
-              onBack={
-                isMobile && sectionFrom === "profile"
-                  ? () => closeSuggestions(true)
-                  : undefined
-              }
               moderator={canModerate}
               onOpenProject={(id) => openPost(id)}
               onClose={() => closeSuggestions()}
@@ -2761,7 +2730,6 @@ export default memo(function Explorer({
       )}
       {panelDrawers}
       {panelShell}
-      {feedback}
     </div>
   );
 });

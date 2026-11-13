@@ -64,10 +64,6 @@ export function safeReturnPath(value: unknown): string {
 export function loginHref(next: string = "/") {
   return `/logg-inn?next=${encodeURIComponent(safeReturnPath(next))}`;
 }
-/** One-time username selection, then on to `next`. */
-export function welcomeHref(next: string = "/") {
-  return `/velkommen?next=${encodeURIComponent(safeReturnPath(next))}`;
-}
 /** Auth pages return to `next`, except account settings, which need an account. */
 export function authBackHref(next: string) {
   return next === "/konto" ? "/" : next;

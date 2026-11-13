@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Inbox,
   LoaderCircle,
-  LogOut,
   Settings,
   UserRound,
   X,
@@ -18,13 +17,10 @@ import GoogleSignIn from "./google-sign-in";
 import AccountSettings from "./account-settings";
 import ProfileEditor from "./profile-editor";
 import { ProfileContent } from "./profile-page";
-import { authClient } from "../lib/auth-client";
-import { navigateWithFreshSession } from "../lib/auth-navigation";
-import UsernameForm, { currentPath } from "./username-form";
+import { currentPath } from "./username-form";
 import { accountProfile } from "../lib/profiles";
 import { cn } from "../lib/cn";
 import {
-  accountAction,
   accountView,
   iconButton,
   secondaryButton,
@@ -67,12 +63,10 @@ export default function AccountPanel({
   const [view, setView] = useState<"profile" | "edit" | "settings">(
     initialView,
   );
-  const [error, setError] = useState("");
-  const [signingOut, setSigningOut] = useState(false);
   const settingsTrigger = useRef<HTMLButtonElement>(null);
   const editTrigger = useRef<HTMLButtonElement>(null);
   const backButton = useRef<HTMLButtonElement>(null);
-  // Without a username there is no profile yet, only sign-in.
+  // Without a username there is no profile yet; one is chosen in UsernamePrompt.
   const activeView = user?.username ? view : "signin";
 
   function switchView(next: typeof view) {
@@ -87,21 +81,6 @@ export default function AccountPanel({
             : editTrigger;
       target.current?.focus({ preventScroll: true });
     });
-  }
-
-  async function signOut() {
-    if (signingOut) return;
-    setSigningOut(true);
-    setError("");
-    try {
-      const result = await authClient.signOut();
-      if (result.error) throw new Error();
-      if (onSignedOut) onSignedOut();
-      else navigateWithFreshSession(currentPath());
-    } catch {
-      setError("Kunne ikke logge ut. Prøv igjen.");
-      setSigningOut(false);
-    }
   }
 
   const subView = activeView === "edit" || activeView === "settings";
@@ -209,42 +188,14 @@ export default function AccountPanel({
               >
                 <UserRound size={24} />
               </span>
-              <h3 className="min-w-0 text-title">
-                {user ? "Velg brukernavn" : "Logg inn"}
-              </h3>
+              <h3 className="min-w-0 text-title">Logg inn</h3>
             </div>
             <div className="mt-6 space-y-3">
-              {user ? (
-                // Chosen here, then the page reloads where it is.
-                <UsernameForm />
-              ) : (
-                <GoogleSignIn next={currentPath()} />
-              )}
+              {!user && <GoogleSignIn next={currentPath()} />}
               <p className="text-xs leading-5 text-muted">
                 E-posten din vises aldri.
               </p>
             </div>
-            {user && (
-              <div className="mt-auto border-t border-border pt-2">
-                <button
-                  type="button"
-                  disabled={signingOut}
-                  onClick={() => void signOut()}
-                  className={cn(accountAction, "min-h-11 text-muted")}
-                >
-                  <LogOut size={18} aria-hidden="true" />
-                  {signingOut ? "Logger ut …" : "Logg ut"}
-                </button>
-                {error && (
-                  <p
-                    role="alert"
-                    className="px-3 pt-2 text-xs leading-6 text-danger"
-                  >
-                    {error}
-                  </p>
-                )}
-              </div>
-            )}
           </>
         )}
       </div>

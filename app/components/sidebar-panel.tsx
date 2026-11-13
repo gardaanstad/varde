@@ -68,7 +68,7 @@ export function animatePanelBack(element: HTMLElement, exit: Animation) {
   );
 }
 
-const controlButton = cn(
+export const controlButton = cn(
   iconButton,
   "rounded-lg active:scale-100 pointer-fine:active:scale-[0.97]",
 );
@@ -133,6 +133,7 @@ export function SidebarPanel({
   onClose,
   onBack,
   closeLabel = "Lukk",
+  bar = true,
   children,
 }: {
   /** Names the panel for tests and styling (`data-sidebar-panel`). */
@@ -143,6 +144,8 @@ export function SidebarPanel({
   /** Back to the panel this one was opened from. */
   onBack?: () => void;
   closeLabel?: string;
+  /** False when the content brings its own header (see `PanelHeader`). */
+  bar?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -150,6 +153,7 @@ export function SidebarPanel({
       className="flex h-full min-h-0 flex-col bg-surface"
       data-sidebar-panel={name}
     >
+      {bar && (
       <div
         className={cn(
           // The list's header height, so controls stay put as panels open.
@@ -181,6 +185,7 @@ export function SidebarPanel({
           </button>
         </div>
       </div>
+      )}
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col",

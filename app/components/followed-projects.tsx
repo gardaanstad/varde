@@ -1,10 +1,12 @@
 "use client";
 import { useMemo, useState } from "react";
 import Image from "next/image";
-import { ArrowDownUp, ArrowLeft, Bell, BellOff } from "lucide-react";
+import { Menu } from "@base-ui/react/menu";
+import { ArrowDownUp, Bell, BellOff, Ellipsis, MapPin } from "lucide-react";
 import {
   hasPhoto,
   type Project,
+  projectPlace,
   statuses,
 } from "../lib/data";
 import {
@@ -15,9 +17,10 @@ import {
   unreadSummary,
 } from "../lib/following";
 import { cn } from "../lib/cn";
-import { iconButton, sortChoice, statusTone } from "../lib/ui";
+import { sortChoice, statusTone } from "../lib/ui";
 import ChoiceSelect from "./choice-select";
 import EmptyState from "./empty-state";
+import { PanelHeader } from "./panel";
 import RelativeTime from "./relative-time";
 
 export type FollowedTarget = {
@@ -49,6 +52,8 @@ export function UnreadBadge({
   );
 }
 
+// The project list's meta line.
+const meta = "flex min-w-0 items-center text-xs leading-4.5 text-muted";
 const separator =
   "before:mr-1.5 before:font-normal before:text-muted before:content-['·']";
 
@@ -68,46 +73,40 @@ function FollowedRow({
   return (
     <li
       className={cn(
-        "group/row relative isolate flex items-center gap-3 border-b border-border py-2.5",
+        // The project list's compact row: place, title, then where it stands.
+        "relative isolate flex items-center gap-4 border-b border-border py-4 max-md:gap-3 max-md:py-3.5",
         // The hover wash bleeds past the text edge, like the project list.
-        "before:absolute before:inset-x-[-10px] before:inset-y-0.5 before:-z-1 before:rounded-lg before:transition-colors before:duration-120",
-        "hover:before:bg-surface-muted/65 motion-reduce:before:transition-none",
+        "before:absolute before:inset-x-[-12px] before:inset-y-2 before:-z-1 before:rounded-xl max-md:before:inset-x-[-8px] max-md:before:inset-y-1.5",
+        "hover:before:bg-surface-muted/65",
       )}
       data-followed-project={project.id}
       data-unread={unread > 0 || undefined}
     >
-      {hasPhoto(project) && (
-        <div className="relative size-11 shrink-0 overflow-hidden rounded-lg bg-surface-muted">
-          <Image
-            src={project.image}
-            alt=""
-            fill
-            sizes="44px"
-            className="object-cover"
-          />
-        </div>
-      )}
       <div className="min-w-0 flex-1">
-        {/* Stretched over the whole row; the unfollow button sits above it. */}
+        <p className={cn(meta, "gap-1")}>
+          <MapPin size={13} className="shrink-0" aria-hidden="true" />
+          <span className="min-w-0 truncate">{projectPlace(project)}</span>
+        </p>
+        {/* Stretched over the whole row; the menu button sits above it. */}
         <button
           type="button"
           className={cn(
-            "block max-w-full truncate text-left text-body leading-snug font-semibold text-ink outline-none",
-            "after:absolute after:inset-x-[-10px] after:inset-y-0.5 after:rounded-lg focus-visible:after:outline-2 focus-visible:after:outline-focus",
+            "mt-1 block max-w-full truncate text-left text-item leading-5.5 text-ink outline-none",
+            "after:absolute after:inset-x-[-12px] after:inset-y-2 after:rounded-xl max-md:after:inset-x-[-8px] max-md:after:inset-y-1.5",
+            "focus-visible:after:outline-2 focus-visible:after:outline-focus",
           )}
           data-press=""
           onClick={() => onOpen(project.id, summary.first ?? {})}
         >
           {project.title}
         </button>
-        <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted">
-          <span className="inline-flex shrink-0 items-center gap-1.25 text-ink-soft">
-            <span
+        <p className={cn(meta, "mt-1 gap-1.5")}>
+          <span className="inline-flex shrink-0 items-center gap-1.5 font-medium text-ink">
+            <i
               className={cn(
-                "size-1.5 rounded-full",
+                "size-2 shrink-0 rounded-full",
                 statusTone[project.status].dot,
               )}
-              aria-hidden="true"
             />
             {/* Phones keep just the dot when there is news to fit. */}
             <span className={cn(unread > 0 && "max-md:sr-only")}>
@@ -132,37 +131,58 @@ function FollowedRow({
           ) : null}
         </p>
       </div>
-      {unread > 0 && (
-        <span
-          className="size-2 shrink-0 rounded-full bg-accent"
-          role="img"
-          aria-label="Nytt"
-        />
+      {/* As tall as the text beside it, at 4:3, as in the project list. */}
+      {hasPhoto(project) && (
+        <div className="relative h-16.5 w-22 shrink-0 overflow-hidden rounded-lg bg-surface-muted">
+          <Image
+            src={project.image}
+            alt=""
+            fill
+            sizes="88px"
+            className="object-cover"
+          />
+        </div>
       )}
-      <button
-        type="button"
-        className={cn(
-          iconButton,
-          "relative z-1 -mr-2 size-10 shrink-0 rounded-lg text-muted hover:text-ink",
-          // Mouse and trackpad: shown on hover or keyboard focus in the row.
-          // Touch has no hover, so it stays visible there, muted.
-          "transition-opacity duration-120 motion-reduce:transition-none",
-          "pointer-fine:opacity-0 pointer-fine:group-hover/row:opacity-100 pointer-fine:group-focus-within/row:opacity-100",
-        )}
-        aria-label={`Slutt å følge ${project.title}`}
-        data-tooltip="Slutt å følge"
-        onClick={() => onUnfollow(project.id)}
-      >
-        <BellOff size={16} />
-      </button>
+      <Menu.Root>
+        <Menu.Trigger
+          className={cn(
+            // No fill: the dots brighten on hover, like the list's counts.
+            "relative z-1 -mr-2.5 grid size-10 shrink-0 place-items-center rounded-lg text-muted outline-none",
+            "transition-colors duration-150 hover:text-ink data-popup-open:text-ink motion-reduce:transition-none",
+            "focus-visible:outline-2 focus-visible:outline-focus",
+          )}
+          aria-label={`Valg for ${project.title}`}
+          data-tooltip="Valg"
+        >
+          <Ellipsis size={18} aria-hidden="true" />
+        </Menu.Trigger>
+        <Menu.Portal>
+          <Menu.Positioner
+            side="bottom"
+            align="end"
+            sideOffset={2}
+            className="z-[1000]"
+          >
+            <Menu.Popup className="min-w-44 rounded-xl border border-border bg-surface p-1.5 text-ui shadow-popover outline-none motion-safe:animate-menu-enter">
+              <Menu.Item
+                className="flex min-h-9 cursor-default items-center gap-2 rounded-lg px-2.5 py-1.5 text-ink outline-none select-none data-highlighted:bg-surface-muted pointer-coarse:min-h-11"
+                onClick={() => onUnfollow(project.id)}
+              >
+                <BellOff size={14} className="text-muted" aria-hidden="true" />
+                Slutt å følge
+              </Menu.Item>
+            </Menu.Popup>
+          </Menu.Positioner>
+        </Menu.Portal>
+      </Menu.Root>
     </li>
   );
 }
 
 /**
  * The projects a user follows, one row each with what is new since they last
- * opened it. Self-contained: give it the data and callbacks and it lays out
- * its own heading, sorting and list, in a page column or a side panel.
+ * opened it. Self-contained inside a titled `Panel`: give it the data and
+ * callbacks and it lays out its own header, sorting and scrolling list.
  */
 export default function FollowedProjects({
   projects,
@@ -170,7 +190,6 @@ export default function FollowedProjects({
   following,
   onOpen,
   onUnfollow,
-  onBack,
 }: {
   /** All projects, to look the followed ones up in. */
   projects: Project[];
@@ -179,8 +198,6 @@ export default function FollowedProjects({
   following: Following | null;
   onOpen: (projectId: string, target: FollowedTarget) => void;
   onUnfollow: (projectId: string) => void;
-  /** Mobile: a back button before the heading. */
-  onBack?: () => void;
 }) {
   const [sort, setSort] = useState<"activity" | "title">("activity");
   const rows = useMemo(() => {
@@ -215,62 +232,54 @@ export default function FollowedProjects({
 
   return (
     <section
+      className="flex min-h-0 flex-1 flex-col"
       aria-labelledby="followed-projects-title"
       data-followed-projects=""
     >
-      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-border py-1.5 max-md:min-h-12 max-md:pr-9">
-        <div className="flex min-w-0 items-center gap-x-3">
-          {onBack && (
-            <button
-              type="button"
-              className={cn(iconButton, "-mr-2 -ml-3 rounded-lg text-muted")}
-              aria-label="Tilbake"
-              onClick={onBack}
-            >
-              <ArrowLeft size={20} />
-            </button>
-          )}
-          <h1
-            id="followed-projects-title"
-            className="text-title max-md:text-[1.125rem]"
-          >
-            Følger
-          </h1>
-          <span className="text-ui text-muted tabular-nums">{rows.length}</span>
-          {unread > 0 && <UnreadBadge count={unread} />}
-        </div>
-        {rows.length > 1 && (
-          <ChoiceSelect
-            label="Sorter fulgte prosjekter"
-            value={sort}
-            className={sortChoice}
-            icon={<ArrowDownUp size={14} />}
-            onChange={(value) => setSort(value as typeof sort)}
-            options={[
-              { value: "activity", label: "Aktivitet" },
-              { value: "title", label: "Alfabetisk" },
-            ]}
+      <PanelHeader
+        id="followed-projects-title"
+        title="Følger"
+        badge={unread > 0 && <UnreadBadge count={unread} />}
+        actions={
+          rows.length > 1 && (
+            <ChoiceSelect
+              label="Sorter fulgte prosjekter"
+              value={sort}
+              className={cn(sortChoice, "mr-0")}
+              icon={<ArrowDownUp size={14} />}
+              onChange={(value) => setSort(value as typeof sort)}
+              options={[
+                { value: "activity", label: "Aktivitet" },
+                { value: "title", label: "Alfabetisk" },
+              ]}
+            />
+          )
+        }
+      />
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4.5 pb-8 scrollbar-thin md:px-gutter-scroll"
+        data-followed-scroll=""
+        data-drawer-scroll
+      >
+        {rows.length === 0 ? (
+          <EmptyState
+            level={2}
+            icon={<Bell size={22} />}
+            title="Følger ingen prosjekter"
           />
+        ) : (
+          <ol className="pt-1" aria-label="Fulgte prosjekter">
+            {rows.map((row) => (
+              <FollowedRow
+                key={row.project.id}
+                {...row}
+                onOpen={onOpen}
+                onUnfollow={onUnfollow}
+              />
+            ))}
+          </ol>
         )}
       </div>
-      {rows.length === 0 ? (
-        <EmptyState
-          level={2}
-          icon={<Bell size={22} />}
-          title="Følger ingen prosjekter"
-        />
-      ) : (
-        <ol aria-label="Fulgte prosjekter">
-          {rows.map((row) => (
-            <FollowedRow
-              key={row.project.id}
-              {...row}
-              onOpen={onOpen}
-              onUnfollow={onUnfollow}
-            />
-          ))}
-        </ol>
-      )}
     </section>
   );
 }

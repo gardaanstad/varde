@@ -1357,7 +1357,7 @@ export default function ProjectPost({
           >
            <div className="min-w-0">
             <section
-              className={cn(wide ? "pt-3 pb-5" : "px-4.5 pt-2 pb-2 md:px-gutter-scroll")}
+              className={cn(wide ? "pt-1 pb-5" : "px-4.5 pt-0.5 pb-2 md:px-gutter-scroll")}
               aria-label="Om prosjektet"
             >
               {draft ? (

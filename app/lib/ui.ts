@@ -120,3 +120,17 @@ export const statusTone = {
     badge: "border-status-completed/25 text-status-completed-ink",
   },
 } as const;
+
+/**
+ * A panel's title (a project, Følger, Forslag): the largest type in the
+ * sidebar, set beside the panel's controls.
+ */
+export const panelTitle = "text-display max-md:text-[1.5rem]";
+
+/**
+ * How far a panel title's line sits below the top of its controls. On
+ * desktop its capitals start as far below the panel's top as its first
+ * letter is in from the side, within the 44px buttons' height; on phones,
+ * under the grip, the line is centred on the 40px buttons.
+ */
+export const panelTitleTop = { desktop: "pt-2.5", mobile: "pt-1.5" };
