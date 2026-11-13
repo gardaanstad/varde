@@ -1812,6 +1812,26 @@ test.describe("the place follows the map", () => {
       await expect(place("Hele Norge")).toHaveText("Velg sted");
       await expect.poll(() => zoomOf(page)).toBeLessThan(7);
     });
+
+    test("the compact drawer names the place the map shows below the middle height", async ({
+      page,
+    }) => {
+      // Bergen's projects sit low on the map, under the middle drawer.
+      await page.goto("/?kart=60.4400,5.3200,12");
+      const filters = page
+        .locator("[data-explorer-drawer]")
+        .getByRole("region", { name: "Filtrer prosjekter", exact: true });
+      const place = (name: string) =>
+        filters.getByRole("button", { name: `Sted: ${name}`, exact: true });
+      await expectDrawerHeight(page, 0.58);
+      await expect(place("Hele Norge")).toHaveText("Velg sted");
+      await swipeDown(
+        page,
+        page.getByRole("button", { name: "Utvid prosjektlisten", exact: true }),
+      );
+      await expectDrawerHeight(page, 136 / 844);
+      await expect(place("Bergen")).toBeVisible();
+    });
   });
 });
 
