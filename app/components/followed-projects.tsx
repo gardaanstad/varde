@@ -16,7 +16,7 @@ import {
   unreadSummary,
 } from "../lib/following";
 import { cn } from "../lib/cn";
-import { iconButton, statusTone } from "../lib/ui";
+import { iconButton, sortChoice, statusTone } from "../lib/ui";
 import ChoiceSelect from "./choice-select";
 import EmptyState from "./empty-state";
 import ProjectPlaceholder from "./project-placeholder";
@@ -35,7 +35,7 @@ export function UnreadBadge({
   return (
     <span
       className={cn(
-        "inline-grid h-4.5 min-w-4.5 place-items-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums",
+        "inline-grid h-4.5 min-w-4.5 place-items-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-on-accent tabular-nums",
         className,
       )}
       aria-label={`${count} med nytt`}
@@ -46,14 +46,6 @@ export function UnreadBadge({
     </span>
   );
 }
-
-const sortChoiceClasses = [
-  "w-auto",
-  "[&_[data-slot=choice-trigger]]:min-h-10 [&_[data-slot=choice-trigger]]:gap-1.5 [&_[data-slot=choice-trigger]]:border-transparent [&_[data-slot=choice-trigger]]:bg-transparent! [&_[data-slot=choice-trigger]]:px-2 [&_[data-slot=choice-trigger]]:text-ui [&_[data-slot=choice-trigger]]:text-muted",
-  "[&_[data-slot=choice-trigger]]:hover:bg-ink/[0.05]! [&_[data-slot=choice-trigger]]:hover:text-ink",
-  "[&_[data-slot=choice-menu]]:right-0 [&_[data-slot=choice-menu]]:left-auto [&_[data-slot=choice-menu]]:min-w-[180px] [&_[data-slot=choice-menu][data-open=false]]:hidden",
-  "[&_[data-slot=choice-trigger]>svg:first-child]:max-md:hidden",
-].join(" ");
 
 const separator =
   "before:mr-1.5 before:font-normal before:text-muted before:content-['·']";
@@ -104,7 +96,7 @@ function FollowedRow({
         <button
           type="button"
           className={cn(
-            "block max-w-full truncate text-left text-body leading-snug font-[620] tracking-[-0.2px] text-ink outline-none",
+            "block max-w-full truncate text-left text-body leading-snug font-semibold text-ink outline-none",
             "after:absolute after:inset-x-[-10px] after:inset-y-0.5 after:rounded-lg focus-visible:after:outline-2 focus-visible:after:outline-focus",
           )}
           onClick={() => onOpen(project.id, summary.first ?? {})}
@@ -129,7 +121,7 @@ function FollowedRow({
             <span
               className={cn(
                 separator,
-                "truncate font-[550] text-accent-strong max-md:before:hidden",
+                "truncate font-medium text-accent-strong max-md:before:hidden",
               )}
             >
               {unreadSummary(summary)}
@@ -243,7 +235,7 @@ export default function FollowedProjects({
           )}
           <h1
             id="followed-projects-title"
-            className="text-xl leading-normal font-[650] tracking-[-0.4px] max-md:text-lg"
+            className="text-title max-md:text-[1.125rem]"
           >
             Følger
           </h1>
@@ -254,7 +246,7 @@ export default function FollowedProjects({
           <ChoiceSelect
             label="Sorter fulgte prosjekter"
             value={sort}
-            className={sortChoiceClasses}
+            className={sortChoice}
             icon={<ArrowDownUp size={14} />}
             onChange={(value) => setSort(value as typeof sort)}
             options={[

@@ -110,7 +110,7 @@ export default function AccountPanel({
   // Top-level views read like any profile; the dialog or this button closes.
   const top = cn(
     scroll,
-    "px-5 pb-8 max-md:px-4.5",
+    "px-4.5 pb-8 md:px-gutter-scroll",
     onBack ? "pt-7 max-sm:pt-1" : "pt-1",
   );
 
@@ -120,7 +120,7 @@ export default function AccountPanel({
       <span className="flex-1">Forslag</span>
       {reviewedCount > 0 ? (
         <span
-          className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums"
+          className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-on-accent tabular-nums"
           data-reviewed
         >
           {reviewedCount}
@@ -209,7 +209,7 @@ export default function AccountPanel({
               >
                 <UserRound size={24} />
               </span>
-              <h3 className="min-w-0 text-2xl leading-tight font-semibold tracking-tight">
+              <h3 className="min-w-0 text-title">
                 {user ? "Velg brukernavn" : "Logg inn"}
               </h3>
             </div>

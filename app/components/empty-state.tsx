@@ -16,7 +16,7 @@ export default function EmptyState({
   return (
     <div className="flex flex-col items-center gap-2.5 px-4 py-10 text-center text-muted">
       {icon}
-      <Heading className="text-body font-[550] text-ink">{title}</Heading>
+      <Heading className="text-body font-medium text-ink">{title}</Heading>
       {children}
     </div>
   );

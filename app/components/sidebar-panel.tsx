@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useEffectEvent, type ReactNode } from "react";
-import { ArrowLeft, Maximize2, Minimize2, X } from "lucide-react";
+import { ArrowLeft, ChevronsRight, ChevronsLeft, X } from "lucide-react";
 import { cn } from "../lib/cn";
 import { iconButton } from "../lib/ui";
 
@@ -70,7 +70,7 @@ export function animatePanelBack(element: HTMLElement, exit: Animation) {
 
 const controlButton = cn(
   iconButton,
-  "rounded-lg active:scale-100 active:text-accent pointer-fine:active:scale-[0.97]",
+  "rounded-lg active:scale-100 pointer-fine:active:scale-[0.97]",
 );
 
 /** Switches the sidebar between its normal width and the whole window. */
@@ -94,7 +94,7 @@ export function MaximizeButton({
       data-tooltip={label}
       data-sidebar-maximize=""
     >
-      {maximized ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+      {maximized ? <ChevronsLeft size={18} /> : <ChevronsRight size={18} />}
     </button>
   );
 }
@@ -151,7 +151,8 @@ export function SidebarPanel({
     >
       <div
         className={cn(
-          "flex h-14 shrink-0 items-center gap-0.5 px-3",
+          // The list's header height, so controls stay put as panels open.
+          "flex h-16 shrink-0 items-center gap-0.5 px-3",
           maximized && "px-[max(0.75rem,calc((100%-880px)/2))]",
         )}
       >

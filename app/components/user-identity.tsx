@@ -226,7 +226,7 @@ export default function UserIdentity({
           </div>
         </div>
         {profile.bio && (
-          <p className="mt-3 line-clamp-3 text-ui leading-5 whitespace-pre-wrap wrap-anywhere text-ink/80">
+          <p className="mt-3 line-clamp-3 text-ui leading-5 whitespace-pre-wrap wrap-anywhere text-ink-soft">
             {profile.bio}
           </p>
         )}

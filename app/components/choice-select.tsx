@@ -547,7 +547,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
           "pointer-events-none invisible fixed inset-auto z-900 m-0 flex h-auto min-w-0 flex-col overflow-visible border-0 bg-transparent p-0 text-ink",
           "data-[open=true]:pointer-events-auto data-[open=true]:visible",
           sheet
-            ? "justify-end overscroll-contain bg-[color-mix(in_srgb,var(--color-ink)_calc(25%*(1-var(--sheet-progress))),transparent)] motion-safe:animate-backdrop-in"
+            ? "justify-end overscroll-contain bg-[color-mix(in_srgb,var(--color-scrim)_calc(25%*(1-var(--sheet-progress))),transparent)] motion-safe:animate-backdrop-in"
             : [
                 "max-w-[calc(100vw-28px)] origin-top -translate-y-1.25 scale-[0.98] opacity-0 transition-[opacity,transform,visibility] duration-200 ease-out motion-reduce:transition-none",
                 "data-[open=true]:translate-y-0 data-[open=true]:scale-100 data-[open=true]:opacity-100 data-[side=top]:origin-bottom",
@@ -566,7 +566,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
           className={cn(
             "relative flex min-h-0 flex-col",
             sheet && [
-              "max-h-[min(66dvh,500px)] overflow-hidden rounded-t-[22px] border-t border-border bg-surface shadow-bar",
+              "max-h-[min(66dvh,500px)] overflow-hidden rounded-t-sheet border-t border-border bg-surface shadow-bar",
               "motion-safe:animate-sheet-in",
             ],
           )}
@@ -635,7 +635,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
                 {/* Above the options' 15px: larger, heavier and in full ink. */}
                 <span
                   data-slot="choice-title"
-                  className="mt-4 self-start px-1 text-lg leading-6 font-semibold tracking-[-0.3px] text-ink"
+                  className="mt-4 self-start px-1 text-heading text-ink"
                 >
                   {label}
                 </span>
@@ -645,7 +645,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
               <span
                 aria-hidden="true"
                 data-slot="choice-title"
-                className="px-2.5 pt-1.5 pb-0.5 text-[15px] leading-5 font-semibold tracking-[-0.2px] text-ink"
+                className="px-2.5 pt-1.5 pb-0.5 text-body leading-5 font-semibold text-ink"
               >
                 {label}
               </span>

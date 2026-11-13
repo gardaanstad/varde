@@ -43,6 +43,7 @@ import {
   composer,
   composerField,
   composerSend,
+  pillButton,
   statusTone,
 } from "../lib/ui";
 import DrawingMap from "./drawing-map";
@@ -347,7 +348,7 @@ function EditDescription() {
       <textarea
         className={cn(
           editInput,
-          "field-sizing-content min-h-32 resize-none px-3 py-2 text-body leading-[1.65] max-md:text-[14px] max-md:leading-[1.6] max-sm:text-base",
+          "field-sizing-content min-h-32 resize-none px-3 py-2 text-body leading-[1.65] max-sm:text-base",
         )}
         aria-label="Beskrivelse"
         maxLength={10000}
@@ -464,7 +465,7 @@ function ProjectMeta({ project }: { project: Project }) {
 function WideIntro({ project }: { project: Project }) {
   return (
     <div
-      className="max-w-170 space-y-3 text-body leading-[1.7] text-ink-soft [&>p]:whitespace-pre-wrap [&>p]:wrap-anywhere"
+      className="max-w-170 space-y-3 text-body leading-[1.65] text-ink-soft [&>p]:whitespace-pre-wrap [&>p]:wrap-anywhere"
       data-project-header-hero=""
     >
       {project.description.split("\n\n").map((paragraph, index) => (
@@ -478,7 +479,7 @@ function WideIntro({ project }: { project: Project }) {
 function ProjectAside({ project }: { project: Project }) {
   const photos = projectPhotos(project);
   return (
-    <aside className="sticky top-0 pt-4 pb-10" aria-label="Prosjektfakta">
+    <aside className="sticky top-0 pt-3 pb-10" aria-label="Prosjektfakta">
       {photos.length > 0 ? (
         <ImageGallery
           images={photos}
@@ -899,9 +900,8 @@ function UpdateComposer({
         ref={pillRef}
         type="button"
         className={cn(
-          "mb-6 inline-flex min-h-10 items-center gap-2 rounded-[22px] border border-border-strong bg-surface pr-4 pl-3.5 text-ui font-medium text-ink/80",
-          "transition-[color,border-color,background-color] duration-150 hover:border-ink/35 hover:text-ink motion-reduce:transition-none",
-          "[&>svg]:text-muted",
+          pillButton,
+          "mb-6 gap-2 bg-surface pr-4 pl-3 [&>svg]:text-muted",
         )}
         onClick={(event) => {
           if (
@@ -1352,7 +1352,7 @@ export default function ProjectPost({
           >
            <div className="min-w-0">
             <section
-              className={cn(wide ? "pt-3 pb-5" : "px-4.5 pt-2 pb-2 md:px-6")}
+              className={cn(wide ? "pt-3 pb-5" : "px-4.5 pt-2 pb-2 md:px-gutter-scroll")}
               aria-label="Om prosjektet"
             >
               {draft ? (
@@ -1373,14 +1373,14 @@ export default function ProjectPost({
               )}
             </section>
             {!mobile && !draft && (
-              <div className={cn("pb-4", !wide && "px-6")}>
+              <div className={cn("pb-4", !wide && "px-gutter-scroll")}>
                 <DesktopActions {...actions} />
               </div>
             )}
             <nav
               className={cn(
                 "border-b border-border",
-                !wide && "mx-4.5 md:mx-6",
+                !wide && "mx-4.5 md:mx-gutter-scroll",
               )}
               hidden={Boolean(draft)}
               id="project-sections"
@@ -1408,7 +1408,7 @@ export default function ProjectPost({
               </div>
             </nav>
             <div
-              className={cn(wide ? "pt-6 pb-10" : "px-4.5 pt-4.5 pb-8 md:px-6 md:pt-5")}
+              className={cn(wide ? "pt-6 pb-10" : "px-4.5 pt-4.5 pb-8 md:px-gutter-scroll md:pt-5")}
             >
               <div className="min-w-0" hidden={Boolean(draft)}>
                 <div
@@ -1455,7 +1455,7 @@ export default function ProjectPost({
                           className={styles.entry}
                           data-highlighted={highlightId === update.id}
                         >
-                          <p className="text-xs leading-normal font-medium text-muted">
+                          <p className="text-xs leading-normal text-muted">
                             <RelativeTime
                               date={update.date}
                               mode="suffix"
@@ -1468,13 +1468,13 @@ export default function ProjectPost({
                               </>
                             )}
                           </p>
-                          <h3 className="mt-1 mb-2.5 text-lg leading-normal font-[620] tracking-[-0.3px] max-sm:mt-0.5 max-sm:mb-2 max-sm:text-[17px]">
+                          <h3 className="mt-1 mb-2.5 text-heading max-sm:mt-0.5 max-sm:mb-2 max-sm:text-[1.0625rem]">
                             {update.title}
                           </h3>
                           {update.body.split("\n\n").map((paragraph, index) => (
                             <p
                               key={index}
-                              className="mb-4 text-body leading-[1.75] whitespace-pre-wrap wrap-anywhere text-ink-soft max-md:text-sm max-sm:mb-3 max-sm:leading-[1.65]"
+                              className="mb-4 text-body leading-[1.65] whitespace-pre-wrap wrap-anywhere text-ink-soft max-sm:mb-3"
                             >
                               {paragraph}
                             </p>

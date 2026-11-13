@@ -5,12 +5,38 @@
  * (scoped to [data-project-map]) and unlayered, like leaflet.css itself.
  * Application-owned map controls use Tailwind utilities.
  */
+/*
+ * Colours that follow the base map rather than the page: a halo around
+ * shapes and handles in the map's own tone, and the drawing outline. The
+ * street map stays light in dark mode. Leaflet writes `stroke` attributes;
+ * these properties override them.
+ */
+[data-project-map] {
+  --map-halo: #fff;
+  --map-draw: #1f5a43;
+}
+
+[data-project-map][data-base-tone="dark"] {
+  --map-halo: rgb(12 12 12);
+  --map-draw: #5fb38c;
+}
+
+[data-project-map] .project-casing,
+[data-project-map] .project-dot {
+  stroke: var(--map-halo);
+}
+
+[data-project-map] .draw-shape {
+  stroke: var(--map-draw);
+  fill: var(--map-draw);
+}
+
 [data-project-map] .leaflet-container a {
   color: var(--color-muted) !important;
 }
 
 [data-project-map] .leaflet-control-attribution {
-  background: rgb(255 255 255 / 0.78) !important;
+  background: color-mix(in srgb, var(--color-surface) 78%, transparent) !important;
   color: var(--color-muted);
   font-family: inherit !important;
   font-size: 8px !important;
@@ -91,12 +117,22 @@
 }
 
 [data-project-map] .project-tooltip {
+  background: var(--color-surface) !important;
   border: 1px solid var(--color-border) !important;
   border-radius: 8px !important;
   box-shadow: var(--shadow-popover) !important;
   color: var(--color-ink) !important;
   font-family: inherit;
   padding: 8px 12px !important;
+}
+
+/* Leaflet's arrow is drawn in white. */
+[data-project-map] .project-tooltip.leaflet-tooltip-top::before {
+  border-top-color: var(--color-surface);
+}
+
+[data-project-map] .project-tooltip.leaflet-tooltip-bottom::before {
+  border-bottom-color: var(--color-surface);
 }
 
 /* Grouped projects: a count in place of their shapes. */
@@ -112,7 +148,7 @@
   height: 100%;
   border: 1px solid var(--color-border);
   border-radius: 50%;
-  background: #fff;
+  background: var(--color-surface);
   box-shadow: var(--shadow-control);
   color: var(--color-ink);
   font-size: 12px;
@@ -136,13 +172,13 @@
 [data-project-map] .project-cluster.is-highlighted > span {
   border-color: var(--color-accent);
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-accent);
   transform: scale(1.12);
 }
 
 [data-project-map]:not([data-pointer]) .project-cluster:focus-visible > span {
   box-shadow:
-    0 0 0 2px #fff,
+    0 0 0 2px var(--color-surface),
     0 0 0 4px var(--color-focus);
 }
 
@@ -198,16 +234,16 @@
 .draw-vertex::after {
   width: 12px;
   height: 12px;
-  border: 2px solid var(--color-accent);
-  background: #fff;
+  border: 2px solid var(--map-draw);
+  background: var(--map-halo);
   box-shadow: 0 1px 3px rgb(20 28 24 / 0.25);
 }
 
 .draw-midpoint::after {
   width: 9px;
   height: 9px;
-  border: 1.5px solid var(--color-accent);
-  background: rgb(255 255 255 / 0.75);
+  border: 1.5px solid var(--map-draw);
+  background: color-mix(in srgb, var(--map-halo) 75%, transparent);
   opacity: 0.75;
 }
 

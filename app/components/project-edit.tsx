@@ -300,7 +300,7 @@ export const quietBarButton = cn(
 );
 export const dangerBarButton = cn(
   barButton,
-  "border border-danger bg-danger text-white hover:border-danger-strong hover:bg-danger-strong",
+  "border border-danger bg-danger text-on-danger hover:border-danger-strong hover:bg-danger-strong",
 );
 /** The bar pinned under a form: status on the left, actions on the right. */
 export const actionBar = cn(

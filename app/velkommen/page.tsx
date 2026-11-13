@@ -19,7 +19,7 @@ export default async function WelcomePage({
   if (session.user.username) redirect(next);
   return (
     <AuthShell back={authBackHref(next)}>
-      <h1 className="text-2xl leading-tight font-semibold tracking-tight text-ink">
+      <h1 className="text-display text-ink">
         Hva skal vi kalle deg?
       </h1>
       <p className="mt-2 text-sm leading-6 text-muted">

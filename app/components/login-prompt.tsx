@@ -91,10 +91,10 @@ export default function LoginPrompt({
       tabIndex={-1}
       className={cn(
         "m-auto overflow-visible border-0 bg-transparent p-0 text-ink outline-none",
-        "backdrop:bg-ink/25 motion-safe:backdrop:animate-backdrop-in",
+        "backdrop:bg-scrim/25 motion-safe:backdrop:animate-backdrop-in",
         // Phones: a sheet along the bottom edge.
         "max-md:mb-0 max-md:w-full max-md:max-w-none",
-        "md:w-[380px] md:max-w-[calc(100vw-32px)] md:backdrop:bg-ink/33 md:backdrop:backdrop-blur-[4px]",
+        "md:w-[380px] md:max-w-[calc(100vw-32px)] md:backdrop:bg-scrim/33 md:backdrop:backdrop-blur-[4px]",
       )}
       onCancel={(event) => {
         event.preventDefault();
@@ -108,7 +108,7 @@ export default function LoginPrompt({
         ref={sheet}
         className={cn(
           "relative bg-surface",
-          "max-md:rounded-t-[22px] max-md:px-4.5 max-md:pb-[calc(16px+env(safe-area-inset-bottom))] max-md:shadow-bar max-md:[--sheet:1] max-md:motion-safe:animate-sheet-in",
+          "max-md:rounded-t-sheet max-md:px-4.5 max-md:pb-[calc(16px+env(safe-area-inset-bottom))] max-md:shadow-bar max-md:[--sheet:1] max-md:motion-safe:animate-sheet-in",
           "md:rounded-[18px] md:border md:border-border md:p-6 md:shadow-dialog md:motion-safe:animate-dialog-enter",
         )}
       >
@@ -131,7 +131,7 @@ export default function LoginPrompt({
         </button>
         <h2
           id="login-prompt-title"
-          className="pr-10 text-lg leading-tight font-semibold tracking-tight max-md:mt-3"
+          className="pr-10 text-title max-md:mt-3"
         >
           Logg inn
         </h2>

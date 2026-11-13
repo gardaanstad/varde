@@ -85,7 +85,7 @@ export default function ActionSheet({
       tabIndex={-1}
       className={cn(
         "m-auto mb-0 w-full max-w-none overflow-visible border-0 bg-transparent p-0 text-ink outline-none",
-        "backdrop:bg-ink/25 motion-safe:backdrop:animate-backdrop-in",
+        "backdrop:bg-scrim/25 motion-safe:backdrop:animate-backdrop-in",
       )}
       onCancel={(event) => {
         event.preventDefault();
@@ -97,7 +97,7 @@ export default function ActionSheet({
     >
       <div
         ref={sheet}
-        className="rounded-t-[22px] bg-surface px-2 pb-[calc(10px+env(safe-area-inset-bottom))] shadow-bar motion-safe:animate-sheet-in"
+        className="rounded-t-sheet bg-surface px-2 pb-[calc(10px+env(safe-area-inset-bottom))] shadow-bar motion-safe:animate-sheet-in"
       >
         <div aria-hidden="true" className="flex justify-center pt-2 pb-3">
           <span className="h-1 w-9 rounded-full bg-ink/15" />

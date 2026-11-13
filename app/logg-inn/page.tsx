@@ -21,7 +21,7 @@ export default async function LoginPage({
     redirect(session.user.username ? next : welcomeHref(next));
   return (
     <AuthShell back={authBackHref(next)}>
-      <h1 className="text-2xl leading-tight font-semibold tracking-tight text-ink">
+      <h1 className="text-display text-ink">
         Logg inn
       </h1>
       <p className="mt-2 mb-6 text-sm leading-6 text-muted">

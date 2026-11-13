@@ -19,12 +19,12 @@ import Link from "next/link";
 import {
   ArrowDownUp,
   Bell,
+  ChevronsLeft,
+  ChevronsRight,
   Inbox,
   RotateCcw,
   Map as MapIcon,
   MapPin,
-  PanelLeftClose,
-  PanelLeftOpen,
   Plus,
   LogIn,
   Search,
@@ -107,6 +107,7 @@ import {
 } from "./panel";
 import { takeLoginIntent } from "../lib/login-intent";
 import { cn } from "../lib/cn";
+import ThemeToggle from "./theme-toggle";
 import { openProfileEvent } from "../lib/profile-overlay";
 import ProfileOverlay from "./profile-overlay";
 import SuggestionList from "./suggestion-list";
@@ -120,8 +121,10 @@ import {
 } from "./sidebar-panel";
 import {
   iconButton,
+  pillButton,
   primaryButton,
   secondaryButton,
+  sortChoice,
   statusTone,
   textButton,
 } from "../lib/ui";
@@ -208,12 +211,12 @@ const secondaryAction = cn(
 const quietAction = cn(textButton, "min-h-11 text-xs");
 const compactIconAction = cn(iconButton, "rounded-lg");
 const chip =
-  "inline-flex min-h-7 items-center gap-1 rounded-full bg-accent-soft pr-1.75 pl-2.5 text-xs font-[550] text-accent-strong hover:bg-accent/16";
+  "inline-flex min-h-7 items-center gap-1 rounded-full bg-accent-soft pr-1.75 pl-2.5 text-xs font-medium text-accent-strong hover:bg-accent/16";
 /** Marks the avatar when a member's suggestions have been reviewed. */
 const reviewedDot =
   "absolute -top-0.5 -right-0.5 size-2.75 rounded-full border-2 border-surface bg-accent";
 const countBadge =
-  "inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-white tabular-nums";
+  "inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-on-accent tabular-nums";
 
 // Under "Vis flere" in the category filter.
 const lessUsedCategories = new Set<string>([
@@ -280,14 +283,6 @@ const inlineChoiceClasses = [
   "[&_[data-slot=choice-option]]:min-h-11 [&_[data-slot=choice-menu][data-open=false]]:hidden",
   "max-xs:[&_[data-slot=choice-trigger]]:gap-1 max-xs:[&_[data-slot=choice-trigger]]:px-1.5 max-xs:[&_[data-slot=choice-trigger]]:text-[14px]",
 ].join(" ");
-const sortChoiceClasses = [
-  "w-auto",
-  "[&_[data-slot=choice-trigger]]:min-h-10 [&_[data-slot=choice-trigger]]:gap-1.5 [&_[data-slot=choice-trigger]]:border-transparent [&_[data-slot=choice-trigger]]:bg-transparent! [&_[data-slot=choice-trigger]]:px-2 [&_[data-slot=choice-trigger]]:text-ui [&_[data-slot=choice-trigger]]:text-muted",
-  "md:[&_[data-slot=choice-trigger]]:hover:bg-ink/[0.05]! md:[&_[data-slot=choice-trigger]]:hover:text-ink",
-  "[&_[data-slot=choice-menu]]:right-0 [&_[data-slot=choice-menu]]:left-auto [&_[data-slot=choice-menu]]:min-w-[205px] [&_[data-slot=choice-menu][data-open=false]]:hidden",
-  "[&_[data-slot=choice-trigger]>svg:first-child]:max-md:hidden",
-].join(" ");
-
 // Panels open in drawers of their own over it (see panel.tsx); it stays
 // where it is under them, only dimmed, peeking out above them at full height.
 const explorerDrawerClasses = cn(
@@ -1174,18 +1169,23 @@ export default memo(function Explorer({
     // are in eased progress, the same the edge moves by.
     const toggle = aside.querySelector<HTMLElement>("[data-explorer-toggle]");
     const rest = aside.querySelector<HTMLElement>("[data-toggle-rest]");
+    const slot = aside.querySelector<HTMLElement>("[data-toggle-slot]");
     const modes = [modeFrom, sidebarMode];
     if (
       toggle &&
       rest &&
+      slot &&
       modes.includes("collapsed") &&
       modes.includes("normal")
     ) {
-      const end = `${sidebar - 56}px`; // At the header's end.
+      // Its place in the header, left of the maximize button.
+      const slotLeft =
+        slot.getBoundingClientRect().left - aside.getBoundingClientRect().left;
+      const end = `${slotLeft}px`;
       const left = `${rest.offsetLeft}px`;
       const meet = Math.min(
         1,
-        Math.max(0, (sidebar - 56 - rest.offsetLeft) / sidebar),
+        Math.max(0, (slotLeft - rest.offsetLeft) / sidebar),
       );
       const frames =
         sidebarMode === "collapsed"
@@ -1367,9 +1367,8 @@ export default memo(function Explorer({
       className={cn(
         "flex min-h-11 items-center whitespace-nowrap font-bold text-ink",
         "transition-colors hover:text-accent motion-reduce:transition-none",
-        isMobile
-          ? "gap-1.5 text-xl tracking-[-0.9px]"
-          : "gap-2 text-xl tracking-[-0.8px]",
+        "text-xl tracking-[-0.04em]",
+        isMobile ? "gap-1.5" : "gap-2",
       )}
       href="/"
       aria-label="Varde hjem"
@@ -1501,7 +1500,13 @@ export default memo(function Explorer({
         aria-hidden={searchOpen || undefined}
       >
         {filters}
-        <div className="ml-auto flex shrink-0 items-center pl-1">
+        <div
+          className={cn(
+            "ml-auto flex shrink-0 items-center pl-1",
+            // The glyph, not the button, ends on the list's edge.
+            !isMobile && "-mr-2.5",
+          )}
+        >
           {searchButton}
         </div>
       </div>
@@ -1645,7 +1650,7 @@ export default memo(function Explorer({
     <ChoiceSelect
       label="Sorter prosjekter"
       value={sort}
-      className={sortChoiceClasses}
+      className={sortChoice}
       icon={<ArrowDownUp size={14} />}
       onChange={setSort}
       options={sortOptions}
@@ -1781,8 +1786,9 @@ export default memo(function Explorer({
     >
       <div
         className={cn(
-          "px-5 pb-8 max-md:px-4.5 max-md:pt-0 max-md:pb-6",
-          wide && "mx-auto w-full max-w-[880px]",
+          "pb-8 max-md:px-4.5 max-md:pt-0 max-md:pb-6",
+          // Maximized, both edges keep a scrollbar's gutter, so it is even.
+          wide ? "mx-auto w-full max-w-[880px] px-6" : "md:px-gutter-scroll",
         )}
       >
         {isMobile ? mobileFilters : desktopFilters}
@@ -1830,9 +1836,7 @@ export default memo(function Explorer({
               </ul>
             )}
           </div>
-          <div className={cn("shrink-0", !isMobile && "-mr-2")}>
-            {sortFilter}
-          </div>
+          {sortFilter}
         </div>
         {listedProjects.length === 0 ? (
           <EmptyState
@@ -1887,7 +1891,7 @@ export default memo(function Explorer({
   const missingProject = (
     <div className="flex min-h-[250px] flex-col items-center justify-center gap-[18px] px-6 py-[55px] text-center text-muted">
       <MapPin size={28} />
-      <h2 className="text-base font-semibold text-ink">
+      <h2 className="text-body font-medium text-ink">
         Prosjektet finnes ikke
       </h2>
       <button className={primaryCta} onClick={() => closePost()}>
@@ -1995,8 +1999,8 @@ export default memo(function Explorer({
     <button
       type="button"
       className={cn(
-        "ml-1 inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border-strong pr-3 pl-2.5 text-ui font-semibold text-ink",
-        "transition-[background-color,border-color,transform] duration-150 hover:bg-ink/[0.04] active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100",
+        pillButton,
+        "ml-1 pl-3 active:scale-[0.97] motion-reduce:active:scale-100",
       )}
       aria-haspopup="dialog"
       data-login-button=""
@@ -2067,9 +2071,9 @@ export default memo(function Explorer({
       onClick={toggleCollapsed}
     >
       {sidebarMode === "collapsed" ? (
-        <PanelLeftOpen size={20} />
+        <ChevronsRight size={18} />
       ) : (
-        <PanelLeftClose size={20} />
+        <ChevronsLeft size={18} />
       )}
     </button>
   );
@@ -2146,7 +2150,7 @@ export default memo(function Explorer({
             onBack={!isMobile && sectionFrom === "profile" ? leaveFollowing : undefined}
           >
             <div
-              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-8 scrollbar-thin max-md:px-4.5"
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4.5 pb-8 scrollbar-thin md:px-gutter-scroll"
               data-followed-scroll=""
               data-drawer-scroll
             >
@@ -2247,6 +2251,7 @@ export default memo(function Explorer({
                 </button>
               )}
               {followingButton}
+              <ThemeToggle tooltip={false} />
               {profileButton}
             </div>
           </div>
@@ -2349,7 +2354,7 @@ export default memo(function Explorer({
             // in the corner of the page, its shadow fading with the list.
             <div
               className={cn(
-                "absolute top-0 left-0 z-30 flex h-16 items-center gap-2 rounded-br-2xl bg-surface pr-2 pl-4",
+                "absolute top-0 left-0 z-30 flex h-16 items-center gap-2 rounded-br-2xl bg-surface pr-2 pl-6",
                 "transition-shadow duration-320 ease-out-soft starting:shadow-none",
                 sidebarMode === "collapsed" && "shadow-[2px_2px_16px_rgb(20_28_24/0.12)]",
               )}
@@ -2377,7 +2382,8 @@ export default memo(function Explorer({
               "absolute top-2.5 z-[35] transition-[left,opacity] duration-320 ease-out-soft motion-reduce:transition-none",
               "[[data-resizing]_&]:transition-none",
               sidebarMode !== "collapsed" &&
-                "left-[calc(var(--sidebar-width)-0.75rem-2.75rem)]",
+                // Left of the maximize button, the header's last.
+                "left-[calc(var(--sidebar-width)-0.75rem-5.625rem)]",
               sidebarMode === "maximized" && "pointer-events-none opacity-0",
             )}
             style={
@@ -2407,18 +2413,18 @@ export default memo(function Explorer({
           >
             <header
               className={cn(
-                "flex h-16 shrink-0 items-center justify-between gap-2 pr-3 pl-4",
-
+                "flex h-16 shrink-0 items-center justify-between gap-2 pr-3 pl-6",
               )}
               // Maximized, it spans the list's column: the logo over its
               // start, the controls over its end.
               style={
                 wide
                   ? {
+                      // Icon glyphs, not hit areas, end on the list's edge.
                       paddingLeft:
-                        "max(1rem, calc((100% - 880px) / 2 + 1.25rem))",
+                        "max(1.5rem, calc((100% - 880px) / 2 + 1.5rem))",
                       paddingRight:
-                        "max(0.75rem, calc((100% - 880px) / 2 + 1.25rem - 13px))",
+                        "max(0.75rem, calc((100% - 880px) / 2 + 0.75rem))",
                     }
                   : undefined
               }
@@ -2446,20 +2452,25 @@ export default memo(function Explorer({
                   </button>
                 )}
                 {followingButton}
+                <ThemeToggle />
                 {profileButton}
                 <span
                   aria-hidden="true"
                   className="mx-1.5 h-5 w-px shrink-0 bg-border"
                 />
+                {/* The sidebar toggle stands here (see below). */}
+                {sidebarMode !== "maximized" && (
+                  <span
+                    aria-hidden="true"
+                    className="size-11 shrink-0"
+                    data-toggle-slot=""
+                  />
+                )}
                 <MaximizeButton
                   maximized={sidebarMode === "maximized"}
                   onToggle={sidebarMode === "maximized" ? minimize : maximize}
                   labels={["Vis som helside", "Vis kart"]}
                 />
-                {/* The sidebar toggle stands here (see below). */}
-                {sidebarMode !== "maximized" && (
-                  <span aria-hidden="true" className="size-11 shrink-0" />
-                )}
               </nav>
             </header>
             <div className="relative min-h-0 flex-1">

@@ -2,14 +2,35 @@ import { cn } from "./cn";
 
 export const controlBase = [
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4",
-  "text-sm font-semibold transition-[color,border-color,background-color,box-shadow,opacity,transform] duration-150",
+  "text-sm font-medium transition-[color,border-color,background-color,box-shadow,opacity,transform] duration-150",
   "disabled:pointer-events-none disabled:opacity-45",
   "active:translate-y-px motion-reduce:transition-none motion-reduce:active:translate-y-0",
 ].join(" ");
 
+/**
+ * An outlined pill with a label: the header's log-in button and a project's
+ * actions. Beside the filter pills, so the same height and type.
+ */
+export const pillButton = [
+  "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border-strong px-3.5 text-ui font-medium text-ink",
+  "transition-[color,background-color,border-color,transform] duration-150 hover:bg-surface-muted motion-reduce:transition-none",
+  "[&>svg]:shrink-0",
+].join(" ");
+
+/**
+ * The sort menu at the end of a count row (projects, comments, followed):
+ * muted text, its chevron on the content's edge.
+ */
+export const sortChoice = [
+  "-mr-2 w-auto shrink-0",
+  "[&_[data-slot=choice-trigger]]:min-h-9 [&_[data-slot=choice-trigger]]:gap-1.5 [&_[data-slot=choice-trigger]]:border-transparent [&_[data-slot=choice-trigger]]:bg-transparent! [&_[data-slot=choice-trigger]]:px-2 [&_[data-slot=choice-trigger]]:text-ui [&_[data-slot=choice-trigger]]:text-muted",
+  "md:[&_[data-slot=choice-trigger]]:hover:bg-ink/[0.05]! md:[&_[data-slot=choice-trigger]]:hover:text-ink",
+  "[&_[data-slot=choice-menu]]:right-0 [&_[data-slot=choice-menu]]:left-auto [&_[data-slot=choice-menu]]:min-w-[205px] [&_[data-slot=choice-menu][data-open=false]]:hidden",
+].join(" ");
+
 export const primaryButton = [
   controlBase,
-  "border border-accent bg-accent text-white shadow-xs",
+  "border border-accent bg-accent text-on-accent shadow-xs",
   "hover:border-accent-strong hover:bg-accent-strong",
 ].join(" ");
 
@@ -41,7 +62,7 @@ export const composerSend = cn(
 
 export const dangerButton = [
   controlBase,
-  "border border-danger bg-danger text-white shadow-xs",
+  "border border-danger bg-danger text-on-danger shadow-xs",
   "hover:border-danger-strong hover:bg-danger-strong",
 ].join(" ");
 
