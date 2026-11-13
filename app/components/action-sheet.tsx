@@ -18,7 +18,35 @@ export type SheetAction = {
   /** Greyed out for guests; choosing it asks them to log in. */
   locked?: boolean;
   pressed?: boolean;
+  /** A switch: on or off, shown on the right. */
+  checked?: boolean;
+  /** A second line under the label. */
+  detail?: string;
+  /** On the right, such as a count. */
+  trailing?: ReactNode;
+  /** Starts a new group, divided from the actions above. */
+  divided?: boolean;
 };
+
+/** The track and knob of an on/off switch, for a row that is one. */
+export function SwitchTrack({ on }: { on: boolean }) {
+  return (
+    <span
+      className={cn(
+        "flex h-5 w-8.5 shrink-0 items-center rounded-full p-0.5 transition-colors duration-150 motion-reduce:transition-none",
+        on ? "bg-accent" : "bg-border-strong",
+      )}
+      aria-hidden="true"
+    >
+      <span
+        className={cn(
+          "size-4 rounded-full bg-surface shadow-xs transition-transform duration-150 motion-reduce:transition-none",
+          on && "translate-x-3.5",
+        )}
+      />
+    </span>
+  );
+}
 
 /**
  * Phones: a modal list of actions, named by `label` for screen readers along the bottom edge, like the filter
@@ -104,7 +132,12 @@ export default function ActionSheet({
         </div>
         <ul className="flex flex-col gap-0.5">
           {actions.map((action) => (
-            <li key={action.id}>
+            <li
+              key={action.id}
+              className={cn(
+                action.divided && "mt-1.5 border-t border-border pt-1.5",
+              )}
+            >
               <button
                 type="button"
                 data-sheet-action={action.id}
@@ -115,6 +148,8 @@ export default function ActionSheet({
                     : undefined
                 }
                 aria-pressed={action.pressed}
+                role={action.checked !== undefined ? "switch" : undefined}
+                aria-checked={action.checked}
                 className={cn(
                   "flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-left text-body -outline-offset-2",
                   "transition-colors duration-150 active:bg-surface-muted motion-reduce:transition-none",
@@ -124,7 +159,16 @@ export default function ActionSheet({
                 onClick={() => close(action.onSelect)}
               >
                 {action.icon}
-                <span className="flex-1">{action.label}</span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  {action.label}
+                  {action.detail && (
+                    <span className="text-xs text-muted">{action.detail}</span>
+                  )}
+                </span>
+                {action.trailing}
+                {action.checked !== undefined && (
+                  <SwitchTrack on={action.checked} />
+                )}
                 {action.locked && <LogIn size={16} aria-hidden="true" />}
               </button>
             </li>

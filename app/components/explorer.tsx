@@ -81,6 +81,8 @@ import { profileHref } from "../lib/profiles";
 import { useAuth } from "./auth-provider";
 import { useCommunity } from "./community-provider";
 import AccountPanel from "./account-panel";
+import AccountMenu from "./account-menu";
+import { authClient } from "../lib/auth-client";
 import ProfileAvatar from "./profile-avatar";
 import ChoiceSelect from "./choice-select";
 import StatusDots from "./status-dots";
@@ -373,7 +375,13 @@ export default memo(function Explorer({
   const drawerContentRef = useRef<HTMLDivElement>(null);
   const drawerHandleRef = useRef<HTMLButtonElement>(null);
   const projectTriggerRef = useRef<HTMLElement | SVGElement | null>(null);
-  const { user, pending: authPending, canModerate, requireLogin } = useAuth();
+  const {
+    user,
+    pending: authPending,
+    canModerate,
+    setMemberView,
+    requireLogin,
+  } = useAuth();
   const {
     projects,
     following,
@@ -2084,33 +2092,59 @@ export default memo(function Explorer({
     drawerContentRef.current = node;
     if (node) setDrawerReady(true);
   };
-    const profileButton = user ? (
-    <button
-      className={cn(
-        "inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-transparent text-xs font-semibold text-muted",
-        "hover:bg-ink/[0.06] hover:text-ink active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100",
-      )}
-      aria-label={`Din profil${reviewed ? ` (${reviewed} behandlet)` : ""}`}
-      aria-haspopup="dialog"
-      aria-expanded={modal === "profile"}
-      data-press=""
-      data-tooltip={
-        isMobile || authPending
-          ? undefined
-          : user.username
-            ? `@${user.username}`
-            : "Velg brukernavn"
-      }
-      onClick={() => openProfile()}
-    >
-      {user.username ? (
+  async function signOut() {
+    const result = await authClient.signOut().catch(() => null);
+    if (!result || result.error)
+      return notify("Kunne ikke logge ut. Prøv igjen.", { error: true });
+    setModal(null);
+    setFollowingOnly(false);
+    if (suggestionsOpen) closeSuggestions();
+    notify("Du er logget ut");
+  }
+  function switchMemberView(on: boolean) {
+    setMemberView(on);
+    // The pending count and the like differ for a member: read them again.
+    void refresh().catch(() => {});
+    notify(on ? "Du ser appen som en vanlig bruker" : "Moderatorvisning er på");
+  }
+  const profileButtonClass = cn(
+    "inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-transparent text-xs font-semibold text-muted",
+    "hover:bg-ink/[0.06] hover:text-ink active:scale-[0.97] data-popup-open:bg-ink/[0.06] motion-reduce:transition-none motion-reduce:active:scale-100",
+  );
+  const profileButton = user?.username ? (
+    <AccountMenu
+      username={user.username}
+      mobile={isMobile}
+      unread={unread}
+      reviewed={reviewed}
+      suggestions={suggestions}
+      triggerClassName={profileButtonClass}
+      triggerLabel={`Konto${reviewed ? ` (${reviewed} behandlet)` : ""}`}
+      triggerTooltip={isMobile || authPending ? undefined : `@${user.username}`}
+      trigger={
         <span className="relative">
           <ProfileAvatar name={user.username} className="size-9 text-sm" />
           {reviewed > 0 && <span className={reviewedDot} />}
         </span>
-      ) : (
-        <User size={18} />
-      )}
+      }
+      onProfile={() => openProfile()}
+      onFollowing={showFollowing}
+      onSuggestions={() => openSuggestions()}
+      onSettings={() => openProfile("settings")}
+      onMemberView={switchMemberView}
+      onSignOut={() => void signOut()}
+    />
+  ) : user ? (
+    <button
+      className={profileButtonClass}
+      aria-label="Din profil"
+      aria-haspopup="dialog"
+      aria-expanded={modal === "profile"}
+      data-press=""
+      data-tooltip={isMobile || authPending ? undefined : "Velg brukernavn"}
+      onClick={() => openProfile()}
+    >
+      <User size={18} />
     </button>
   ) : (
     // Signed out, logging in is the header's one action: a label in the
@@ -2377,6 +2411,8 @@ export default memo(function Explorer({
             }
           >
             <SuggestionList
+              // A moderator viewing the app as a member sees a member's list.
+              key={canModerate ? "queue" : "mine"}
               embedded
               moderator={canModerate}
               onOpenProject={(id) => openPost(id)}
