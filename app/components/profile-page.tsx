@@ -134,7 +134,7 @@ export function ProfileContent({
           id={`${id}-contributions`}
           className="flex items-center gap-2 border-b border-border pb-2 text-body font-semibold"
         >
-          Innspill
+          Kommentarer
           {contributions.length > 0 && (
             <span className="text-ui font-normal text-muted tabular-nums">
               {contributions.length}
@@ -182,7 +182,7 @@ export function ProfileContent({
                   </p>
                   {comment.parentId && (
                     <span className="mt-1 block text-xs text-muted">
-                      Svar i samtalen
+                      Svar på kommentar
                     </span>
                   )}
                 </li>
@@ -191,7 +191,7 @@ export function ProfileContent({
           </ol>
         ) : (
           <p className="py-6 text-center text-sm text-muted">
-            Ingen innspill ennå
+            Ingen kommentarer ennå
           </p>
         )}
       </section>

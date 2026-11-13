@@ -195,7 +195,7 @@ test("comments use server identity; follows and votes stay with the correct acco
       action: "comment",
       projectId: project.id,
       updateId,
-      text: "Et nytt innspill",
+      text: "En ny kommentar",
       author: "admin",
       userId: second.id,
       votes: 1000,
@@ -209,7 +209,7 @@ test("comments use server identity; follows and votes stay with the correct acco
   );
   expect(created).toMatchObject({
     author: first.username,
-    text: "Et nytt innspill",
+    text: "En ny kommentar",
     votes: 0,
   });
   for (let i = 0; i < 2; i++)
@@ -558,7 +558,7 @@ test("comment failures preserve the draft and successful comments persist after 
   await signIn(context, person);
   await page.goto(`/prosjekt/${project.id}`);
   const composer = page.getByRole("textbox", { name: /^Kommenter / }).first();
-  const message = `Mitt innspill ${randomUUID()}`;
+  const message = `Min kommentar ${randomUUID()}`;
   await composer.fill(message);
   let fail = true;
   await page.route("**/api/community", async (route) => {
@@ -683,7 +683,7 @@ for (const viewport of [
       }),
     ).toBeVisible();
     await expect(
-      publicProfile.getByRole("heading", { name: /^Innspill/ }),
+      publicProfile.getByRole("heading", { name: /^Kommentarer/ }),
     ).toBeVisible();
     await expect.poll(bounds).toEqual(before);
     await shot(page, `public-profile-card-${viewport.width}`);

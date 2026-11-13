@@ -301,6 +301,70 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   });
 
+  test("a sideways swipe on the map pans it, not the browser's history", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const map = page.locator("[data-project-map] .leaflet-container");
+    await expect(map).toBeVisible();
+    // A move within Leaflet's click tolerance is left to the browser by
+    // Leaflet; that first move is when a browser with swipe navigation takes
+    // the gesture. Chromium holds such small moves back from the page, so
+    // they're dispatched directly.
+    const smallMoveCancelled = await map.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const touch = (x: number) =>
+        new Touch({
+          identifier: 1,
+          target: element,
+          clientX: x,
+          clientY: rect.top + 100,
+        });
+      const event = (type: string, x: number) =>
+        new TouchEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          touches: type === "touchend" ? [] : [touch(x)],
+          changedTouches: [touch(x)],
+        });
+      const x = rect.left + 40;
+      element.dispatchEvent(event("touchstart", x));
+      const move = event("touchmove", x + 1);
+      element.dispatchEvent(move);
+      element.dispatchEvent(event("touchend", x + 1));
+      return move.defaultPrevented;
+    });
+    expect(smallMoveCancelled).toBe(true);
+    const pane = page.locator("[data-project-map] .leaflet-map-pane");
+    const before = await pane.evaluate((element) => element.style.transform);
+    const box = (await map.boundingBox())!;
+    const x = box.x + 40;
+    const y = box.y + Math.min(box.height / 2, 120);
+    const session = await page.context().newCDPSession(page);
+    try {
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [{ x, y }],
+      });
+      for (let step = 1; step <= 12; step++) {
+        await session.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x: x + step * 15, y }],
+        });
+        await page.waitForTimeout(16);
+      }
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchEnd",
+        touchPoints: [],
+      });
+    } finally {
+      await session.detach();
+    }
+    await expect
+      .poll(() => pane.evaluate((element) => element.style.transform))
+      .not.toBe(before);
+  });
+
   test("a sheet is dragged closed from its top, and springs back from a short drag", async ({
     page,
   }) => {
@@ -439,6 +503,30 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     expect(reachable).toBe(true);
     await last.click();
     await expect(place).toBeHidden();
+  });
+
+  test("a tap switches the map layer, though Safari doesn't focus what it taps", async ({
+    page,
+  }) => {
+    // As in Safari: pressing a button leaves focus on the body, not the button.
+    await page.addInitScript(() =>
+      document.addEventListener(
+        "mousedown",
+        (event) => {
+          if (!(event.target as Element).closest("button")) return;
+          event.preventDefault();
+          (document.activeElement as HTMLElement | null)?.blur();
+        },
+        true,
+      ),
+    );
+    await page.goto("/");
+    const map = page.locator("[data-project-map]");
+    await expect(map).toHaveAttribute("data-map-style", "standard");
+    await page.getByRole("button", { name: "Kartlag", exact: true }).tap();
+    await page.getByRole("button", { name: "Gatekart", exact: true }).tap();
+    await expect(map).toHaveAttribute("data-map-style", "streets");
+    await expect(page.getByRole("group", { name: "Kartlag" })).toBeHidden();
   });
 
   test("review screenshots at 390px", async ({ page }) => {
@@ -777,7 +865,7 @@ test.describe("desktop explorer", () => {
     await shot(page, "list-expanded-hover");
 
     // Like a feed post: the counts and follow sit under the photos.
-    const comments = first.getByRole("button", { name: /^\d+ innspill$/ });
+    const comments = first.getByRole("button", { name: /^\d+ kommentarer?$/ });
     const [galleryBox, commentsBox] = await Promise.all([
       gallery.boundingBox(),
       comments.boundingBox(),
@@ -787,7 +875,7 @@ test.describe("desktop explorer", () => {
     // The comment count opens the project at its discussion.
     await comments.click();
     await expect(
-      page.getByRole("button", { name: /^Diskusjon/ }),
+      page.getByRole("button", { name: /^Kommentarer/ }),
     ).toBeInViewport();
     await page.goBack();
 
