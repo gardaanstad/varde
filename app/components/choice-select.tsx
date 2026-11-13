@@ -568,7 +568,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
           className={cn(
             "relative flex min-h-0 flex-col",
             sheet && [
-              "max-h-[min(66dvh,500px)] overflow-hidden rounded-t-[22px] border-t border-border bg-surface shadow-bar",
+              "max-h-[min(66dvh,500px)] overflow-hidden rounded-t-sheet border-t border-border bg-surface shadow-bar",
               "motion-safe:animate-sheet-in",
             ],
           )}
