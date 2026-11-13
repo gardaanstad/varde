@@ -96,6 +96,8 @@
   --shadow-panel: 0 20px 60px rgb(20 28 24 / 0.14);
   --shadow-dialog: 0 24px 80px rgb(20 28 24 / 0.2);
   --radius-panel: 1.5rem;
+  /* Every sheet and drawer rising from a phone's bottom edge. */
+  --radius-sheet: 22px;
 
   /*
    * Breakpoints, used as `max-*` (width below). The mobile layout is

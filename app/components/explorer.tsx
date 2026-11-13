@@ -1185,18 +1185,23 @@ export default memo(function Explorer({
     // are in eased progress, the same the edge moves by.
     const toggle = aside.querySelector<HTMLElement>("[data-explorer-toggle]");
     const rest = aside.querySelector<HTMLElement>("[data-toggle-rest]");
+    const slot = aside.querySelector<HTMLElement>("[data-toggle-slot]");
     const modes = [modeFrom, sidebarMode];
     if (
       toggle &&
       rest &&
+      slot &&
       modes.includes("collapsed") &&
       modes.includes("normal")
     ) {
-      const end = `${sidebar - 56}px`; // At the header's end.
+      // Its place in the header, left of the maximize button.
+      const slotLeft =
+        slot.getBoundingClientRect().left - aside.getBoundingClientRect().left;
+      const end = `${slotLeft}px`;
       const left = `${rest.offsetLeft}px`;
       const meet = Math.min(
         1,
-        Math.max(0, (sidebar - 56 - rest.offsetLeft) / sidebar),
+        Math.max(0, (slotLeft - rest.offsetLeft) / sidebar),
       );
       const frames =
         sidebarMode === "collapsed"
@@ -2514,7 +2519,11 @@ export default memo(function Explorer({
                 />
                 {/* The sidebar toggle stands here (see below). */}
                 {sidebarMode !== "maximized" && (
-                  <span aria-hidden="true" className="size-11 shrink-0" />
+                  <span
+                    aria-hidden="true"
+                    className="size-11 shrink-0"
+                    data-toggle-slot=""
+                  />
                 )}
                 <MaximizeButton
                   maximized={sidebarMode === "maximized"}

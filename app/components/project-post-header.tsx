@@ -21,7 +21,7 @@ import { EditField, editState, useProjectEdit } from "./project-edit";
 
 const headerIconButton = cn(
   iconButton,
-  "rounded-lg max-md:size-10 active:scale-100 active:text-accent pointer-fine:active:scale-[0.97]",
+  "rounded-lg max-md:size-10 active:scale-100 pointer-fine:active:scale-[0.97]",
 );
 
 /** Desktop: the project's own actions, outlined pills with a label. */

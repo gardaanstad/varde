@@ -286,7 +286,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
     );
   }
 
-  /** Leads with a check in grouped menus, where several can be chosen. */
+  /** Checks a chosen row where several can be chosen, and on phones. */
   const check = (chosen: boolean, size: number, alone: boolean) => (
     <Check
       size={size}
@@ -318,19 +318,17 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
           "flex w-full shrink-0 items-center rounded-lg border border-transparent text-left -outline-offset-2",
           // Hover and focus tint at once; only colour changes ease.
           "transition-[color,border-color] duration-150 motion-reduce:transition-none",
-          "focus-visible:bg-surface-muted aria-selected:font-medium",
+          // Chosen reads in accent; hover tints every row alike.
+          "focus-visible:bg-surface-muted aria-selected:font-medium aria-selected:text-accent-strong",
           sheet
             ? "min-h-12! gap-3 px-3 text-body active:bg-surface-muted"
             : [
                 "min-h-9 gap-2 px-2.5 py-1.5 text-ui hover:bg-surface-muted",
-                // Several can be chosen: each chosen one is checked instead.
-                !grouped &&
-                  !multiple &&
-                  "aria-selected:border-border-strong aria-selected:hover:bg-transparent",
+                // One choice: outlined like a chosen group, not checked.
+                !grouped && !multiple && "aria-selected:border-border-strong",
               ],
           // Grouped: the group's outline marks what's chosen.
           grouped && [
-            "aria-selected:text-accent-strong",
             // Inside the group's outline, the row's corners follow it.
             option.children?.length && "rounded-[9px]",
             open && "font-medium",
@@ -363,7 +361,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
           <span
             className={cn(
               "ml-auto text-xs text-muted tabular-nums",
-              grouped && chosen && "text-accent-strong/70",
+              chosen && "text-accent-strong/70",
             )}
           >
             {option.count}
@@ -568,7 +566,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
           className={cn(
             "relative flex min-h-0 flex-col",
             sheet && [
-              "max-h-[min(66dvh,500px)] overflow-hidden rounded-t-[22px] border-t border-border bg-surface shadow-bar",
+              "max-h-[min(66dvh,500px)] overflow-hidden rounded-t-sheet border-t border-border bg-surface shadow-bar",
               "motion-safe:animate-sheet-in",
             ],
           )}
