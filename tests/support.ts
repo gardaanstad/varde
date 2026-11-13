@@ -120,3 +120,17 @@ export function png(width = 40, height = 30) {
     chunk("IEND", Buffer.alloc(0)),
   ]);
 }
+
+/** The avatar's menu: a dropdown on desktop, a sheet on phones. */
+export function accountMenuItem(page: Page, name: string | RegExp) {
+  return page
+    .getByRole("menuitem", { name })
+    .or(page.getByRole("dialog", { name: "Konto" }).getByRole("button", { name }))
+    .or(page.getByRole("menuitemcheckbox", { name }))
+    .or(page.getByRole("dialog", { name: "Konto" }).getByRole("switch", { name }));
+}
+/** Opens one's own profile from the avatar's menu. */
+export async function openOwnProfile(page: Page) {
+  await page.getByRole("button", { name: "Konto", exact: true }).click();
+  await accountMenuItem(page, /Din profil/).click();
+}

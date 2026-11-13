@@ -7,7 +7,7 @@ import {
 } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { seedProjects } from "../app/lib/data";
-import { member, shot, signIn } from "./support";
+import { accountMenuItem, member, openOwnProfile, shot, signIn } from "./support";
 
 const project = seedProjects[0];
 const projectPath = `/prosjekt/${project.id}`;
@@ -215,7 +215,7 @@ test.describe("mobile panels", () => {
         .evaluate((element) => getComputedStyle(element).transform);
     const transform = await scale();
 
-    await page.getByRole("button", { name: "Din profil", exact: true }).click();
+    await openOwnProfile(page);
     const account = page.locator('[data-panel-drawer="account"]');
     await expect(account.locator("[data-account-panel]")).toBeVisible();
     await expect.poll(() => top(page, '[data-panel-drawer="account"]')).toBeGreaterThan(before);
@@ -442,7 +442,7 @@ test.describe("flows stay in the explorer", () => {
     await account.getByRole("button", { name: "Tilbake", exact: true }).click();
 
     await page.goto("/?kart=59.9100,10.7500,13");
-    await page.getByRole("button", { name: "Din profil", exact: true }).click();
+    await openOwnProfile(page);
     await account
       .getByRole("button", { name: "Kontoinnstillinger", exact: true })
       .click();
@@ -453,6 +453,98 @@ test.describe("flows stay in the explorer", () => {
     await expect(account).toHaveCount(0);
     await expect(page.getByText("Du er logget ut")).toBeVisible();
     await expect(page).toHaveURL(/:\d+\/\?kart=59\.91/);
+  });
+});
+
+test.describe("account menu", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test("the avatar opens a menu of one's own places, and logs out", async ({
+    page,
+    context,
+  }) => {
+    const person = await member({ username: `menu_${randomUUID().slice(0, 8)}` });
+    await signIn(context, person);
+    await page.goto("/?kart=59.9100,10.7500,13");
+    const trigger = page.getByRole("button", { name: "Konto", exact: true });
+    await trigger.click();
+    const menu = page.getByRole("menu", { name: "Konto" });
+    await expect(menu.getByRole("menuitem")).toHaveText([
+      new RegExp(`@${person.username}\\s*Din profil`),
+      "Følger",
+      "Forslag",
+      "Kontoinnstillinger",
+      "Logg ut",
+    ]);
+    // Members have no moderator's view to leave.
+    await expect(menu.getByRole("menuitemcheckbox")).toHaveCount(0);
+    await shot(page, "account-menu");
+
+    await menu.getByRole("menuitem", { name: "Kontoinnstillinger" }).click();
+    const account = page.locator('[data-sidebar-panel="account"]');
+    await expect(
+      account.getByRole("heading", { name: "Kontoinnstillinger" }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(account).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+
+    await trigger.click();
+    await menu.getByRole("menuitem", { name: "Følger" }).click();
+    const following = page.locator('[data-sidebar-panel="following"]');
+    await expect(following).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(following).toHaveCount(0);
+
+    await trigger.click();
+    await menu.getByRole("menuitem", { name: "Logg ut" }).click();
+    await expect(page.getByText("Du er logget ut")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Logg inn", exact: true }).first(),
+    ).toBeVisible();
+    await expect(page).toHaveURL(/:\d+\/\?kart=59\.91/);
+  });
+
+  test("moderators can view the app, and its rights, as a member", async ({
+    page,
+    context,
+  }) => {
+    const moderator = await member({
+      username: `menu_mod_${randomUUID().slice(0, 8)}`,
+      email: "menu-moderator@example.test",
+    });
+    await signIn(context, moderator);
+    // Wide enough that every header action fits beside the others.
+    await page.setViewportSize({ width: 1680, height: 900 });
+    await page.goto("/");
+    const queue = page.getByRole("link", { name: /^Forslag/ });
+    const add = page.getByRole("button", { name: "Legg til prosjekt", exact: true });
+    const suggest = page.getByRole("button", { name: "Foreslå prosjekt", exact: true });
+    await expect(queue).toBeVisible();
+    await expect(add).toBeVisible();
+    const osm = () => page.request.get("/api/osm-candidates");
+    expect((await osm()).status()).not.toBe(403);
+
+    const trigger = page.getByRole("button", { name: "Konto", exact: true });
+    await trigger.click();
+    const toggle = accountMenuItem(page, "Vis som vanlig bruker");
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await toggle.click();
+    await expect(queue).toHaveCount(0);
+    await expect(add).toHaveCount(0);
+    await expect(suggest).toBeVisible();
+    // The server gives a member's rights too, and keeps them over reloads.
+    expect((await osm()).status()).toBe(403);
+    await page.reload();
+    await expect(suggest).toBeVisible();
+    await expect(queue).toHaveCount(0);
+    await trigger.click();
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+
+    await toggle.click();
+    await expect(queue).toBeVisible();
+    await expect(add).toBeVisible();
+    expect((await osm()).status()).not.toBe(403);
   });
 });
 

@@ -290,7 +290,10 @@ test("on touch screens a row's menu unfollows", async ({
   await signIn(context, reader);
   const page = await context.newPage();
   await page.goto("/");
-  const entry = page.getByRole("button", { name: "Følger", exact: true });
+  // The header entry, not a followed card's own button.
+  const entry = page
+    .getByRole("button", { name: "Følger", exact: true })
+    .and(page.locator(":not([data-card-id] *)"));
   // The server renders the entry, so a tap can land before hydration.
   await expect(async () => {
     await entry.tap();

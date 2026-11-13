@@ -2,8 +2,8 @@ import { throttle } from "@/app/lib/server/community";
 import {
   api,
   HttpError,
-  isModerator,
   json,
+  moderates,
   requireOrigin,
   requireUser,
 } from "@/app/lib/server/http";
@@ -14,7 +14,7 @@ export function POST(request: Request) {
   return api(async () => {
     requireOrigin(request);
     const member = await requireUser(request);
-    const moderator = isModerator(member);
+    const moderator = moderates(member, request.headers);
     if (Number(request.headers.get("content-length")) > maxUploadBytes + 10_000)
       throw new HttpError(413, "Bildet er for stort.");
     await throttle(member.id);
