@@ -217,6 +217,9 @@ const drawerSnapPoints: DrawerSnapPoint[] = [
   middleSnapPoint,
   1,
 ];
+// A project opened from the map rests at the list's middle height, so the
+// map's inset and controls stay where they were.
+const projectSnapPoints: DrawerSnapPoint[] = [middleSnapPoint, 1];
 const primaryCta = cn(primaryButton, "rounded-lg px-4 text-xs");
 const secondaryAction = cn(
   secondaryButton,
@@ -404,6 +407,12 @@ export default memo(function Explorer({
   // Where in the project to open: an update, or a comment in the discussion.
   const [postTarget, setPostTarget] = useState<FollowedTarget>({});
   const [postId, setPostId] = useState<string | null>(initialProjectId || null);
+  // Phones: a project tapped on the map opens at the middle height, over the
+  // map centered on it; dragged up, it takes the full height.
+  const [postSnap, setPostSnap] = useState<{
+    id: string;
+    point: DrawerSnapPoint;
+  } | null>(null);
   // Desktop: the sidebar, and every panel on it, fills the window.
   const [maximized, setMaximized] = useState(Boolean(initial.full));
   // Desktop: the explorer list hidden, the map at full width. Panels still
@@ -1011,6 +1020,7 @@ export default memo(function Explorer({
       withSearch(projectHref(id)),
     );
     setPostTarget({});
+    setPostSnap(null);
     setPostId(id);
     setSelectedId(id);
     enterPostView(id);
@@ -1040,8 +1050,18 @@ export default memo(function Explorer({
     slot.toggleAttribute("data-covered", covered);
   }, []);
 
-  function openPost(id: string, target: FollowedTarget = {}) {
+  function openPost(
+    id: string,
+    target: FollowedTarget = {},
+    fromMap = false,
+  ) {
     setPostTarget(target);
+    setPostSnap(
+      isMobile && fromMap ? { id, point: middleSnapPoint } : null,
+    );
+    const project = projects.find((item) => item.id === id);
+    if (isMobile && fromMap && project)
+      mapApi.current?.center(projectPoints(project));
     projectTriggerRef.current =
       document.activeElement instanceof HTMLElement ||
       document.activeElement instanceof SVGElement
@@ -2386,6 +2406,16 @@ export default memo(function Explorer({
         onClosed={() =>
           setExiting((current) => current.filter((item) => item !== layer))
         }
+        snap={
+          layer === "project" && postSnap?.id === panelPostId
+            ? {
+                points: projectSnapPoints,
+                point: postSnap.point,
+                onChange: (point) =>
+                  setPostSnap((current) => current && { ...current, point }),
+              }
+            : undefined
+        }
       >
         {layerContent(layer)}
       </PanelDrawer>
@@ -2623,7 +2653,9 @@ export default memo(function Explorer({
             controlsContainer={isMobile ? controlsSlot : undefined}
             selectedId={selectedId}
             highlightedId={hoveredId}
-            onSelect={(id) => (id ? openPost(id) : setSelectedId(postId))}
+            onSelect={(id) =>
+              id ? openPost(id, {}, true) : setSelectedId(postId)
+            }
             osm={osm.layer}
             overlays={
               osm.allowed
@@ -2726,8 +2758,9 @@ export default memo(function Explorer({
                     "absolute inset-x-0 bottom-full h-0",
                     "transition-[opacity,visibility] duration-150 motion-reduce:transition-none",
                     "data-covered:invisible data-covered:opacity-0",
-                    // A panel covers the map, all but a sliver.
-                    "group-data-panel-open/drawer-popup:invisible group-data-panel-open/drawer-popup:opacity-0",
+                    // A panel covers the map, all but a sliver, unless it
+                    // rests at the middle height over it.
+                    "group-data-map-covered/drawer-popup:invisible group-data-map-covered/drawer-popup:opacity-0",
                     // 14px clear of the drawer's top border.
                     "[&_[data-map-controls]]:bottom-[15px]!",
                   )}
@@ -2735,6 +2768,15 @@ export default memo(function Explorer({
               }
               data-explorer-drawer=""
               data-panel-open={liveLayers.length > 0 || undefined}
+              data-map-covered={
+                (liveLayers.length > 0 &&
+                  !(
+                    topLayer === "project" &&
+                    postSnap?.id === postId &&
+                    postSnap.point !== 1
+                  )) ||
+                undefined
+              }
               className={cn(
                 explorerDrawerClasses,
                 // Let Base UI swipe the drawer before its content starts scrolling.

@@ -16,6 +16,7 @@ import {
   DrawerContent,
   DrawerTitle,
   DrawerVirtualKeyboardProvider,
+  type DrawerSnapPoint,
 } from "./drawer";
 import {
   controlButton,
@@ -74,6 +75,7 @@ export function PanelDrawer({
   onDismiss,
   onOpened,
   onClosed,
+  snap,
   children,
 }: {
   name: string;
@@ -91,6 +93,16 @@ export function PanelDrawer({
   onDismiss: () => void;
   onOpened?: () => void;
   onClosed: () => void;
+  /**
+   * Heights it rests at, as on the explorer's drawer; without them it opens
+   * at full height. Below the full height, a swipe on the content moves the
+   * drawer instead of scrolling it.
+   */
+  snap?: {
+    points: DrawerSnapPoint[];
+    point: DrawerSnapPoint;
+    onChange: (point: DrawerSnapPoint) => void;
+  };
   children: ReactNode;
 }) {
   // Mounted open, Base UI shows a drawer in place. One opened after the page
@@ -107,6 +119,13 @@ export function PanelDrawer({
       open={open && entered}
       modal={false}
       disablePointerDismissal
+      snapPoints={snap?.points}
+      snapToSequentialPoints={snap ? true : undefined}
+      snapPoint={snap?.point}
+      onSnapPointChange={(point) => {
+        // Below the lowest point it closes, through onOpenChange.
+        if (point !== null) snap?.onChange(point);
+      }}
       onOpenChange={(next, details) => {
         if (next) return;
         // Escape belongs to the panel on top (see `Panel`).
@@ -122,7 +141,26 @@ export function PanelDrawer({
           }}
           data-panel-drawer={name}
           data-project-drawer={name === "project" ? "" : undefined}
-          className={panelDrawerClasses}
+          data-snap={snap && snap.point !== 1 ? "partial" : undefined}
+          className={cn(
+            panelDrawerClasses,
+            snap &&
+              snap.point !== 1 &&
+              "[&_[data-drawer-scroll]]:overflow-y-hidden",
+          )}
+          onWheel={(event) => {
+            if (
+              !snap ||
+              snap.point === 1 ||
+              event.ctrlKey ||
+              event.deltaY <= 4 ||
+              Math.abs(event.deltaX) > Math.abs(event.deltaY) ||
+              (event.target instanceof Element &&
+                event.target.closest("[popover], dialog"))
+            )
+              return;
+            snap.onChange(1);
+          }}
           viewportClassName={stackLayers[Math.min(index, stackLayers.length - 1)]}
           contentClassName={panelDrawerInnerClasses}
           initialFocus={false}

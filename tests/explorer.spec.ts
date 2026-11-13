@@ -247,7 +247,8 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     await expect(shape).toBeVisible();
     await shape.press("Enter");
     await expect(page).toHaveURL(atProject);
-    await expectDrawerHeight(page, 1, "project");
+    // Opened from the map, it rests at the middle height over it.
+    await expectDrawerHeight(page, 0.58, "project");
     // Swiping the project away returns to the map just as it was left.
     await swipeDown(page, projectDrawer.locator("[aria-hidden]").first());
     await expect(page).toHaveURL(atList);
@@ -260,6 +261,47 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
         ),
       )
       .toBe(true);
+  });
+
+  test("a project tapped on the map opens at the middle height, centered above it", async ({
+    page,
+  }) => {
+    await page.goto("/?kart=59.9100,10.7500,13");
+    const shape = page.locator(`path[data-project-id="${project.id}"]`);
+    // Other tests' projects can lie on top of it, so the press is dispatched.
+    await shape.dispatchEvent("pointerdown");
+    await shape.dispatchEvent("click");
+    await expect(page).toHaveURL(atProject);
+    await expectDrawerHeight(page, 0.58, "project");
+    // Centered in the map the drawer leaves open, at the same zoom.
+    await expect
+      .poll(() =>
+        shape.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          return [
+            Math.round(box.x + box.width / 2 - window.innerWidth / 2),
+            Math.round(box.y + box.height / 2 - (window.innerHeight * 0.42) / 2),
+          ];
+        }),
+      )
+      .toEqual([expect.closeTo(0, -1), expect.closeTo(0, -1)]);
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("kart"))
+      .toMatch(/,13$/);
+    // The map's controls stay above it; at full height they are covered.
+    const controls = page.locator("[data-map-controls]");
+    await expect(controls).toBeVisible();
+    const drawer = page.locator("[data-project-drawer]");
+    await drawer.locator("[data-project-scroll]").hover();
+    await page.mouse.wheel(0, 300);
+    await expectDrawerHeight(page, 1, "project");
+    await expect(controls).toBeHidden();
+    await page
+      .getByRole("button", { name: "Lukk prosjekt", exact: true })
+      .click();
+    await expect(page).toHaveURL(atList);
+    await expect(drawer).toBeHidden();
+    await expectDrawerHeight(page, 0.58);
   });
 
   test("wheel and touch expand the map drawer before scrolling list, project, and account content", async ({

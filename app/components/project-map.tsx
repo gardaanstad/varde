@@ -200,6 +200,11 @@ export type MapApi = {
       maxZoom?: number;
     },
   ) => void;
+  /**
+   * Centers the points in the part of the map a sheet leaves open, at the
+   * current zoom; zoomed far out, it zooms in to frame them.
+   */
+  center: (points: Point[], options?: { bottom?: number; maxZoom?: number }) => void;
   show: (view: MapView) => void;
   showNorway: () => void;
   /**
@@ -656,6 +661,32 @@ export default function ProjectMap({
             animate: !reducedMotion(),
           }),
         );
+      },
+      center(points, { bottom = inset(), maxZoom = 14 } = {}) {
+        if (!points.length) return;
+        settled(() => {
+          const bounds = L.latLngBounds(points);
+          const padding = L.point(128, 128 + bottom);
+          const framing = Math.min(
+            map.getBoundsZoom(bounds, false, padding),
+            maxZoom,
+          );
+          const current = map.getZoom();
+          // Far enough out that the project is a speck: frame it instead.
+          const zoom = current < framing - 4 ? framing : current;
+          const target = map.unproject(
+            map
+              .project(bounds.getSouthWest(), zoom)
+              .add(map.project(bounds.getNorthEast(), zoom))
+              .divideBy(2)
+              .add([0, bottom / 2]),
+            zoom,
+          );
+          if (reducedMotion()) map.setView(target, zoom, { animate: false });
+          else if (zoom !== current) map.flyTo(target, zoom, { duration: 0.8 });
+          // In step with the drawer sliding up (450ms, easing out).
+          else map.panTo(target, { duration: 0.45, easeLinearity: 0.2 });
+        });
       },
       show(view) {
         settled(() =>
