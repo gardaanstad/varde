@@ -482,10 +482,19 @@ export default function ProjectMap({
     resize.observe(element);
     // The container can also move without resizing.
     window.addEventListener("resize", sync);
+    // Browsers with swipe navigation anywhere on the page (Arc Search) take
+    // a sideways drag as back or forward unless the page cancels its first
+    // move. Leaflet only cancels moves past its click tolerance, so every
+    // move on the map is cancelled here. Touchstart isn't, so taps still click.
+    const claimTouch = (event: TouchEvent) => {
+      if (event.cancelable && map.dragging.enabled()) event.preventDefault();
+    };
+    element.addEventListener("touchmove", claimTouch, { passive: false });
     setReady(true);
     return () => {
       resize.disconnect();
       window.removeEventListener("resize", sync);
+      element.removeEventListener("touchmove", claimTouch);
       syncRef.current = () => {};
       mapRef.current = null;
       map.stop();
