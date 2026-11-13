@@ -253,7 +253,8 @@ export default memo(function ProjectCard({
           </div>
           {/* As tall as the text beside it, at 4:3. */}
           {hasPhoto(project) && (
-            <div className="relative h-16.5 w-22 shrink-0 overflow-hidden rounded-lg bg-surface-muted">
+            // A narrow sidebar gives the text the room.
+            <div className="relative h-16.5 w-22 shrink-0 overflow-hidden rounded-lg bg-surface-muted md:@max-[340px]/list:hidden">
               <Image
                 src={project.image}
                 alt=""
