@@ -819,7 +819,7 @@ test.describe("desktop explorer", () => {
     await shot(page, "list-expanded-hover");
 
     // Like a feed post: the counts and follow sit under the photos.
-    const comments = first.getByRole("button", { name: /^\d+ innspill$/ });
+    const comments = first.getByRole("button", { name: /^\d+ kommentarer?$/ });
     const [galleryBox, commentsBox] = await Promise.all([
       gallery.boundingBox(),
       comments.boundingBox(),
@@ -829,7 +829,7 @@ test.describe("desktop explorer", () => {
     // The comment count opens the project at its discussion.
     await comments.click();
     await expect(
-      page.getByRole("button", { name: /^Diskusjon/ }),
+      page.getByRole("button", { name: /^Kommentarer/ }),
     ).toBeInViewport();
     await page.goBack();
 
@@ -1289,6 +1289,76 @@ test.describe("desktop explorer", () => {
     // A double click returns to the default width.
     await handle.dblclick();
     await expect.poll(width).toBe(start);
+  });
+
+  test("as the list narrows, the header's actions move into a menu", async ({
+    page,
+    context,
+  }) => {
+    const moderator = await member({
+      username: `header_${randomUUID().slice(0, 8)}`,
+      email: "header-moderator@example.test",
+    });
+    await signIn(context, moderator);
+    await page.goto(oslo);
+    const header = page.locator("[data-explorer-header]");
+    const menu = header.getByRole("button", { name: "Flere valg" });
+    const handle = page.getByRole("separator", {
+      name: "Bredde på prosjektlisten",
+    });
+    // At its default width, every action fits.
+    await expect(header.getByRole("link", { name: "Forslag" })).toBeVisible();
+    await expect(header.locator("[data-sidebar-maximize]")).toBeVisible();
+    await expect(menu).toHaveCount(0);
+    await shot(page, "header-overflow-full");
+    const right = (selector: string) =>
+      page
+        .locator(selector)
+        .first()
+        .evaluate((element) => element.getBoundingClientRect().right);
+    // Narrowing a step at a time, actions leave one by one, dark mode first.
+    await handle.focus();
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowLeft");
+    await expect(menu).toBeVisible();
+    await expect(header.getByRole("switch", { name: "Mørk modus" })).toHaveCount(0);
+    await expect(header.getByRole("link", { name: "Forslag" })).toBeVisible();
+    // At its narrowest, only the profile and the sidebar toggle stay.
+    await page.keyboard.press("Home");
+    const min = Number(await handle.getAttribute("aria-valuemin"));
+    expect(min).toBeLessThan(340);
+    await expect(header.locator("[data-overflow-item]")).toHaveCount(0);
+    expect(await right("[data-explorer-nav]")).toBeLessThanOrEqual(min);
+    await expect
+      .poll(async () =>
+        Math.abs(
+          (await right("[data-explorer-toggle]")) -
+            (await right("[data-toggle-slot]")),
+        ),
+      )
+      .toBeLessThanOrEqual(1);
+    await shot(page, "header-overflow-narrow");
+    await page.locator("[data-card-id]").first().click();
+    await expect(page.locator("[data-project-layer]")).toBeVisible();
+    await shot(page, "header-overflow-project");
+    await page.keyboard.press("Escape");
+    await expect(page.locator("[data-project-layer]")).toHaveCount(0);
+    await menu.click();
+    const items = page.getByRole("menu").locator("[data-overflow-action]");
+    await expect(items).toHaveText([
+      "Forslag",
+      "Legg til prosjekt",
+      "Følger",
+      "Mørk modus",
+      "Vis som helside",
+    ]);
+    await shot(page, "header-overflow-menu");
+    // The menu's actions do what the buttons did.
+    await page.getByRole("menuitemcheckbox", { name: "Mørk modus" }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await menu.click();
+    await page.getByRole("menuitem", { name: "Forslag" }).click();
+    await expect(page.locator('[data-sidebar-layer="suggestions"]')).toBeVisible();
   });
 
   test("projects open in a panel beside the map and return to the list", async ({
