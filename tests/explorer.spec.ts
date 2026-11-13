@@ -742,31 +742,24 @@ test.describe("desktop explorer", () => {
     await expect(chip).toBeHidden();
   });
 
-  test("the list switches between compact rows and expanded cards", async ({
+  test("the list switches between expanded cards and compact rows", async ({
     page,
   }) => {
     await page.goto("/");
     const list = page.getByRole("region", { name: "Prosjektliste", exact: true });
     const views = page.getByRole("group", { name: "Visning" });
-    const compact = views.getByRole("button", { name: "Kompakt" });
     const expanded = views.getByRole("button", { name: "Utvidet" });
-    await expect(compact).toHaveAttribute("aria-pressed", "true");
-
-    // Compact rows share one height, with no description or gallery.
-    const cards = list.locator("[data-card-id]");
-    await expect(cards.first()).toHaveAttribute("data-density", "compact");
-    const heights = await cards.evaluateAll((items) =>
-      items.slice(0, 6).map((item) => item.getBoundingClientRect().height),
-    );
-    expect(new Set(heights).size).toBe(1);
-    await expect(list.getByRole("group", { name: /^Bilder av / })).toHaveCount(0);
-    await shot(page, "list-compact");
-    await cards.nth(1).hover();
-    await shot(page, "list-compact-hover");
+    const compact = views.getByRole("button", { name: "Kompakt" });
+    await expect(expanded).toHaveAttribute("aria-pressed", "true");
+    // Expanded comes first.
+    const [expandedBox, compactBox] = await Promise.all([
+      expanded.boundingBox(),
+      compact.boundingBox(),
+    ]);
+    expect(expandedBox!.x).toBeLessThan(compactBox!.x);
 
     // Expanded cards add the description and a carousel of every photo.
-    await expanded.click();
-    await expect(expanded).toHaveAttribute("aria-pressed", "true");
+    const cards = list.locator("[data-card-id]");
     await expect(cards.first()).toHaveAttribute("data-density", "expanded");
     const first = cards.first();
     const gallery = first.getByRole("group", { name: /^Bilder av / });
@@ -791,10 +784,27 @@ test.describe("desktop explorer", () => {
     ).toBeInViewport();
     await page.goBack();
 
+    // The switch acts as the mouse button goes down.
+    await compact.hover();
+    await page.mouse.down();
+    await expect(compact).toHaveAttribute("aria-pressed", "true");
+    await page.mouse.up();
+
+    // Compact rows share one height, with no description or gallery.
+    await expect(cards.first()).toHaveAttribute("data-density", "compact");
+    const heights = await cards.evaluateAll((items) =>
+      items.slice(0, 6).map((item) => item.getBoundingClientRect().height),
+    );
+    expect(new Set(heights).size).toBe(1);
+    await expect(list.getByRole("group", { name: /^Bilder av / })).toHaveCount(0);
+    await shot(page, "list-compact");
+    await cards.nth(1).hover();
+    await shot(page, "list-compact-hover");
+
     // The choice is kept in this browser.
     await page.reload();
     await expect(
-      page.getByRole("group", { name: "Visning" }).getByRole("button", { name: "Utvidet" }),
+      page.getByRole("group", { name: "Visning" }).getByRole("button", { name: "Kompakt" }),
     ).toHaveAttribute("aria-pressed", "true");
   });
 

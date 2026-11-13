@@ -156,14 +156,14 @@ export function subscribeCollapsed(callback: () => void) {
 export type ListDensity = "compact" | "expanded";
 const densityKey = "varde-list-density";
 const densityEvent = "varde-list-density";
-let densityFallback: ListDensity = "compact";
+let densityFallback: ListDensity = "expanded";
 
 /** The project list's layout, kept in this browser. */
 export function storedDensity(): ListDensity {
   try {
-    return localStorage.getItem(densityKey) === "expanded"
-      ? "expanded"
-      : "compact";
+    return localStorage.getItem(densityKey) === "compact"
+      ? "compact"
+      : "expanded";
   } catch {
     return densityFallback;
   }
@@ -172,7 +172,7 @@ export function storedDensity(): ListDensity {
 export function storeDensity(density: ListDensity) {
   densityFallback = density;
   try {
-    if (density === "expanded") localStorage.setItem(densityKey, density);
+    if (density === "compact") localStorage.setItem(densityKey, density);
     else localStorage.removeItem(densityKey);
   } catch {
     /* The fallback above holds it. */
