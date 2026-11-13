@@ -81,6 +81,15 @@ export const accountAction = [
 export const accountView =
   "motion-safe:animate-preview-in";
 
+/** A square control over the map: zoom, layers, modes. */
+export const mapIconButton = [
+  "inline-flex size-11 shrink-0 items-center justify-center rounded-[6px] border border-border bg-surface text-ink shadow-control",
+  "transition-[color,background-color,opacity,transform] duration-150",
+  "hover:bg-surface-muted hover:text-ink aria-pressed:bg-surface-muted aria-pressed:text-ink",
+  "disabled:pointer-events-none disabled:opacity-45 active:scale-[0.97]",
+  "motion-reduce:transition-none motion-reduce:active:scale-100",
+].join(" ");
+
 export const iconButton = [
   "inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-transparent text-muted",
   "transition-[color,background-color,opacity,transform] duration-150",

@@ -19,6 +19,7 @@ import Link from "next/link";
 import {
   ArrowDownUp,
   Bell,
+  Construction,
   ChevronsLeft,
   ChevronsRight,
   GalleryVertical,
@@ -84,6 +85,7 @@ import ChoiceSelect from "./choice-select";
 import StatusDots from "./status-dots";
 import CategoryIcon from "./category-icon";
 import ProjectEditor from "./project-editor";
+import { OsmPanel, useOsmModeStored, useOsmReview } from "./osm-review";
 import ProjectPost from "./project-post";
 import ProjectCard from "./project-card";
 import PanelResizer from "./panel-resizer";
@@ -264,6 +266,7 @@ const searchText = (project: Project) =>
   `${project.title} ${project.city} ${project.district} ${project.categories.join(" ")} ${project.developer}`.toLocaleLowerCase(
     "nb",
   );
+const noProjects: Project[] = [];
 const projectPoints = (project: Project): Point[] =>
   project.geometry.length ? project.geometry : [project.center];
 function statusSummary(values: string[]) {
@@ -415,9 +418,14 @@ export default memo(function Explorer({
     storedDensity,
     (): ListDensity => "compact",
   );
+  // Desktop: the OSM mode wants the whole map, so the list steps aside,
+  // without its toggle, until the mode is off.
+  const osmStored = useOsmModeStored();
+  const osmFocus = canModerate && osmStored && !isMobile;
+  const collapsed = collapsedPref || osmFocus;
   const sidebarMode: SidebarMode = maximized
     ? "maximized"
-    : collapsedPref
+    : collapsed
       ? "collapsed"
       : "normal";
   // The place shown in "Velg sted". Beside the map it follows the view and
@@ -437,8 +445,15 @@ export default memo(function Explorer({
     "profile",
   );
   const [editorOpen, setEditorOpen] = useState(false);
+  // What a new project starts from, such as a road from OpenStreetMap;
+  // a new key starts the editor afresh.
+  const [editorSeed, setEditorSeed] = useState<{
+    key: number;
+    draft?: Partial<Project>;
+  }>({ key: 0 });
   // The editor's own close, which asks before dropping a draft.
   const editorClose = useRef<(() => void) | null>(null);
+  const editorDirty = useRef<(() => boolean) | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const notify = (message: string) => setToast({ message });
   const searchRef = useRef<HTMLInputElement>(null);
@@ -470,6 +485,19 @@ export default memo(function Explorer({
   }
   // A hovered card lights up its shape on the map.
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  // Moderators: OpenStreetMap railways and roads as candidates for projects.
+  const osm = useOsmReview({
+    allowed: canModerate,
+    projects,
+    // Clear of the bar and card over the top of the map.
+    onFrame: (points) =>
+      mapApi.current?.fit(points, { maxZoom: 14, top: 230 }),
+    notify: setToast,
+    // The list slides aside or back as the mode turns on or off.
+    beforeToggle: () => {
+      if (!isMobile && !collapsedPref && !maximized) animateFrom();
+    },
+  });
 
   const openSearch = useCallback(() => {
     if (postId || profileName || modal || followingOnly || suggestionsOpen)
@@ -1144,7 +1172,7 @@ export default memo(function Explorer({
   // width while maximizing or restoring; out of the map's way while
   // collapsing or expanding, so the map resizes once, not every frame.
   const wide = sidebarMode === "maximized" || modeFrom === "maximized";
-  const asideCollapsed = collapsedPref || modeFrom === "collapsed";
+  const asideCollapsed = collapsed || modeFrom === "collapsed";
   const explorerHidden = sidebarMode === "collapsed" && !modeFrom;
   useLayoutEffect(() => {
     const aside = panelRef.current;
@@ -1959,8 +1987,17 @@ export default memo(function Explorer({
     </div>
   );
 
-  /** Members suggest projects; moderators add them directly. */
-  function openEditor() {
+  /**
+   * Members suggest projects; moderators add them directly, optionally from
+   * a head start. A draft in progress isn't replaced: closing it asks first.
+   */
+  function openEditor(draft?: Partial<Project>) {
+    if (draft && editorOpen) {
+      if (editorDirty.current?.()) editorClose.current?.();
+      else setEditorSeed(({ key }) => ({ key: key + 1, draft }));
+      return;
+    }
+    setEditorSeed(({ key }) => ({ key: key + 1, draft }));
     if (
       canModerate ||
       requireLogin("Du må være logget inn for å foreslå prosjekter.", {
@@ -2231,7 +2268,10 @@ export default memo(function Explorer({
           <Panel {...frame} floatingClose>
             {canModerate ? (
               <ProjectEditor
+                key={editorSeed.key}
+                initial={editorSeed.draft}
                 closeRef={editorClose}
+                dirtyRef={editorDirty}
                 onClose={() => setEditorOpen(false)}
                 onSave={async (project) => {
                   await mutate({ action: "project", project, create: true });
@@ -2304,7 +2344,7 @@ export default memo(function Explorer({
                 <button
                   className={cn(compactIconAction, "text-muted")}
                   aria-label={canModerate ? "Nytt prosjekt" : "Foreslå prosjekt"}
-                  onClick={openEditor}
+                  onClick={() => openEditor()}
                 >
                   <Plus size={21} />
                 </button>
@@ -2413,7 +2453,9 @@ export default memo(function Explorer({
             // in the corner of the page, its shadow fading with the list.
             <div
               className={cn(
-                "absolute top-0 left-0 z-30 flex h-16 items-center gap-2 rounded-br-2xl bg-surface pr-2 pl-6",
+                "absolute top-0 left-0 z-30 flex h-16 items-center gap-2 rounded-br-2xl bg-surface pl-6",
+                // Without the toggle, the logo gets the same room each side.
+                osmFocus ? "pr-6" : "pr-2",
                 "transition-shadow duration-320 ease-out-soft starting:shadow-none",
                 sidebarMode === "collapsed" && "shadow-[2px_2px_16px_rgb(20_28_24/0.12)]",
               )}
@@ -2422,6 +2464,7 @@ export default memo(function Explorer({
               {brand}
               {/* Where the toggle comes to rest, right of the logo. */}
               <span
+                hidden={osmFocus}
                 ref={(node) => {
                   if (node) setToggleRest(node.offsetLeft);
                 }}
@@ -2449,6 +2492,7 @@ export default memo(function Explorer({
               sidebarMode === "collapsed" ? { left: toggleRest } : undefined
             }
             inert={sidebarMode === "maximized"}
+            hidden={osmFocus}
             data-explorer-toggle=""
           >
             {sidebarToggle}
@@ -2505,7 +2549,7 @@ export default memo(function Explorer({
                     data-tooltip={
                       canModerate ? "Legg til prosjekt" : "Foreslå prosjekt"
                     }
-                    onClick={openEditor}
+                    onClick={() => openEditor()}
                   >
                     <Plus size={20} />
                   </button>
@@ -2596,7 +2640,7 @@ export default memo(function Explorer({
           aria-label="Prosjektkart"
         >
           <ProjectMap
-            projects={mapProjects}
+            projects={osm.on && osm.hideProjects ? noProjects : mapProjects}
             initialView={initial.view}
             onViewChange={onMapView}
             onReady={onMapReady}
@@ -2605,6 +2649,26 @@ export default memo(function Explorer({
             selectedId={selectedId}
             highlightedId={hoveredId}
             onSelect={(id) => (id ? openPost(id) : setSelectedId(postId))}
+            osm={osm.layer}
+            overlays={
+              osm.allowed
+                ? [
+                    {
+                      label: "Nye veier og baner",
+                      icon: <Construction size={17} />,
+                      on: osm.on,
+                      onToggle: osm.toggle,
+                    },
+                  ]
+                : undefined
+            }
+          />
+          <OsmPanel
+            review={osm}
+            keyboard={liveLayers.length === 0}
+            onCreate={openEditor}
+            onOpenProject={(id) => openPost(id)}
+            className="absolute top-3 left-1/2 z-[660] -translate-x-1/2 max-md:right-17 max-md:left-3 max-md:w-auto max-md:translate-x-0"
           />
           {isMobile && matching.length === 0 && !followingOnly && (
             <div

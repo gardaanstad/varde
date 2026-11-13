@@ -57,6 +57,13 @@
       "when": 1794076060000,
       "tag": "0007_category_tree",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794589269418,
+      "tag": "0008_osm_candidates",
+      "breakpoints": true
     }
   ]
 }

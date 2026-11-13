@@ -209,3 +209,15 @@ export const suggestion = sqliteTable(
     index("suggestion_project_idx").on(t.projectId),
   ],
 );
+/** Data read from outside services, such as OpenStreetMap, kept between reads. */
+export const externalCache = sqliteTable("external_cache", {
+  key: text("key").primaryKey(),
+  data: text("data", { mode: "json" }).notNull(),
+  fetchedAt: integer("fetched_at", { mode: "timestamp_ms" }).notNull(),
+});
+/** OpenStreetMap candidates moderators have hidden from the map. */
+export const osmDismissal = sqliteTable("osm_dismissal", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+});

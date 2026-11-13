@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -32,8 +32,16 @@ import {
   storedMapView,
   storeMapView,
 } from "../lib/explore-state";
+import {
+  formatLength,
+  formatRef,
+  type OsmCandidate,
+  osmColors,
+  osmModeLabels,
+  osmStatusLabels,
+} from "../lib/osm-candidates";
 import { cn } from "../lib/cn";
-import { iconButton } from "../lib/ui";
+import { mapIconButton } from "../lib/ui";
 
 type MapLayer = "standard" | "streets";
 
@@ -104,13 +112,6 @@ const layerOptions: ReadonlyArray<{
   },
 ];
 
-const mapIconButton = cn(
-  iconButton,
-  "size-11 rounded-[6px] border-border bg-surface text-ink shadow-control",
-  "hover:bg-surface-muted hover:text-ink",
-  "aria-pressed:bg-surface-muted aria-pressed:text-ink",
-);
-
 const layerOptionButton = cn(
   "flex min-h-[54px] w-full items-center gap-[9px] rounded-[7px] border border-transparent p-2 text-left text-xs text-ink",
   "transition-[color,border-color,box-shadow] duration-150",
@@ -131,15 +132,73 @@ const midpointIcon = L.divIcon({
   iconSize: [22, 22],
 });
 
+/**
+ * OpenStreetMap candidates, for moderators: drawn beneath the projects, so
+ * a project over one still takes the click.
+ */
+export type OsmLine = {
+  candidate: OsmCandidate;
+  title: string;
+  /** New, already covered by a project, or hidden by a moderator. */
+  state: "new" | "exists" | "dismissed";
+  /** The covering project's title. */
+  match?: string;
+};
+export type OsmLayer = {
+  lines: OsmLine[];
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+};
+/** A switchable layer in the layer menu, such as the OSM mode. */
+export type MapOverlay = {
+  label: string;
+  icon: ReactNode;
+  on: boolean;
+  onToggle: () => void;
+};
+const osmLineWeight = (selected: boolean) => (selected ? 6 : 3.5);
+// Proposed lines dotted: round dots spaced evenly at every zoom.
+const osmDots = "0.1 7";
+
+function osmTooltip({ candidate, title, match }: OsmLine) {
+  const tooltip = document.createElement("div");
+  const heading = document.createElement("strong");
+  heading.className = "block text-ui font-semibold";
+  heading.textContent = title;
+  const meta = document.createElement("span");
+  meta.className = "mt-0.5 block text-xs text-muted";
+  meta.textContent = [
+    osmStatusLabels[candidate.status],
+    osmModeLabels[candidate.mode],
+    candidate.ref && formatRef(candidate.ref),
+    formatLength(candidate.length),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  tooltip.append(heading, meta);
+  if (match) {
+    const exists = document.createElement("span");
+    exists.className = "mt-0.5 block text-xs text-muted";
+    exists.textContent = `Finnes: ${match}`;
+    tooltip.append(exists);
+  }
+  return tooltip;
+}
+
 /** Moves the explorer map from outside, e.g. to frame an opened project. */
 export type MapApi = {
   /**
    * Frames the points; `bottom` keeps room for a sheet over the map, `left`
-   * for a panel over its left edge.
+   * for a panel over its left edge, `top` for a card over its top.
    */
   fit: (
     points: Point[],
-    options?: { bottom?: number; left?: number; maxZoom?: number },
+    options?: {
+      bottom?: number;
+      left?: number;
+      top?: number;
+      maxZoom?: number;
+    },
   ) => void;
   show: (view: MapView) => void;
   showNorway: () => void;
@@ -219,6 +278,7 @@ function basemapEnabled() {
 const noProjects: Project[] = [];
 const noPoints: Point[] = [];
 const noSelect = () => {};
+const noOverlays: MapOverlay[] = [];
 
 type Props = {
   projects?: Project[];
@@ -252,6 +312,10 @@ type Props = {
    * until that slot exists.
    */
   controlsContainer?: HTMLElement | null;
+  /** Moderators' OpenStreetMap mode. */
+  osm?: OsmLayer;
+  /** Switchable layers in the layer menu; the button shows when one is on. */
+  overlays?: MapOverlay[];
 };
 export default function ProjectMap({
   projects = noProjects,
@@ -270,6 +334,8 @@ export default function ProjectMap({
   geometryType = "area",
   onPointsChange,
   controlsContainer,
+  osm,
+  overlays = noOverlays,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -306,6 +372,10 @@ export default function ProjectMap({
   // The base map, and the style it was last given.
   const glRef = useRef<maplibregl.Map | null>(null);
   const glStyle = useRef<string | null>(null);
+  const osmSelect = useRef(osm?.onSelect);
+  const osmSelected = useRef(osm?.selectedId ?? null);
+  // Restyles one candidate for the current selection.
+  const osmStyle = useRef<(id: string | null) => void>(() => {});
   const [ready, setReady] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
   const [layer, setLayer] = useState<MapLayer>(draw ? "streets" : "standard");
@@ -577,11 +647,11 @@ export default function ProjectMap({
     };
     let pending = () => {};
     handlers.current.onReady?.({
-      fit(points, { bottom = inset(), left = 0, maxZoom = 15 } = {}) {
+      fit(points, { bottom = inset(), left = 0, top = 0, maxZoom = 15 } = {}) {
         if (!points.length) return;
         settled(() =>
           map.fitBounds(L.latLngBounds(points), {
-            paddingTopLeft: [64 + left, 64],
+            paddingTopLeft: [64 + left, 64 + top],
             paddingBottomRight: [80, 64 + bottom],
             maxZoom,
             animate: !reducedMotion(),
@@ -934,6 +1004,108 @@ export default function ProjectMap({
     styleRef.current(highlightedId);
   }, [highlightedId]);
   useEffect(() => {
+    osmSelect.current = osm?.onSelect;
+  });
+  const osmLines = osm?.lines;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map || draw || !osmLines?.length) return;
+    // Just under the overlay pane, which holds the projects.
+    if (!map.getPane("osm")) map.createPane("osm").style.zIndex = "390";
+    const group = L.layerGroup().addTo(map);
+    const hitWeight = window.matchMedia("(pointer: coarse)").matches ? 26 : 16;
+    const drawn = new Map<
+      string,
+      { item: OsmLine; casing: L.Polyline; line: L.Polyline; hit?: L.Polyline }
+    >();
+    // Casings first, so no candidate's halo cuts through another's line.
+    const casings = osmLines.map((item) =>
+      L.polyline(item.candidate.lines, {
+        pane: "osm",
+        className: "project-casing",
+        weight: osmLineWeight(false) + 4,
+        opacity: item.state === "dismissed" ? 0.4 : 0.9,
+        lineCap: "round",
+        lineJoin: "round",
+        interactive: false,
+      }).addTo(group),
+    );
+    osmLines.forEach((item, index) => {
+      const { candidate, state } = item;
+      const line = L.polyline(candidate.lines, {
+        pane: "osm",
+        className: "osm-line",
+        color: osmColors[candidate.kind],
+        weight: osmLineWeight(false),
+        opacity: state === "dismissed" ? 0.45 : 1,
+        dashArray: candidate.status === "proposed" ? osmDots : undefined,
+        lineCap: "round",
+        lineJoin: "round",
+        interactive: false,
+      }).addTo(group);
+      const element = line.getElement();
+      element?.setAttribute("data-osm-id", candidate.id);
+      element?.setAttribute("data-osm-state", state);
+      drawn.set(candidate.id, { item, casing: casings[index], line });
+    });
+    for (const [id, entry] of drawn) {
+      entry.hit = L.polyline(entry.item.candidate.lines, {
+        pane: "osm",
+        className: "project-hit",
+        opacity: 0,
+        weight: hitWeight,
+        lineCap: "round",
+        lineJoin: "round",
+        bubblingMouseEvents: false,
+      })
+        .addTo(group)
+        .on("click", (event) => {
+          L.DomEvent.stopPropagation(event);
+          osmSelect.current?.(id);
+        })
+        .on("mouseover", () =>
+          entry.line.getElement()?.classList.add("is-hovered"),
+        )
+        .on("mouseout", () =>
+          entry.line.getElement()?.classList.remove("is-hovered"),
+        )
+        .bindTooltip(osmTooltip(entry.item), tooltipOptions);
+      entry.hit.getElement()?.setAttribute("data-osm-hit", id);
+    }
+    const style = (id: string | null) => {
+      const entry = id && drawn.get(id);
+      if (!entry) return;
+      const selected = id === osmSelected.current;
+      const weight = osmLineWeight(selected);
+      entry.line.setStyle({ weight });
+      entry.casing.setStyle({ weight: weight + 4 });
+      for (const layer of [entry.line, entry.casing])
+        layer.getElement()?.classList.toggle("is-selected", selected);
+      if (!selected) return;
+      entry.casing.bringToFront();
+      entry.line.bringToFront();
+      entry.hit?.bringToFront();
+      entry.hit?.closeTooltip();
+    };
+    osmStyle.current = style;
+    style(osmSelected.current);
+    const deselect = () => osmSelect.current?.(null);
+    map.on("click", deselect);
+    return () => {
+      map.off("click", deselect);
+      osmStyle.current = () => {};
+      group.remove();
+    };
+  }, [ready, draw, osmLines]);
+  const osmSelectedId = osm?.selectedId ?? null;
+  useEffect(() => {
+    const previous = osmSelected.current;
+    osmSelected.current = osmSelectedId;
+    if (previous === osmSelectedId) return;
+    osmStyle.current(previous);
+    osmStyle.current(osmSelectedId);
+  }, [osmSelectedId]);
+  useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map || !draw) return;
     const group = L.layerGroup().addTo(map);
@@ -1169,13 +1341,52 @@ export default function ProjectMap({
               )}
             </button>
           ))}
+          {overlays.length > 0 && (
+            <>
+              <strong className="mt-1 border-t border-border p-2 pt-3 text-2xs text-muted">
+                Kartlag
+              </strong>
+              {overlays.map((overlay) => (
+                <button
+                  type="button"
+                  key={overlay.label}
+                  role="switch"
+                  aria-checked={overlay.on}
+                  className={cn(layerOptionButton, "aria-checked:text-ink")}
+                  onClick={overlay.onToggle}
+                >
+                  <span
+                    className="flex h-8.5 w-10.5 shrink-0 items-center justify-center rounded-sm border border-border bg-surface-muted text-ink"
+                    aria-hidden="true"
+                  >
+                    {overlay.icon}
+                  </span>
+                  {overlay.label}
+                  <span
+                    className={cn(
+                      "ml-auto flex h-5 w-8.5 shrink-0 items-center rounded-full p-0.5 transition-colors duration-150 motion-reduce:transition-none",
+                      overlay.on ? "bg-accent" : "bg-border-strong",
+                    )}
+                    aria-hidden="true"
+                  >
+                    <span
+                      className={cn(
+                        "size-4 rounded-full bg-surface shadow-xs transition-transform duration-150 motion-reduce:transition-none",
+                        overlay.on && "translate-x-3.5",
+                      )}
+                    />
+                  </span>
+                </button>
+              ))}
+            </>
+          )}
         </div>
       )}
       <button
         ref={layerButton}
         type="button"
         hidden={compact}
-        className={mapIconButton}
+        className={cn(mapIconButton, "relative")}
         aria-label="Kartlag"
         aria-pressed={layersOpen}
         aria-expanded={layersOpen}
@@ -1184,6 +1395,13 @@ export default function ProjectMap({
         onClick={() => setLayersOpen(!layersOpen)}
       >
         <Layers size={19} aria-hidden="true" />
+        {overlays.some((overlay) => overlay.on) && (
+          <span
+            className="absolute top-1.5 right-1.5 size-2.5 rounded-full border-2 border-surface bg-accent"
+            data-overlay-on=""
+            aria-hidden="true"
+          />
+        )}
       </button>
       <div className="flex flex-col divide-y divide-border overflow-hidden rounded-[6px] border border-border bg-surface shadow-control">
         <button
@@ -1219,6 +1437,7 @@ export default function ProjectMap({
       className="relative isolate h-full w-full overflow-hidden bg-surface-muted"
       data-project-map=""
       data-selection={!draw && selectedId ? "" : undefined}
+      data-osm-selection={!draw && osm?.selectedId ? "" : undefined}
       data-drawing={draw ? "true" : undefined}
       data-map-style={layer}
       data-base-tone={darkBase ? "dark" : "light"}

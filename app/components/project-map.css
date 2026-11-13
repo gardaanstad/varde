@@ -88,6 +88,21 @@
   opacity: 0.4;
 }
 
+/* OpenStreetMap candidates: thicker under the pointer, and with one
+   selected the others step back. Lines carry no transition of their own,
+   so this is CSS over Leaflet's attributes. */
+[data-project-map] .osm-line {
+  transition: stroke-width 160ms ease, opacity 200ms ease;
+}
+
+[data-project-map] .osm-line.is-hovered:not(.is-selected) {
+  stroke-width: 5.5px;
+}
+
+[data-project-map][data-osm-selection] .leaflet-osm-pane path:not(.is-selected):not(.project-hit) {
+  opacity: 0.45;
+}
+
 /* Hit bands around lines stay invisible, even on hover. */
 [data-project-map] .project-hit {
   stroke-opacity: 0 !important;

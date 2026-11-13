@@ -115,15 +115,22 @@ export default function ProjectEditor({
   onClose,
   onSave,
   closeRef,
+  dirtyRef,
+  initial,
   suggest = false,
 }: {
   onClose: () => void;
   onSave: (project: Project) => Promise<void>;
   closeRef: RefObject<(() => void) | null>;
+  /** Whether anything has been written since it opened. */
+  dirtyRef?: RefObject<(() => boolean) | null>;
+  /** A head start, such as a railway from OpenStreetMap. */
+  initial?: Partial<Project>;
   /** A member's suggestion, which waits for a moderator. */
   suggest?: boolean;
 }) {
-  const [draft, setDraft] = useState(blank);
+  const [start] = useState(() => ({ ...blank, ...initial }));
+  const [draft, setDraft] = useState(start);
   const [images, setImages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -174,14 +181,15 @@ export default function ProjectEditor({
       setSaving(false);
     }
   }
+  const written = () =>
+    images.length > 0 || JSON.stringify(draft) !== JSON.stringify(start);
   function close() {
-    const written =
-      draft.title || draft.description || draft.geometry.length || images.length;
-    if (written) setDiscarding(true);
+    if (written()) setDiscarding(true);
     else onClose();
   }
   useLayoutEffect(() => {
     closeRef.current = close;
+    if (dirtyRef) dirtyRef.current = written;
   });
 
   return (
@@ -215,7 +223,7 @@ export default function ProjectEditor({
               {...control("title")}
               className={input}
               maxLength={100}
-              autoFocus
+              autoFocus={!start.title}
               autoComplete="off"
               value={draft.title}
               onChange={(event) => change({ title: event.target.value })}
@@ -234,6 +242,7 @@ export default function ProjectEditor({
                 "block field-sizing-content min-h-28 resize-none py-2.5 leading-relaxed",
               )}
               maxLength={5000}
+              autoFocus={Boolean(start.title) && !start.description}
               value={draft.description}
               onChange={(event) => change({ description: event.target.value })}
             />
