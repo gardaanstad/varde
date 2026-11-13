@@ -30,6 +30,7 @@ import {
   MapPin,
   Plus,
   LogIn,
+  Moon,
   Search,
   User,
   X,
@@ -116,7 +117,12 @@ import {
 } from "./panel";
 import { takeLoginIntent } from "../lib/login-intent";
 import { cn } from "../lib/cn";
-import ThemeToggle from "./theme-toggle";
+import ThemeToggle, { toggleTheme, useTheme } from "./theme-toggle";
+import {
+  OverflowMenu,
+  useHeaderOverflow,
+  type OverflowAction,
+} from "./header-overflow";
 import { openProfileEvent } from "../lib/profile-overlay";
 import ProfileOverlay from "./profile-overlay";
 import SuggestionList from "./suggestion-list";
@@ -383,6 +389,7 @@ export default memo(function Explorer({
   const { following: followed, markSeen } = useFollowing();
   // The badge counts projects with something new, as the Følger rows do.
   const unread = unreadProjects(followed);
+  const dark = useTheme() === "dark";
   const [initial] = useState(() =>
     parseExploreState(new URLSearchParams(initialSearch)),
   );
@@ -583,24 +590,26 @@ export default memo(function Explorer({
     );
     return set || Math.round(Math.min(Math.max(innerWidth * 0.36, 380), 540));
   }
-  // The list's header never overflows: the sidebar is at least its width.
+  // As the sidebar narrows, the list header's actions move into a menu,
+  // last of all the maximize button; the sidebar is never narrower than
+  // what stays.
   const headerNavRef = useRef<HTMLElement>(null);
-  function headerWidth() {
-    const nav = headerNavRef.current;
-    const header = nav?.parentElement;
+  const headerOverflow = useHeaderOverflow(
+    headerNavRef,
+    [
+      "theme",
+      user && "add",
+      canModerate && "suggestions",
+      user?.username && "following",
+      "maximize",
+    ].filter((id): id is string => Boolean(id)),
+  );
+  /** The header's width plus the sidebar's border. */
+  function headerWidth(all: boolean) {
+    const header = headerNavRef.current?.parentElement;
     const aside = panelRef.current;
-    if (!nav || !header || !aside) return 0;
-    const brand = nav.previousElementSibling as HTMLElement | null;
-    const style = getComputedStyle(header);
-    return (
-      parseFloat(style.paddingLeft) +
-      (brand?.offsetWidth ?? 0) +
-      parseFloat(style.columnGap) +
-      nav.offsetWidth +
-      parseFloat(style.paddingRight) +
-      // The sidebar's border.
-      (aside.offsetWidth - header.offsetWidth)
-    );
+    if (!header || !aside) return 0;
+    return headerOverflow.needed(all) + aside.offsetWidth - header.offsetWidth;
   }
   function leavePostView() {
     const view = postView.current;
@@ -1551,7 +1560,11 @@ export default memo(function Explorer({
         "relative",
         isMobile
           ? "-mx-2 mt-1.5 mb-0.5 h-11 [--search-button:2.75rem]"
-          : "@container mb-1 h-9 [--search-button:2.25rem]",
+          : cn(
+              "@container mb-1 h-9 [--search-button:2.25rem]",
+              // Narrower still, the pills drop their chevrons.
+              "@max-[300px]:[&_[data-slot=choice-trigger]>svg:last-child]:hidden",
+            ),
       )}
       aria-label="Filtrer prosjekter"
     >
@@ -1694,7 +1707,11 @@ export default memo(function Explorer({
     <ChoiceSelect
       label="Sorter prosjekter"
       value={sort}
-      className={sortChoice}
+      // A narrow list keeps the icon; the menu names the order.
+      className={cn(
+        sortChoice,
+        "md:@max-[320px]/list:[&_[data-slot=choice-trigger]>span]:sr-only",
+      )}
       icon={<ArrowDownUp size={14} />}
       onChange={setSort}
       options={sortOptions}
@@ -1731,7 +1748,13 @@ export default memo(function Explorer({
       onChange={pickPlace}
       triggerLabel={place || "Velg sted"}
       icon={<MapPin size={15} aria-hidden="true" />}
-      className={cn(panelChoiceClasses, place && panelChoiceActive)}
+      className={cn(
+        panelChoiceClasses,
+        "shrink-0",
+        // Narrow, its pin alone; the menu names the place.
+        "@max-[400px]:[&_[data-slot=choice-trigger]>span]:sr-only",
+        place && panelChoiceActive,
+      )}
       options={placeOptions}
     />
   );
@@ -1866,7 +1889,7 @@ export default memo(function Explorer({
     >
       <div
         className={cn(
-          "pb-8 max-md:px-4.5 max-md:pt-0 max-md:pb-6",
+          "@container/list pb-8 max-md:px-4.5 max-md:pt-0 max-md:pb-6",
           // Maximized, both edges keep a scrollbar's gutter, so it is even.
           wide ? "mx-auto w-full max-w-[880px] px-6" : "md:px-gutter-scroll",
         )}
@@ -2153,6 +2176,54 @@ export default memo(function Explorer({
         />
       )}
     </button>
+  );
+  /** One of the list header's actions, while it fits beside the others. */
+  const inline = (id: string, node: ReactNode) =>
+    node && !headerOverflow.hidden.has(id) ? (
+      <div className="flex shrink-0" data-overflow-item={id}>
+        {node}
+      </div>
+    ) : null;
+  const overflowActions: OverflowAction[] = (
+    [
+      canModerate && {
+        id: "suggestions",
+        label: "Forslag",
+        icon: <Inbox size={16} />,
+        count: suggestions,
+        onSelect: () => openSuggestions(),
+      },
+      user && {
+        id: "add",
+        label: canModerate ? "Legg til prosjekt" : "Foreslå prosjekt",
+        icon: <Plus size={16} />,
+        onSelect: () => openEditor(),
+      },
+      user?.username && {
+        id: "following",
+        label: "Følger",
+        icon: <Bell size={16} />,
+        count: unread,
+        checked: followingOnly,
+        onSelect: () => (followingOnly ? leaveFollowing() : showFollowing()),
+      },
+      {
+        id: "theme",
+        label: "Mørk modus",
+        icon: <Moon size={16} />,
+        checked: dark,
+        onSelect: toggleTheme,
+      },
+      {
+        id: "maximize",
+        label: "Vis som helside",
+        icon: <ChevronsRight size={16} />,
+        onSelect: maximize,
+      },
+    ] as (OverflowAction | false | null | undefined | "")[]
+  ).filter(
+    (action): action is OverflowAction =>
+      Boolean(action) && headerOverflow.hidden.has((action as OverflowAction).id),
   );
   const sidebarToggle = (
     <button
@@ -2474,8 +2545,11 @@ export default memo(function Explorer({
               "absolute top-2.5 z-[35] transition-[left,opacity] duration-320 ease-out-soft motion-reduce:transition-none",
               "[[data-resizing]_&]:transition-none",
               sidebarMode !== "collapsed" &&
-                // Left of the maximize button, the header's last.
-                "left-[calc(var(--sidebar-width)-0.75rem-5.625rem)]",
+                // Left of the maximize button, the header's last, or last
+                // itself once that is in the menu.
+                headerOverflow.hidden.has("maximize")
+                  ? "left-[calc(var(--sidebar-width)-0.75rem-2.75rem)]"
+                  : "left-[calc(var(--sidebar-width)-0.75rem-5.625rem)]",
               sidebarMode === "maximized" && "pointer-events-none opacity-0",
             )}
             style={
@@ -2530,8 +2604,10 @@ export default memo(function Explorer({
                 aria-label="Konto"
                 data-explorer-nav=""
               >
-                {suggestionsLink}
-                {user && (
+                {inline("suggestions", suggestionsLink)}
+                {inline(
+                  "add",
+                  user && (
                   <button
                     className={cn(compactIconAction, "text-muted")}
                     aria-label={
@@ -2544,9 +2620,13 @@ export default memo(function Explorer({
                   >
                     <Plus size={20} />
                   </button>
+                  ),
                 )}
-                {followingButton}
-                <ThemeToggle />
+                {inline("following", followingButton)}
+                {inline("theme", <ThemeToggle />)}
+                {overflowActions.length > 0 && (
+                  <OverflowMenu actions={overflowActions} />
+                )}
                 {profileButton}
                 <span
                   aria-hidden="true"
@@ -2560,11 +2640,14 @@ export default memo(function Explorer({
                     data-toggle-slot=""
                   />
                 )}
-                <MaximizeButton
-                  maximized={sidebarMode === "maximized"}
-                  onToggle={sidebarMode === "maximized" ? minimize : maximize}
-                  labels={["Vis som helside", "Vis kart"]}
-                />
+                {inline(
+                  "maximize",
+                  <MaximizeButton
+                    maximized={sidebarMode === "maximized"}
+                    onToggle={sidebarMode === "maximized" ? minimize : maximize}
+                    labels={["Vis som helside", "Vis kart"]}
+                  />,
+                )}
               </nav>
             </header>
             <div className="relative min-h-0 flex-1">
@@ -2611,7 +2694,8 @@ export default memo(function Explorer({
               onResizeStart={() => mapApi.current?.beginResize()}
               onResize={() => mapApi.current?.syncSize()}
               onResizeEnd={() => mapApi.current?.endResize()}
-              contentWidth={headerWidth}
+              contentWidth={() => headerWidth(false)}
+              naturalWidth={() => headerWidth(true)}
               contentRef={headerNavRef}
             />
           )}
