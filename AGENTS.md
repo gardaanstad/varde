@@ -21,7 +21,7 @@ The Playwright suite (`bun run test`) runs against a production build. Before co
 - `uploads.spec.ts`: photo uploads
 - `diff.spec.ts`: the suggestion diff (pure functions, no browser)
 
-Run the full suite only when a change reaches across areas, or when asked. That covers the shell shared by every page (`explorer.tsx`, panels and drawers, `app/layout.tsx`, global CSS), auth, the database schema or migrations, the seed data in `app/lib/data.ts`, and the test setup (`playwright.config.ts`, `tests/support.ts`, `scripts/test-db.ts`). Run it in the background. If a spec you didn't touch fails, rerun it alone. If it passes alone, it's flaky: name it in your report, and don't fix it inside an unrelated change.
+Run the full suite only when a change reaches across areas, or when asked; CI runs it on every push to `main` and on pull requests either way. That covers the shell shared by every page (`explorer.tsx`, panels and drawers, `app/layout.tsx`, global CSS), auth, the database schema or migrations, the seed data in `app/lib/data.ts`, and the test setup (`playwright.config.ts`, `tests/support.ts`, `scripts/test-db.ts`). Run it in the background. If a spec you didn't touch fails, rerun it alone. If it passes alone, it's flaky: name it in your report, and don't fix it inside an unrelated change.
 
 Each worktree gets its own test port, database, and build directory, so runs in different worktrees don't block each other.
 
