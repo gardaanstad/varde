@@ -301,6 +301,70 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   });
 
+  test("a sideways swipe on the map pans it, not the browser's history", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const map = page.locator("[data-project-map] .leaflet-container");
+    await expect(map).toBeVisible();
+    // A move within Leaflet's click tolerance is left to the browser by
+    // Leaflet; that first move is when a browser with swipe navigation takes
+    // the gesture. Chromium holds such small moves back from the page, so
+    // they're dispatched directly.
+    const smallMoveCancelled = await map.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const touch = (x: number) =>
+        new Touch({
+          identifier: 1,
+          target: element,
+          clientX: x,
+          clientY: rect.top + 100,
+        });
+      const event = (type: string, x: number) =>
+        new TouchEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          touches: type === "touchend" ? [] : [touch(x)],
+          changedTouches: [touch(x)],
+        });
+      const x = rect.left + 40;
+      element.dispatchEvent(event("touchstart", x));
+      const move = event("touchmove", x + 1);
+      element.dispatchEvent(move);
+      element.dispatchEvent(event("touchend", x + 1));
+      return move.defaultPrevented;
+    });
+    expect(smallMoveCancelled).toBe(true);
+    const pane = page.locator("[data-project-map] .leaflet-map-pane");
+    const before = await pane.evaluate((element) => element.style.transform);
+    const box = (await map.boundingBox())!;
+    const x = box.x + 40;
+    const y = box.y + Math.min(box.height / 2, 120);
+    const session = await page.context().newCDPSession(page);
+    try {
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [{ x, y }],
+      });
+      for (let step = 1; step <= 12; step++) {
+        await session.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x: x + step * 15, y }],
+        });
+        await page.waitForTimeout(16);
+      }
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchEnd",
+        touchPoints: [],
+      });
+    } finally {
+      await session.detach();
+    }
+    await expect
+      .poll(() => pane.evaluate((element) => element.style.transform))
+      .not.toBe(before);
+  });
+
   test("a sheet is dragged closed from its top, and springs back from a short drag", async ({
     page,
   }) => {
@@ -777,7 +841,7 @@ test.describe("desktop explorer", () => {
     await shot(page, "list-expanded-hover");
 
     // Like a feed post: the counts and follow sit under the photos.
-    const comments = first.getByRole("button", { name: /^\d+ innspill$/ });
+    const comments = first.getByRole("button", { name: /^\d+ kommentarer?$/ });
     const [galleryBox, commentsBox] = await Promise.all([
       gallery.boundingBox(),
       comments.boundingBox(),
@@ -787,7 +851,7 @@ test.describe("desktop explorer", () => {
     // The comment count opens the project at its discussion.
     await comments.click();
     await expect(
-      page.getByRole("button", { name: /^Diskusjon/ }),
+      page.getByRole("button", { name: /^Kommentarer/ }),
     ).toBeInViewport();
     await page.goBack();
 
@@ -1247,6 +1311,76 @@ test.describe("desktop explorer", () => {
     // A double click returns to the default width.
     await handle.dblclick();
     await expect.poll(width).toBe(start);
+  });
+
+  test("as the list narrows, the header's actions move into a menu", async ({
+    page,
+    context,
+  }) => {
+    const moderator = await member({
+      username: `header_${randomUUID().slice(0, 8)}`,
+      email: "header-moderator@example.test",
+    });
+    await signIn(context, moderator);
+    await page.goto(oslo);
+    const header = page.locator("[data-explorer-header]");
+    const menu = header.getByRole("button", { name: "Flere valg" });
+    const handle = page.getByRole("separator", {
+      name: "Bredde på prosjektlisten",
+    });
+    // At its default width, every action fits.
+    await expect(header.getByRole("link", { name: "Forslag" })).toBeVisible();
+    await expect(header.locator("[data-sidebar-maximize]")).toBeVisible();
+    await expect(menu).toHaveCount(0);
+    await shot(page, "header-overflow-full");
+    const right = (selector: string) =>
+      page
+        .locator(selector)
+        .first()
+        .evaluate((element) => element.getBoundingClientRect().right);
+    // Narrowing a step at a time, actions leave one by one, dark mode first.
+    await handle.focus();
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowLeft");
+    await expect(menu).toBeVisible();
+    await expect(header.getByRole("switch", { name: "Mørk modus" })).toHaveCount(0);
+    await expect(header.getByRole("link", { name: "Forslag" })).toBeVisible();
+    // At its narrowest, only the profile and the sidebar toggle stay.
+    await page.keyboard.press("Home");
+    const min = Number(await handle.getAttribute("aria-valuemin"));
+    expect(min).toBeLessThan(340);
+    await expect(header.locator("[data-overflow-item]")).toHaveCount(0);
+    expect(await right("[data-explorer-nav]")).toBeLessThanOrEqual(min);
+    await expect
+      .poll(async () =>
+        Math.abs(
+          (await right("[data-explorer-toggle]")) -
+            (await right("[data-toggle-slot]")),
+        ),
+      )
+      .toBeLessThanOrEqual(1);
+    await shot(page, "header-overflow-narrow");
+    await page.locator("[data-card-id]").first().click();
+    await expect(page.locator("[data-project-layer]")).toBeVisible();
+    await shot(page, "header-overflow-project");
+    await page.keyboard.press("Escape");
+    await expect(page.locator("[data-project-layer]")).toHaveCount(0);
+    await menu.click();
+    const items = page.getByRole("menu").locator("[data-overflow-action]");
+    await expect(items).toHaveText([
+      "Forslag",
+      "Legg til prosjekt",
+      "Følger",
+      "Mørk modus",
+      "Vis som helside",
+    ]);
+    await shot(page, "header-overflow-menu");
+    // The menu's actions do what the buttons did.
+    await page.getByRole("menuitemcheckbox", { name: "Mørk modus" }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await menu.click();
+    await page.getByRole("menuitem", { name: "Forslag" }).click();
+    await expect(page.locator('[data-sidebar-layer="suggestions"]')).toBeVisible();
   });
 
   test("projects open in a panel beside the map and return to the list", async ({
@@ -1747,6 +1881,26 @@ test.describe("the place follows the map", () => {
       await options.getByRole("option", { name: /^Hele Norge/ }).click();
       await expect(place("Hele Norge")).toHaveText("Velg sted");
       await expect.poll(() => zoomOf(page)).toBeLessThan(7);
+    });
+
+    test("the compact drawer names the place the map shows below the middle height", async ({
+      page,
+    }) => {
+      // Bergen's projects sit low on the map, under the middle drawer.
+      await page.goto("/?kart=60.4400,5.3200,12");
+      const filters = page
+        .locator("[data-explorer-drawer]")
+        .getByRole("region", { name: "Filtrer prosjekter", exact: true });
+      const place = (name: string) =>
+        filters.getByRole("button", { name: `Sted: ${name}`, exact: true });
+      await expectDrawerHeight(page, 0.58);
+      await expect(place("Hele Norge")).toHaveText("Velg sted");
+      await swipeDown(
+        page,
+        page.getByRole("button", { name: "Utvid prosjektlisten", exact: true }),
+      );
+      await expectDrawerHeight(page, 136 / 844);
+      await expect(place("Bergen")).toBeVisible();
     });
   });
 });
