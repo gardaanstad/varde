@@ -70,7 +70,7 @@ export function animatePanelBack(element: HTMLElement, exit: Animation) {
 
 const controlButton = cn(
   iconButton,
-  "rounded-lg active:scale-100 active:text-accent pointer-fine:active:scale-[0.97]",
+  "rounded-lg active:scale-100 pointer-fine:active:scale-[0.97]",
 );
 
 /** Switches the sidebar between its normal width and the whole window. */
