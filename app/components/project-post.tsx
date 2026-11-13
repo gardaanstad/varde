@@ -104,6 +104,8 @@ type Props = {
   initialUpdateId?: string;
   /** Opens the discussion at this comment. */
   initialCommentId?: string;
+  /** Opens scrolled to this tab, as from a card's comment or update count. */
+  initialSection?: "discussion" | "updates";
   /** Desktop panel: Escape closes it (the mobile drawer handles its own). */
   closeOnEscape?: boolean;
   onClose: () => void;
@@ -1049,6 +1051,7 @@ export default function ProjectPost({
   project,
   initialUpdateId,
   initialCommentId,
+  initialSection,
   closeOnEscape = false,
   onClose,
   onEscape: escape,
@@ -1103,7 +1106,9 @@ export default function ProjectPost({
   const { mutate, suggest } = useCommunity();
   const onUpdate = (next: Project) =>
     mutate({ action: "project", project: next, create: false });
-  const [tab, setTab] = useState(initialUpdateId ? "updates" : "discussion");
+  const [tab, setTab] = useState<string>(
+    initialSection ?? (initialUpdateId ? "updates" : "discussion"),
+  );
   // Updates whose comment section is open; mounted ones stay for the collapse.
   const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
   const [highlightId, setHighlightId] = useState(initialUpdateId || "");
@@ -1251,7 +1256,13 @@ export default function ProjectPost({
           .getElementById(`update-${initialUpdateId}`)
           ?.scrollIntoView({ block: "start" }),
       );
-  }, [project.id, initialUpdateId]);
+    else if (initialSection)
+      requestAnimationFrame(() =>
+        document
+          .getElementById("project-sections")
+          ?.scrollIntoView({ block: "start" }),
+      );
+  }, [project.id, initialUpdateId, initialSection]);
   const onEscape = useEffectEvent((event: KeyboardEvent) => {
     if (
       event.key !== "Escape" ||

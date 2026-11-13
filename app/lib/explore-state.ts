@@ -152,3 +152,39 @@ export function subscribeCollapsed(callback: () => void) {
     window.removeEventListener("storage", callback);
   };
 }
+
+export type ListDensity = "compact" | "expanded";
+const densityKey = "varde-list-density";
+const densityEvent = "varde-list-density";
+let densityFallback: ListDensity = "compact";
+
+/** The project list's layout, kept in this browser. */
+export function storedDensity(): ListDensity {
+  try {
+    return localStorage.getItem(densityKey) === "expanded"
+      ? "expanded"
+      : "compact";
+  } catch {
+    return densityFallback;
+  }
+}
+
+export function storeDensity(density: ListDensity) {
+  densityFallback = density;
+  try {
+    if (density === "expanded") localStorage.setItem(densityKey, density);
+    else localStorage.removeItem(densityKey);
+  } catch {
+    /* The fallback above holds it. */
+  }
+  window.dispatchEvent(new Event(densityEvent));
+}
+
+export function subscribeDensity(callback: () => void) {
+  window.addEventListener(densityEvent, callback);
+  window.addEventListener("storage", callback);
+  return () => {
+    window.removeEventListener(densityEvent, callback);
+    window.removeEventListener("storage", callback);
+  };
+}

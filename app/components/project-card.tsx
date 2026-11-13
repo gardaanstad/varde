@@ -1,6 +1,12 @@
 import { memo } from "react";
 import Image from "next/image";
-import { MapPin, Megaphone, MessageCircle } from "lucide-react";
+import {
+  Bell,
+  BellRing,
+  MapPin,
+  Megaphone,
+  MessageCircle,
+} from "lucide-react";
 import {
   categoryLabels,
   leadCategory,
@@ -8,41 +14,124 @@ import {
   getProjectUpdates,
   hasPhoto,
   type Project,
+  projectPhotos,
   projectPlace,
   statuses,
 } from "../lib/data";
+import type { ListDensity } from "../lib/explore-state";
 import { cn } from "../lib/cn";
 import { statusTone } from "../lib/ui";
+import ImageGallery from "./image-gallery";
 import ProjectPlaceholder from "./project-placeholder";
+import RelativeTime from "./relative-time";
+
+type Section = "discussion" | "updates";
 
 // Above the stretched card link, for the stat tooltips.
 const cardStat = "relative z-1 inline-flex items-center gap-1.25 tabular-nums";
+// One line each, so a compact row keeps one height: 18 + 2 + 22 + 6 + 18.
+const meta = "flex min-w-0 items-center text-xs leading-4.5 text-muted";
+// Expanded: the counts under the photos, quiet until hovered; above the
+// card link.
+// No fill, so nothing shifts off the text edge; the hit area reaches past it.
+const action = cn(
+  "relative z-1 inline-flex h-6 items-center gap-1.5 text-ui font-medium text-muted tabular-nums",
+  "transition-colors duration-150 hover:text-ink motion-reduce:transition-none [&>svg]:shrink-0",
+  "after:absolute after:-inset-x-1.5 after:-inset-y-1.5 after:rounded-lg focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-focus",
+);
+// The hover wash and the card link reach 12px past the text sideways and
+// 8px past the padding's content vertically.
+const reach = {
+  compact: {
+    wash: "before:inset-y-2 max-md:before:inset-y-1.5",
+    link: "after:inset-y-2 max-md:after:inset-y-1.5",
+  },
+  expanded: {
+    wash: "before:inset-y-3 max-md:before:inset-y-2",
+    link: "after:inset-y-3 max-md:after:inset-y-2",
+  },
+};
 
 /** One project in the results list; the whole card opens the project. */
 /** Memoized with stable callbacks, so a list change only renders new cards. */
 export default memo(function ProjectCard({
   project,
   commentCount,
+  density,
+  following,
   onOpen,
+  onFollow,
   onHover,
 }: {
   project: Project;
   commentCount: number;
-  onOpen: (id: string) => void;
+  density: ListDensity;
+  following: boolean;
+  onOpen: (id: string, section?: Section) => void;
+  onFollow: (id: string) => void;
   /** Pointer or keyboard focus entering (true) or leaving the card. */
   onHover?: (id: string, hovering: boolean) => void;
 }) {
   const updates = getProjectUpdates(project);
+  const expanded = density === "expanded";
+  const labels = categoryLabels(project.categories);
+  const title = (
+    <h2
+      className={cn(
+        "text-item leading-5.5 text-ink",
+        expanded ? "mt-1" : "mt-0.5 truncate",
+      )}
+    >
+      {/* Stretched over the whole card; other controls sit above it. */}
+      <button
+        type="button"
+        className={cn(
+          "text-left outline-none",
+          "after:absolute after:inset-x-[-12px] after:rounded-xl max-md:after:inset-x-[-8px]",
+          reach[density].link,
+          "focus-visible:after:outline-2 focus-visible:after:outline-focus",
+        )}
+        aria-label={`${project.title} · ${labels.join(", ")} · ${project.city}`}
+        onClick={() => onOpen(project.id)}
+      >
+        {project.title}
+      </button>
+    </h2>
+  );
+  const status = (
+    <span className="inline-flex min-w-0 items-center gap-1.5 font-medium whitespace-nowrap text-ink">
+      <i
+        className={cn(
+          "size-2 shrink-0 rounded-full",
+          statusTone[project.status].dot,
+        )}
+      />
+      {statuses[project.status].label}
+      {project.year && (
+        <span className="font-normal text-muted">· {project.year}</span>
+      )}
+    </span>
+  );
+  const updatesTooltip =
+    updates.length > 0
+      ? `${updates.length} ${updates.length === 1 ? "oppdatering" : "oppdateringer"} · sist ${formatDate(updates[0].date)}`
+      : undefined;
+
   return (
     <li
       className={cn(
-        "relative isolate flex items-start gap-4 border-b border-border py-4 max-md:gap-3 max-md:py-3.5",
+        "relative isolate border-b border-border",
+        expanded
+          ? "py-5 max-md:py-4"
+          : "flex items-center gap-4 py-4 max-md:gap-3 max-md:py-3.5",
         // Hover wash bleeds slightly past the text edge, like a list row.
         // Instant, so moving down the list reads as a pointer, not a fade.
-        "before:absolute before:inset-x-[-12px] before:inset-y-1 before:-z-1 before:rounded-xl",
-        "hover:before:bg-surface-muted/65 max-md:before:inset-x-[-8px] max-md:before:inset-y-0.5",
+        "before:absolute before:inset-x-[-12px] before:-z-1 before:rounded-xl max-md:before:inset-x-[-8px]",
+        reach[density].wash,
+        "hover:before:bg-surface-muted/65",
       )}
       data-card-id={project.id}
+      data-density={density}
       onPointerEnter={(event) => {
         if (event.pointerType === "mouse") onHover?.(project.id, true);
       }}
@@ -51,84 +140,154 @@ export default memo(function ProjectCard({
       }}
       onFocus={() => onHover?.(project.id, true)}
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) onHover?.(project.id, false);
+        if (!event.currentTarget.contains(event.relatedTarget))
+          onHover?.(project.id, false);
       }}
     >
-      <div className="min-w-0 flex-1">
-        <h2 className="text-item text-ink">
-          {/* Stretched over the whole card; other controls sit above it. */}
-          <button
-            type="button"
-            className={cn(
-              "text-left outline-none",
-              "after:absolute after:inset-x-[-12px] after:inset-y-1 after:rounded-xl max-md:after:inset-x-[-8px] max-md:after:inset-y-0.5",
-              "focus-visible:after:outline-2 focus-visible:after:outline-focus",
-            )}
-            aria-label={`${project.title} · ${categoryLabels(project.categories).join(", ")} · ${project.city}`}
-            onClick={() => onOpen(project.id)}
-          >
-            {project.title}
-          </button>
-        </h2>
-        <p className="mt-0.5 flex min-w-0 items-center gap-1 text-xs leading-4.5 text-muted">
-          <MapPin size={14} className="shrink-0" aria-hidden="true" />
-          <span className="min-w-0 truncate">{projectPlace(project)}</span>
-        </p>
-        <p className="mt-1.5 line-clamp-2 text-sm leading-normal text-ink-soft max-md:text-ui">
-          {project.description.split("\n")[0]}
-        </p>
-        {/* Stats sit above the card link for their tooltips; forward clicks. */}
-        <div
-          className="mt-2 flex min-h-4.5 cursor-pointer items-center gap-x-3.5 gap-y-1 text-xs leading-4.5 text-muted max-md:gap-x-3"
-          onClick={() => onOpen(project.id)}
-        >
-          <span className="inline-flex items-center gap-1.5 font-medium whitespace-nowrap text-ink">
-            <i
-              className={cn(
-                "size-2 rounded-full",
-                statusTone[project.status].dot,
-              )}
-            />
-            {statuses[project.status].label}
-            {project.year && (
-              <span className="font-normal text-muted">· {project.year}</span>
-            )}
-          </span>
-          <span className={cardStat} data-tooltip={`${commentCount} innspill`}>
-            <MessageCircle size={14} aria-hidden="true" />
-            {commentCount}
-            <span className="sr-only"> innspill</span>
-          </span>
-          {updates.length > 0 && (
-            <span
-              className={cardStat}
-              data-tooltip={`${updates.length} ${updates.length === 1 ? "oppdatering" : "oppdateringer"} · sist ${formatDate(updates[0].date)}`}
-            >
-              <Megaphone size={14} aria-hidden="true" />
-              {updates.length}
-              <span className="sr-only"> oppdateringer</span>
+      {expanded ? (
+        <>
+          {/* Where and what, then how recently it moved. */}
+          <p className={cn(meta, "gap-1")}>
+            <MapPin size={13} className="shrink-0" aria-hidden="true" />
+            <span className="min-w-0 truncate">
+              <span className="font-medium text-ink-soft">
+                {projectPlace(project)}
+              </span>
+              {labels.length > 0 && ` · ${labels.join(", ")}`}
             </span>
-          )}
-        </div>
-      </div>
-      {/* Mobile: a square thumbnail, top-aligned with the title. */}
-      <div className="relative mt-0.5 aspect-4/3 w-28 shrink-0 overflow-hidden rounded-lg bg-surface-muted max-md:aspect-square max-md:w-18">
-        {hasPhoto(project) ? (
-          <Image
-            src={project.image}
-            alt=""
-            fill
-            sizes="(max-width: 768px) 96px, 120px"
-            className="object-cover"
-          />
-        ) : (
-          <ProjectPlaceholder
-            category={leadCategory(project.categories)}
-            iconSize={16}
-            className="bg-size-[12px_12px]"
-          />
-        )}
-      </div>
+            <RelativeTime
+              date={updates[0]?.date ?? project.updated}
+              className="ml-auto shrink-0 pl-2"
+            />
+          </p>
+          {title}
+          <p className={cn(meta, "mt-1")}>{status}</p>
+          <p className="mt-2 line-clamp-2 text-sm leading-5 text-ink-soft">
+            {project.description.split("\n")[0]}
+          </p>
+          <Photos project={project} />
+          <div className="mt-3 flex items-center gap-4">
+            <button
+              type="button"
+              className={action}
+              aria-label={`${commentCount} innspill`}
+              onClick={() => onOpen(project.id, "discussion")}
+            >
+              <MessageCircle size={15} aria-hidden="true" />
+              <span>
+                {commentCount}
+                <span className="max-[359px]:hidden"> innspill</span>
+              </span>
+            </button>
+            {updates.length > 0 && (
+              <button
+                type="button"
+                className={action}
+                aria-label={updatesTooltip}
+                data-tooltip={updatesTooltip}
+                onClick={() => onOpen(project.id, "updates")}
+              >
+                <Megaphone size={15} aria-hidden="true" />
+                <span>
+                  {updates.length}
+                  <span className="max-[359px]:hidden">
+                    {updates.length === 1 ? " oppdatering" : " oppdateringer"}
+                  </span>
+                </span>
+              </button>
+            )}
+            <button
+              type="button"
+              className={cn(
+                action,
+                "ml-auto",
+                following && "text-accent hover:text-accent-strong",
+              )}
+              aria-pressed={following}
+              data-tooltip={following ? "Slutt å følge" : undefined}
+              onClick={() => onFollow(project.id)}
+            >
+              {following ? (
+                <BellRing size={15} aria-hidden="true" />
+              ) : (
+                <Bell size={15} aria-hidden="true" />
+              )}
+              {following ? "Følger" : "Følg"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="min-w-0 flex-1">
+            <p className={cn(meta, "gap-1")}>
+              <MapPin size={13} className="shrink-0" aria-hidden="true" />
+              <span className="min-w-0 truncate">{projectPlace(project)}</span>
+            </p>
+            {title}
+            {/* Stats sit above the card link for their tooltips; forward clicks. */}
+            <div
+              className={cn(
+                meta,
+                "mt-1.5 cursor-pointer gap-x-3.5 max-md:gap-x-3",
+              )}
+              onClick={() => onOpen(project.id)}
+            >
+              {status}
+              <span
+                className={cardStat}
+                data-tooltip={`${commentCount} innspill`}
+              >
+                <MessageCircle size={13} aria-hidden="true" />
+                {commentCount}
+                <span className="sr-only"> innspill</span>
+              </span>
+              {updates.length > 0 && (
+                <span className={cardStat} data-tooltip={updatesTooltip}>
+                  <Megaphone size={13} aria-hidden="true" />
+                  {updates.length}
+                  <span className="sr-only"> oppdateringer</span>
+                </span>
+              )}
+            </div>
+          </div>
+          {/* As tall as the text beside it, at 4:3. */}
+          <div className="relative h-16.5 w-22 shrink-0 overflow-hidden rounded-lg bg-surface-muted">
+            {hasPhoto(project) ? (
+              <Image
+                src={project.image}
+                alt=""
+                fill
+                sizes="88px"
+                className="object-cover"
+              />
+            ) : (
+              <ProjectPlaceholder
+                category={leadCategory(project.categories)}
+                iconSize={15}
+                className="bg-size-[12px_12px]"
+              />
+            )}
+          </div>
+        </>
+      )}
     </li>
   );
 });
+
+/** Expanded: every photo, full width; nothing when the project has none. */
+function Photos({ project }: { project: Project }) {
+  const photos = projectPhotos(project);
+  if (photos.length === 0) return null;
+  return (
+    // Above the card link: the photos page and open the lightbox.
+    <div className="relative z-1 mt-3">
+      <ImageGallery
+        images={photos}
+        label={`Bilder av ${project.title}`}
+        // As in the project's own gallery, so opening it reuses the file.
+        sizes="(max-width: 768px) 100vw, 560px"
+        className="aspect-3/2 rounded-lg"
+      />
+    </div>
+  );
+}

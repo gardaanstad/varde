@@ -21,7 +21,9 @@ import {
   Bell,
   ChevronsLeft,
   ChevronsRight,
+  GalleryVertical,
   Inbox,
+  LayoutList,
   RotateCcw,
   Map as MapIcon,
   MapPin,
@@ -58,7 +60,11 @@ import {
   sortOptions,
   storeCollapsed,
   storedCollapsed,
+  storeDensity,
+  storedDensity,
   subscribeCollapsed,
+  subscribeDensity,
+  type ListDensity,
 } from "../lib/explore-state";
 import type { MapApi, MapViewChange } from "./project-map";
 import {
@@ -128,6 +134,11 @@ import {
   statusTone,
   textButton,
 } from "../lib/ui";
+
+const densityOptions = [
+  { value: "compact", label: "Kompakt", Icon: LayoutList },
+  { value: "expanded", label: "Utvidet", Icon: GalleryVertical },
+] as const;
 
 // Tailwind's `max-md`: the drawer layout below 768px.
 const mobileQuery = "(width < 48rem)";
@@ -398,6 +409,11 @@ export default memo(function Explorer({
     subscribeCollapsed,
     storedCollapsed,
     () => false,
+  );
+  const density = useSyncExternalStore(
+    subscribeDensity,
+    storedDensity,
+    (): ListDensity => "compact",
   );
   const sidebarMode: SidebarMode = maximized
     ? "maximized"
@@ -1651,6 +1667,30 @@ export default memo(function Explorer({
       options={sortOptions}
     />
   );
+  const densitySwitch = (
+    <div
+      className="flex shrink-0 rounded-lg bg-ink/[0.05] p-0.5"
+      role="group"
+      aria-label="Visning"
+    >
+      {densityOptions.map(({ value, label, Icon }) => (
+        <button
+          key={value}
+          type="button"
+          className={cn(
+            "inline-flex size-7 items-center justify-center rounded-md text-muted pointer-coarse:size-8 transition-[color,background-color,box-shadow] duration-150 motion-reduce:transition-none",
+            "hover:text-ink aria-pressed:bg-surface aria-pressed:text-ink aria-pressed:shadow-xs",
+          )}
+          aria-label={label}
+          aria-pressed={density === value}
+          data-tooltip={label}
+          onClick={() => storeDensity(value)}
+        >
+          <Icon size={15} aria-hidden="true" />
+        </button>
+      ))}
+    </div>
+  );
   const placeFilter = (
     <ChoiceSelect
       label="Sted"
@@ -1760,7 +1800,19 @@ export default memo(function Explorer({
   useLayoutEffect(() => {
     openLatest.current = openPost;
   });
-  const openCard = useCallback((id: string) => openLatest.current(id), []);
+  const openCard = useCallback(
+    (id: string, section?: "discussion" | "updates") =>
+      openLatest.current(id, { section }),
+    [],
+  );
+  const followLatest = useRef(toggleFollow);
+  useLayoutEffect(() => {
+    followLatest.current = toggleFollow;
+  });
+  const followCard = useCallback(
+    (id: string) => void followLatest.current(id),
+    [],
+  );
   const hoverCard = useCallback(
     (id: string, hovering: boolean) =>
       setHoveredId((current) =>
@@ -1831,7 +1883,10 @@ export default memo(function Explorer({
               </ul>
             )}
           </div>
-          {sortFilter}
+          <div className="flex shrink-0 items-center gap-1">
+            {densitySwitch}
+            {sortFilter}
+          </div>
         </div>
         {listedProjects.length === 0 ? (
           <EmptyState
@@ -1850,7 +1905,10 @@ export default memo(function Explorer({
                 key={project.id}
                 project={project}
                 commentCount={commentsByProject.get(project.id)?.length ?? 0}
+                density={density}
+                following={followingIds.has(project.id)}
                 onOpen={openCard}
+                onFollow={followCard}
                 onHover={hoverCard}
               />
             ))}
@@ -1866,6 +1924,7 @@ export default memo(function Explorer({
       project={post}
       initialUpdateId={postTarget.updateId}
       initialCommentId={postTarget.commentId}
+      initialSection={postTarget.section}
       closeOnEscape={!panelClosing && topLayer === "project"}
       onClose={() => {
         if (!panelClosing) closePost();

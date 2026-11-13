@@ -742,6 +742,62 @@ test.describe("desktop explorer", () => {
     await expect(chip).toBeHidden();
   });
 
+  test("the list switches between compact rows and expanded cards", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const list = page.getByRole("region", { name: "Prosjektliste", exact: true });
+    const views = page.getByRole("group", { name: "Visning" });
+    const compact = views.getByRole("button", { name: "Kompakt" });
+    const expanded = views.getByRole("button", { name: "Utvidet" });
+    await expect(compact).toHaveAttribute("aria-pressed", "true");
+
+    // Compact rows share one height, with no description or gallery.
+    const cards = list.locator("[data-card-id]");
+    await expect(cards.first()).toHaveAttribute("data-density", "compact");
+    const heights = await cards.evaluateAll((items) =>
+      items.slice(0, 6).map((item) => item.getBoundingClientRect().height),
+    );
+    expect(new Set(heights).size).toBe(1);
+    await expect(list.getByRole("group", { name: /^Bilder av / })).toHaveCount(0);
+    await shot(page, "list-compact");
+    await cards.nth(1).hover();
+    await shot(page, "list-compact-hover");
+
+    // Expanded cards add the description and a carousel of every photo.
+    await expanded.click();
+    await expect(expanded).toHaveAttribute("aria-pressed", "true");
+    await expect(cards.first()).toHaveAttribute("data-density", "expanded");
+    const first = cards.first();
+    const gallery = first.getByRole("group", { name: /^Bilder av / });
+    await expect(gallery).toBeVisible();
+    await expect(first.locator("img").first()).toHaveJSProperty("complete", true);
+    await shot(page, "list-expanded");
+    await first.getByRole("heading").hover();
+    await shot(page, "list-expanded-hover");
+
+    // Like a feed post: the counts and follow sit under the photos.
+    const comments = first.getByRole("button", { name: /^\d+ innspill$/ });
+    const [galleryBox, commentsBox] = await Promise.all([
+      gallery.boundingBox(),
+      comments.boundingBox(),
+    ]);
+    expect(commentsBox!.y).toBeGreaterThan(galleryBox!.y + galleryBox!.height);
+    await expect(first.getByRole("button", { name: "Følg" })).toBeVisible();
+    // The comment count opens the project at its discussion.
+    await comments.click();
+    await expect(
+      page.getByRole("button", { name: /^Diskusjon/ }),
+    ).toBeInViewport();
+    await page.goBack();
+
+    // The choice is kept in this browser.
+    await page.reload();
+    await expect(
+      page.getByRole("group", { name: "Visning" }).getByRole("button", { name: "Utvidet" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
   test("the sort sits beside the count, and status shows what it hides", async ({
     page,
   }) => {

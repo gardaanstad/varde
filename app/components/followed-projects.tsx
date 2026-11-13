@@ -22,7 +22,11 @@ import EmptyState from "./empty-state";
 import ProjectPlaceholder from "./project-placeholder";
 import RelativeTime from "./relative-time";
 
-export type FollowedTarget = { updateId?: string; commentId?: string };
+export type FollowedTarget = {
+  updateId?: string;
+  commentId?: string;
+  section?: "discussion" | "updates";
+};
 
 /** A filled count for unread activity, so it never reads as a plain total. */
 export function UnreadBadge({
