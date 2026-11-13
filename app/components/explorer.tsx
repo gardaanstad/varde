@@ -555,6 +555,25 @@ export default memo(function Explorer({
     );
     return set || Math.round(Math.min(Math.max(innerWidth * 0.36, 380), 540));
   }
+  // The list's header never overflows: the sidebar is at least its width.
+  const headerNavRef = useRef<HTMLElement>(null);
+  function headerWidth() {
+    const nav = headerNavRef.current;
+    const header = nav?.parentElement;
+    const aside = panelRef.current;
+    if (!nav || !header || !aside) return 0;
+    const brand = nav.previousElementSibling as HTMLElement | null;
+    const style = getComputedStyle(header);
+    return (
+      parseFloat(style.paddingLeft) +
+      (brand?.offsetWidth ?? 0) +
+      parseFloat(style.columnGap) +
+      nav.offsetWidth +
+      parseFloat(style.paddingRight) +
+      // The sidebar's border.
+      (aside.offsetWidth - header.offsetWidth)
+    );
+  }
   function leavePostView() {
     const view = postView.current;
     if (!view) return;
@@ -2494,6 +2513,7 @@ export default memo(function Explorer({
             >
               <div data-explorer-brand="">{brand}</div>
               <nav
+                ref={headerNavRef}
                 className="flex items-center gap-0.5"
                 aria-label="Konto"
                 data-explorer-nav=""
@@ -2579,6 +2599,8 @@ export default memo(function Explorer({
               onResizeStart={() => mapApi.current?.beginResize()}
               onResize={() => mapApi.current?.syncSize()}
               onResizeEnd={() => mapApi.current?.endResize()}
+              contentWidth={headerWidth}
+              contentRef={headerNavRef}
             />
           )}
         </aside>

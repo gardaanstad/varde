@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import {
   categoryLabels,
-  leadCategory,
   formatDate,
   getProjectUpdates,
   hasPhoto,
@@ -22,14 +21,12 @@ import type { ListDensity } from "../lib/explore-state";
 import { cn } from "../lib/cn";
 import { statusTone } from "../lib/ui";
 import ImageGallery from "./image-gallery";
-import ProjectPlaceholder from "./project-placeholder";
-import RelativeTime from "./relative-time";
 
 type Section = "discussion" | "updates";
 
 // Above the stretched card link, for the stat tooltips.
 const cardStat = "relative z-1 inline-flex items-center gap-1.25 tabular-nums";
-// One line each, so a compact row keeps one height: 18 + 2 + 22 + 6 + 18.
+// One line each, so a compact row keeps one height: 18 + 4 + 22 + 4 + 18.
 const meta = "flex min-w-0 items-center text-xs leading-4.5 text-muted";
 // Expanded: the counts under the photos, quiet until hovered; above the
 // card link.
@@ -79,7 +76,7 @@ export default memo(function ProjectCard({
     <h2
       className={cn(
         "text-item leading-5.5 text-ink",
-        expanded ? "mt-1" : "mt-0.5 truncate",
+        expanded ? "mt-1" : "mt-1 truncate",
       )}
     >
       {/* Stretched over the whole card; other controls sit above it. */}
@@ -146,23 +143,17 @@ export default memo(function ProjectCard({
     >
       {expanded ? (
         <>
-          {/* Where and what, then how recently it moved. */}
+          {/* Where and what, then where it stands. */}
           <p className={cn(meta, "gap-1")}>
             <MapPin size={13} className="shrink-0" aria-hidden="true" />
             <span className="min-w-0 truncate">
-              <span className="font-medium text-ink-soft">
-                {projectPlace(project)}
-              </span>
+              {projectPlace(project)}
               {labels.length > 0 && ` · ${labels.join(", ")}`}
             </span>
-            <RelativeTime
-              date={updates[0]?.date ?? project.updated}
-              className="ml-auto shrink-0 pl-2"
-            />
+            <span className="ml-auto flex shrink-0 pl-2">{status}</span>
           </p>
           {title}
-          <p className={cn(meta, "mt-1")}>{status}</p>
-          <p className="mt-2 line-clamp-2 text-sm leading-5 text-ink-soft">
+          <p className="mt-1 line-clamp-2 text-sm leading-5 text-ink-soft">
             {project.description.split("\n")[0]}
           </p>
           <Photos project={project} />
@@ -228,7 +219,7 @@ export default memo(function ProjectCard({
             <div
               className={cn(
                 meta,
-                "mt-1.5 cursor-pointer gap-x-3.5 max-md:gap-x-3",
+                "mt-1 cursor-pointer gap-x-3.5 max-md:gap-x-3",
               )}
               onClick={() => onOpen(project.id)}
             >
@@ -251,8 +242,8 @@ export default memo(function ProjectCard({
             </div>
           </div>
           {/* As tall as the text beside it, at 4:3. */}
-          <div className="relative h-16.5 w-22 shrink-0 overflow-hidden rounded-lg bg-surface-muted">
-            {hasPhoto(project) ? (
+          {hasPhoto(project) && (
+            <div className="relative h-16.5 w-22 shrink-0 overflow-hidden rounded-lg bg-surface-muted">
               <Image
                 src={project.image}
                 alt=""
@@ -260,14 +251,8 @@ export default memo(function ProjectCard({
                 sizes="88px"
                 className="object-cover"
               />
-            ) : (
-              <ProjectPlaceholder
-                category={leadCategory(project.categories)}
-                iconSize={15}
-                className="bg-size-[12px_12px]"
-              />
-            )}
-          </div>
+            </div>
+          )}
         </>
       )}
     </li>

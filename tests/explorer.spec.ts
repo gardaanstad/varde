@@ -1173,6 +1173,21 @@ test.describe("desktop explorer", () => {
     await page.keyboard.press("Home");
     const min = Number(await handle.getAttribute("aria-valuemin"));
     await expect.poll(width).toBe(min);
+    // At its narrowest, the header still fits, the toggle in its place.
+    const right = (selector: string) =>
+      page
+        .locator(selector)
+        .first()
+        .evaluate((element) => element.getBoundingClientRect().right);
+    expect(await right("[data-explorer-nav]")).toBeLessThanOrEqual(min);
+    await expect
+      .poll(async () =>
+        Math.abs(
+          (await right("[data-explorer-toggle]")) -
+            (await right("[data-toggle-slot]")),
+        ),
+      )
+      .toBeLessThanOrEqual(1);
     await page.reload();
     await expect.poll(width).toBe(min);
     // A double click returns to the default width.

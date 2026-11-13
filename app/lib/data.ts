@@ -75,9 +75,6 @@ export function categoryLabels(values: readonly string[]): Category[] {
     return subs.length ? subs : [node.name];
   });
 }
-/** The category a project leads with: its first, most specific one. */
-export const leadCategory = (values: readonly Category[]): Category =>
-  categoryLabels(values)[0] ?? "Byutvikling";
 /**
  * Whether a project's categories meet a filter: any chosen main, narrowed to
  * its chosen subcategories when it has some. No filter matches everything.
@@ -121,7 +118,7 @@ export type Project = {
   /** Main categories, each optionally with subcategories; see categoryTree. */
   categories: Category[];
   status: Status;
-  /** Cover photo; empty when the project has none and shows a placeholder. */
+  /** Cover photo; empty when the project has none. */
   image: string;
   /** Further photos added with the project, after the cover. */
   images?: ProjectImage[];
