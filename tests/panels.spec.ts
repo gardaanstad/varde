@@ -514,6 +514,8 @@ test.describe("account menu", () => {
       email: "menu-moderator@example.test",
     });
     await signIn(context, moderator);
+    // Wide enough that every header action fits beside the others.
+    await page.setViewportSize({ width: 1680, height: 900 });
     await page.goto("/");
     const queue = page.getByRole("link", { name: /^Forslag/ });
     const add = page.getByRole("button", { name: "Legg til prosjekt", exact: true });
