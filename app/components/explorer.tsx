@@ -29,7 +29,6 @@ import {
   Map as MapIcon,
   MapPin,
   Plus,
-  LogIn,
   Moon,
   Search,
   User,
@@ -132,7 +131,6 @@ import {
 } from "./sidebar-panel";
 import {
   iconButton,
-  pillButton,
   primaryButton,
   secondaryButton,
   sortChoice,
@@ -1905,7 +1903,7 @@ export default memo(function Explorer({
         )}
       >
         {isMobile ? mobileFilters : desktopFilters}
-        <div className="sticky top-0 z-10 flex min-h-12 items-center justify-between gap-3 border-b border-border bg-surface py-1.5 max-md:static max-md:bg-transparent">
+        <div className="flex min-h-12 items-center justify-between gap-3 border-b border-border py-1.5">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
             <h1 className="sr-only">Prosjekter</h1>
             <span
@@ -2096,8 +2094,7 @@ export default memo(function Explorer({
     drawerContentRef.current = node;
     if (node) setDrawerReady(true);
   };
-  // Signed out, the profile button is a log-in button like its neighbours.
-  const profileButton = user ? (
+    const profileButton = user ? (
     <button
       className={cn(
         "inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-transparent text-xs font-semibold text-muted",
@@ -2126,18 +2123,19 @@ export default memo(function Explorer({
       )}
     </button>
   ) : (
-    // Signed out, logging in is the header's one action: a labelled button.
+    // Signed out, logging in is the header's one action: a label in the
+    // icon row, borderless like its neighbours so it doesn't echo the filter pills.
     <button
       type="button"
       className={cn(
-        pillButton,
-        "ml-1 pl-3 active:scale-[0.97] motion-reduce:active:scale-100",
+        compactIconAction,
+        "w-auto px-3 text-ui font-medium text-ink",
       )}
       aria-haspopup="dialog"
       data-login-button=""
+      data-press=""
       onClick={() => requireLogin()}
     >
-      <LogIn size={16} aria-hidden="true" />
       Logg inn
     </button>
   );

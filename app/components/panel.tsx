@@ -32,7 +32,7 @@ import {
  */
 
 export const mobileDrawerClasses = [
-  "z-[800] rounded-t-sheet border border-b-0 border-border bg-surface text-ink shadow-[0_-4px_12px_rgb(20_28_24/0.04),0_-16px_50px_rgb(20_28_24/0.08)]",
+  "z-[800] rounded-t-sheet border-t border-border bg-surface text-ink shadow-[0_-4px_12px_rgb(20_28_24/0.04),0_-16px_50px_rgb(20_28_24/0.08)]",
   "[--drawer-content-height:100dvh] [--drawer-bleed-background:var(--color-surface)]",
   "motion-reduce:transition-none motion-reduce:[&_*]:transition-none motion-reduce:[&_*]:animate-none",
 ].join(" ");
