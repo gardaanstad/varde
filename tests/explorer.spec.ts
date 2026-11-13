@@ -1098,6 +1098,60 @@ test.describe("desktop explorer", () => {
     });
   });
 
+  test("groups only merge and split as the map zooms, and keep their place", async ({
+    page,
+  }) => {
+    await page.goto("/?kart=59.9100,10.7500,10");
+    await expect(page.locator(".project-cluster").first()).toBeVisible();
+    const groups = () =>
+      page.locator(".project-cluster").evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            ids: element.getAttribute("data-cluster")!.split(" "),
+            x: rect.x + rect.width / 2,
+            y: rect.y + rect.height / 2,
+          };
+        }),
+      );
+    const before = await groups();
+    // While a zoom animates, groups glide with the map like its shapes do.
+    expect(
+      await page.locator(".project-cluster").first().evaluate((element) => {
+        element.closest(".leaflet-map-pane")!.classList.add("leaflet-zoom-anim");
+        const property = getComputedStyle(element).transitionProperty;
+        element.closest(".leaflet-map-pane")!.classList.remove("leaflet-zoom-anim");
+        return property;
+      }),
+    ).toContain("transform");
+    const marker = page.locator(`.project-cluster[data-cluster="${before[0].ids.join(" ")}"]`);
+    await marker.evaluate((element) => element.setAttribute("data-old", ""));
+    await page.getByRole("button", { name: "Zoom ut", exact: true }).click();
+    await expect.poll(() => mapParam(page)).toMatch(/,9$/);
+    // Zoomed out, every group lies whole inside a larger one.
+    const out = await groups();
+    for (const { ids } of before)
+      expect(
+        out.some((group) => ids.every((id) => group.ids.includes(id))),
+        ids.join(" "),
+      ).toBe(true);
+    await page.getByRole("button", { name: "Zoom inn", exact: true }).click();
+    await expect.poll(() => mapParam(page)).toMatch(/,10$/);
+    // Back in, the same groups stand in the same places.
+    const after = await groups();
+    expect(after.map(({ ids }) => ids).sort()).toEqual(
+      before.map(({ ids }) => ids).sort(),
+    );
+    for (const group of before) {
+      const match = after.find(({ ids }) => ids.join(" ") === group.ids.join(" "))!;
+      expect(Math.abs(match.x - group.x)).toBeLessThan(1);
+      expect(Math.abs(match.y - group.y)).toBeLessThan(1);
+    }
+    // A group that stays the same keeps its marker rather than being redrawn.
+    if (out.some(({ ids }) => ids.join(" ") === before[0].ids.join(" ")))
+      await expect(marker).toHaveAttribute("data-old", "");
+  });
+
   test("a project clicked on the map shows no focus ring; the keyboard's does", async ({
     page,
   }) => {
