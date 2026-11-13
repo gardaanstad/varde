@@ -337,222 +337,228 @@ async function turnOn(page: Page) {
   return page.getByRole("region", { name: "Nye veier og baner fra OpenStreetMap" });
 }
 
-test("only moderators read and hide candidates", async ({ request }) => {
-  await seedFeed();
-  const moderator = await member({
-    username: name(),
-    email: "osm-api-moderator@example.test",
-  });
-  const person = await member({ username: name() });
-  expect((await request.get("/api/osm-candidates")).status()).toBe(401);
-  expect(
-    (await request.get("/api/osm-candidates", { headers: cookieHeaders(person) })).status(),
-  ).toBe(403);
-  const read = async () => {
-    const response = await request.get("/api/osm-candidates", {
-      headers: cookieHeaders(moderator),
-    });
-    expect(response.ok()).toBe(true);
-    return (await response.json()) as OsmFeed;
-  };
-  const feed = await read();
-  expect(feed.candidates.map((candidate: OsmCandidate) => candidate.id)).toEqual(
-    fixture.map((candidate) => candidate.id),
-  );
-  // Months old, and still not read again.
-  expect(feed.fetchedAt).toBe(fetchedAt.toISOString());
+// Hidden candidates are shared by every moderator, so these run one at a
+// time: each sees the others' hiding and resetting only once it's done.
+test.describe("on the map", () => {
+  test.describe.configure({ mode: "serial" });
 
-  const dismiss = (dismissed: boolean, account = moderator, id = kirkenes.id) =>
-    mutation(
-      request,
-      "/api/osm-candidates",
-      { action: "dismiss", ids: [id], dismissed },
-      account,
+  test("only moderators read and hide candidates", async ({ request }) => {
+    await seedFeed();
+    const moderator = await member({
+      username: name(),
+      email: "osm-api-moderator@example.test",
+    });
+    const person = await member({ username: name() });
+    expect((await request.get("/api/osm-candidates")).status()).toBe(401);
+    expect(
+      (await request.get("/api/osm-candidates", { headers: cookieHeaders(person) })).status(),
+    ).toBe(403);
+    const read = async () => {
+      const response = await request.get("/api/osm-candidates", {
+        headers: cookieHeaders(moderator),
+      });
+      expect(response.ok()).toBe(true);
+      return (await response.json()) as OsmFeed;
+    };
+    const feed = await read();
+    expect(feed.candidates.map((candidate: OsmCandidate) => candidate.id)).toEqual(
+      fixture.map((candidate) => candidate.id),
     );
-  expect((await dismiss(true, person)).status()).toBe(403);
-  expect((await dismiss(true, moderator, "drop table")).status()).toBe(400);
-  expect((await dismiss(true)).ok()).toBe(true);
-  expect((await read()).dismissed).toContain(kirkenes.id);
-  expect((await dismiss(false)).ok()).toBe(true);
-  expect((await read()).dismissed).not.toContain(kirkenes.id);
-});
+    // Months old, and still not read again.
+    expect(feed.fetchedAt).toBe(fetchedAt.toISOString());
 
-test("members and visitors have no OSM mode", async ({ page, context }) => {
-  const check = async () => {
-    await page.getByRole("button", { name: "Kartlag", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Gatekart" })).toBeVisible();
-    await expect(page.getByRole("switch", { name: "Nye veier og baner" })).toHaveCount(0);
-  };
-  await page.goto("/");
-  await check();
-  await signIn(context, await member({ username: name() }));
-  await page.reload();
-  await check();
-});
+    const dismiss = (dismissed: boolean, account = moderator, id = kirkenes.id) =>
+      mutation(
+        request,
+        "/api/osm-candidates",
+        { action: "dismiss", ids: [id], dismissed },
+        account,
+      );
+    expect((await dismiss(true, person)).status()).toBe(403);
+    expect((await dismiss(true, moderator, "drop table")).status()).toBe(400);
+    expect((await dismiss(true)).ok()).toBe(true);
+    expect((await read()).dismissed).toContain(kirkenes.id);
+    expect((await dismiss(false)).ok()).toBe(true);
+    expect((await read()).dismissed).not.toContain(kirkenes.id);
+  });
 
-test("a moderator starts a project from a railway under construction", async ({
-  page,
-  context,
-}) => {
-  await seedFeed();
-  await signIn(
+  test("members and visitors have no OSM mode", async ({ page, context }) => {
+    const check = async () => {
+      await page.getByRole("button", { name: "Kartlag", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Gatekart" })).toBeVisible();
+      await expect(page.getByRole("switch", { name: "Nye veier og baner" })).toHaveCount(0);
+    };
+    await page.goto("/");
+    await check();
+    await signIn(context, await member({ username: name() }));
+    await page.reload();
+    await check();
+  });
+
+  test("a moderator starts a project from a railway under construction", async ({
+    page,
     context,
-    await member({ username: name(), email: "osm-create-moderator@example.test" }),
-  );
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/?kart=69.95,23.15,10");
-  const panel = await turnOn(page);
-  const line = page.locator(`[data-osm-id="${alta.id}"]`);
-  await expect(line).toHaveAttribute("data-osm-state", "new");
+  }) => {
+    await seedFeed();
+    await signIn(
+      context,
+      await member({ username: name(), email: "osm-create-moderator@example.test" }),
+    );
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/?kart=69.95,23.15,10");
+    const panel = await turnOn(page);
+    const line = page.locator(`[data-osm-id="${alta.id}"]`);
+    await expect(line).toHaveAttribute("data-osm-state", "new");
 
-  await page.locator(`[data-osm-hit="${alta.id}"]`).click();
-  await expect(panel.getByRole("heading", { name: "Altabanen" })).toBeVisible();
-  // Second longest of what's left to review.
-  await expect(panel.locator("[data-osm-position]")).toHaveText("2 / 4");
-  await expect(panel).toContainText("Under bygging · Jernbane · 12 km · Alta · 2029");
-  await shot(page, "osm-selected");
+    await page.locator(`[data-osm-hit="${alta.id}"]`).click();
+    await expect(panel.getByRole("heading", { name: "Altabanen" })).toBeVisible();
+    // Second longest of what's left to review.
+    await expect(panel.locator("[data-osm-position]")).toHaveText("2 / 4");
+    await expect(panel).toContainText("Under bygging · Jernbane · 12 km · Alta · 2029");
+    await shot(page, "osm-selected");
 
-  await panel.getByRole("button", { name: "Opprett prosjekt" }).click();
-  const editor = page.locator("[data-project-editor]");
-  await expect(editor.getByLabel("Prosjektnavn")).toHaveValue("Altabanen");
-  await expect(editor.getByLabel("Status")).toHaveValue("construction");
-  await expect(editor.getByLabel("Ferdigstilles")).toHaveValue("2029");
-  await expect(editor.getByLabel("Byggherre")).toHaveValue("Bane NOR");
-  await expect(editor.getByLabel("Sted")).toHaveValue("Alta");
-  await expect(editor.locator('[data-field="categories"]')).toContainText("Jernbane");
-  // The title is there; the description is what's left to write.
-  await expect(editor.getByLabel("Beskrivelse")).toBeFocused();
-  await editor.getByLabel("Beskrivelse").fill("Ny jernbane til Alta.");
-  await editor.getByRole("button", { name: "Legg til prosjekt" }).click();
-  await expect(page.getByText("Prosjektet er lagt til")).toBeVisible();
-  // A project covers it now: still drawn, but out of the review.
-  await expect(line).toHaveAttribute("data-osm-state", "exists");
+    await panel.getByRole("button", { name: "Opprett prosjekt" }).click();
+    const editor = page.locator("[data-project-editor]");
+    await expect(editor.getByLabel("Prosjektnavn")).toHaveValue("Altabanen");
+    await expect(editor.getByLabel("Status")).toHaveValue("construction");
+    await expect(editor.getByLabel("Ferdigstilles")).toHaveValue("2029");
+    await expect(editor.getByLabel("Byggherre")).toHaveValue("Bane NOR");
+    await expect(editor.getByLabel("Sted")).toHaveValue("Alta");
+    await expect(editor.locator('[data-field="categories"]')).toContainText("Jernbane");
+    // The title is there; the description is what's left to write.
+    await expect(editor.getByLabel("Beskrivelse")).toBeFocused();
+    await editor.getByLabel("Beskrivelse").fill("Ny jernbane til Alta.");
+    await editor.getByRole("button", { name: "Legg til prosjekt" }).click();
+    await expect(page.getByText("Prosjektet er lagt til")).toBeVisible();
+    // A project covers it now: still drawn, but out of the review.
+    await expect(line).toHaveAttribute("data-osm-state", "exists");
 
-  // The mode stays on in this browser.
-  await page.reload();
-  await expect(page.locator(`[data-osm-id="${alta.id}"]`)).toHaveAttribute(
-    "data-osm-state",
-    "exists",
-  );
-  // With the new project closed, j steps through what's left, longest
-  // first, framing each.
-  await page.getByRole("button", { name: "Lukk prosjekt", exact: true }).click();
-  await expect(page.locator("[data-project-layer]")).toHaveCount(0);
-  // Keys apply once the panel above has let go of them.
-  await expect(async () => {
-    if (!(await panel.locator("[data-osm-selected]").count()))
-      await page.keyboard.press("j");
-    await expect(panel.locator("[data-osm-position]")).toHaveText("1 / 3", {
-      timeout: 1000,
-    });
-  }).toPass();
-  await expect(panel.getByRole("heading", { name: "E6 Testfjorden" })).toBeVisible();
-  await page.keyboard.press("j");
-  await expect(panel.locator("[data-osm-position]")).toHaveText("2 / 3");
-  await expect(panel.locator("[data-osm-selected]")).not.toHaveAttribute(
-    "data-osm-selected",
-    alta.id,
-  );
+    // The mode stays on in this browser.
+    await page.reload();
+    await expect(page.locator(`[data-osm-id="${alta.id}"]`)).toHaveAttribute(
+      "data-osm-state",
+      "exists",
+    );
+    // With the new project closed, j steps through what's left, longest
+    // first, framing each.
+    await page.getByRole("button", { name: "Lukk prosjekt", exact: true }).click();
+    await expect(page.locator("[data-project-layer]")).toHaveCount(0);
+    // Keys apply once the panel above has let go of them.
+    await expect(async () => {
+      if (!(await panel.locator("[data-osm-selected]").count()))
+        await page.keyboard.press("j");
+      await expect(panel.locator("[data-osm-position]")).toHaveText("1 / 3", {
+        timeout: 1000,
+      });
+    }).toPass();
+    await expect(panel.getByRole("heading", { name: "E6 Testfjorden" })).toBeVisible();
+    await page.keyboard.press("j");
+    await expect(panel.locator("[data-osm-position]")).toHaveText("2 / 3");
+    await expect(panel.locator("[data-osm-selected]")).not.toHaveAttribute(
+      "data-osm-selected",
+      alta.id,
+    );
 
-  // The map's projects can step out of the way.
-  const created = page.locator("[data-project-map] [data-project-id]");
-  await expect(created).not.toHaveCount(0);
-  await panel.getByRole("button", { name: "Flere valg" }).click();
-  await page
-    .getByRole("menuitemcheckbox", { name: "Skjul eksisterende prosjekter" })
-    .click();
-  await expect(created).toHaveCount(0);
-  await panel.getByRole("button", { name: "Flere valg" }).click();
-  await expect(
-    page.getByRole("menuitemcheckbox", { name: "Skjul eksisterende prosjekter" }),
-  ).toHaveAttribute("aria-checked", "true");
-  await page
-    .getByRole("menuitemcheckbox", { name: "Skjul eksisterende prosjekter" })
-    .click();
-  await expect(created).not.toHaveCount(0);
-});
+    // The map's projects can step out of the way.
+    const created = page.locator("[data-project-map] [data-project-id]");
+    await expect(created).not.toHaveCount(0);
+    await panel.getByRole("button", { name: "Flere valg" }).click();
+    await page
+      .getByRole("menuitemcheckbox", { name: "Skjul eksisterende prosjekter" })
+      .click();
+    await expect(created).toHaveCount(0);
+    await panel.getByRole("button", { name: "Flere valg" }).click();
+    await expect(
+      page.getByRole("menuitemcheckbox", { name: "Skjul eksisterende prosjekter" }),
+    ).toHaveAttribute("aria-checked", "true");
+    await page
+      .getByRole("menuitemcheckbox", { name: "Skjul eksisterende prosjekter" })
+      .click();
+    await expect(created).not.toHaveCount(0);
+  });
 
-test("roads and railways, built and proposed, are shown or left out", async ({
-  page,
-  context,
-}) => {
-  await seedFeed();
-  await signIn(
+  test("roads and railways, built and proposed, are shown or left out", async ({
+    page,
     context,
-    await member({ username: name(), email: "osm-filter-moderator@example.test" }),
-  );
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/?kart=70.02,24.15,10");
-  const panel = await turnOn(page);
-  const roadLine = page.locator(`[data-osm-id="${testfjorden.id}"]`);
-  await page.locator(`[data-osm-hit="${testfjorden.id}"]`).click();
-  await expect(panel.getByRole("heading", { name: "E6 Testfjorden" })).toBeVisible();
-  await expect(panel).toContainText("Under bygging · Vei · E6 · ");
-  await shot(page, "osm-road");
+  }) => {
+    await seedFeed();
+    await signIn(
+      context,
+      await member({ username: name(), email: "osm-filter-moderator@example.test" }),
+    );
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/?kart=70.02,24.15,10");
+    const panel = await turnOn(page);
+    const roadLine = page.locator(`[data-osm-id="${testfjorden.id}"]`);
+    await page.locator(`[data-osm-hit="${testfjorden.id}"]`).click();
+    await expect(panel.getByRole("heading", { name: "E6 Testfjorden" })).toBeVisible();
+    await expect(panel).toContainText("Under bygging · Vei · E6 · ");
+    await shot(page, "osm-road");
 
-  const check = (name: string) => panel.getByRole("checkbox", { name, exact: true });
-  await check("Vei").click();
-  await expect(check("Vei")).toHaveAttribute("aria-checked", "false");
-  await expect(roadLine).toHaveCount(0);
-  await expect(page.locator(`[data-osm-id="${alta.id}"]`)).toHaveCount(1);
-  await check("Vei").click();
-  await expect(roadLine).toHaveCount(1);
-  await check("Foreslått").click();
-  await expect(page.locator(`[data-osm-id="${tromso.id}"]`)).toHaveCount(0);
-  await expect(roadLine).toHaveCount(1);
-});
+    const check = (name: string) => panel.getByRole("checkbox", { name, exact: true });
+    await check("Vei").click();
+    await expect(check("Vei")).toHaveAttribute("aria-checked", "false");
+    await expect(roadLine).toHaveCount(0);
+    await expect(page.locator(`[data-osm-id="${alta.id}"]`)).toHaveCount(1);
+    await check("Vei").click();
+    await expect(roadLine).toHaveCount(1);
+    await check("Foreslått").click();
+    await expect(page.locator(`[data-osm-id="${tromso.id}"]`)).toHaveCount(0);
+    await expect(roadLine).toHaveCount(1);
+  });
 
-test("a moderator hides a candidate, and can take it back", async ({
-  page,
-  context,
-}) => {
-  await seedFeed();
-  await signIn(
+  test("a moderator hides a candidate, and can take it back", async ({
+    page,
     context,
-    await member({ username: name(), email: "osm-hide-moderator@example.test" }),
-  );
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/?kart=69.6,18.82,11");
-  const panel = await turnOn(page);
-  const line = page.locator(`[data-osm-id="${tromso.id}"]`);
-  await page.locator(`[data-osm-hit="${tromso.id}"]`).click();
-  await expect(panel.getByRole("heading", { name: "Tromsøtrikken" })).toBeVisible();
-  await expect(panel).toContainText("Foreslått · Trikk");
-  await panel.getByRole("button", { name: "Skjul", exact: true }).click();
-  await expect(line).toHaveCount(0);
-  await page.getByRole("button", { name: "Angre" }).click();
-  await expect(line).toHaveAttribute("data-osm-state", "new");
-  await expect(panel.getByRole("heading", { name: "Tromsøtrikken" })).toBeVisible();
+  }) => {
+    await seedFeed();
+    await signIn(
+      context,
+      await member({ username: name(), email: "osm-hide-moderator@example.test" }),
+    );
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/?kart=69.6,18.82,11");
+    const panel = await turnOn(page);
+    const line = page.locator(`[data-osm-id="${tromso.id}"]`);
+    await page.locator(`[data-osm-hit="${tromso.id}"]`).click();
+    await expect(panel.getByRole("heading", { name: "Tromsøtrikken" })).toBeVisible();
+    await expect(panel).toContainText("Foreslått · Trikk");
+    await panel.getByRole("button", { name: "Skjul", exact: true }).click();
+    await expect(line).toHaveCount(0);
+    await page.getByRole("button", { name: "Angre" }).click();
+    await expect(line).toHaveAttribute("data-osm-state", "new");
+    await expect(panel.getByRole("heading", { name: "Tromsøtrikken" })).toBeVisible();
 
-  // Hidden again, then all brought back from the menu.
-  await panel.getByRole("button", { name: "Skjul", exact: true }).click();
-  await expect(line).toHaveCount(0);
-  await panel.getByRole("button", { name: "Flere valg" }).click();
-  await page.getByRole("menuitem", { name: "Nullstill skjulte" }).click();
-  await expect(line).toHaveAttribute("data-osm-state", "new");
-  await expect(page.getByText("1 vises igjen")).toBeVisible();
+    // Hidden again, then all brought back from the menu.
+    await panel.getByRole("button", { name: "Skjul", exact: true }).click();
+    await expect(line).toHaveCount(0);
+    await panel.getByRole("button", { name: "Flere valg" }).click();
+    await page.getByRole("menuitem", { name: "Nullstill skjulte" }).click();
+    await expect(line).toHaveAttribute("data-osm-state", "new");
+    await expect(page.getByText("1 vises igjen")).toBeVisible();
 
-  // Updating from OSM is tucked into a menu, with when it was last read.
-  await panel.getByRole("button", { name: "Flere valg" }).click();
-  await expect(
-    page.getByRole("menuitem", { name: /Oppdater fra OpenStreetMap/ }),
-  ).toContainText("Hentet 2. jan.");
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("menu")).toHaveCount(0);
+    // Updating from OSM is tucked into a menu, with when it was last read.
+    await panel.getByRole("button", { name: "Flere valg" }).click();
+    await expect(
+      page.getByRole("menuitem", { name: /Oppdater fra OpenStreetMap/ }),
+    ).toContainText("Hentet 2. jan.");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
 
-  // Escape lets go of the candidate, and so does its card's X; the bar's
-  // own X turns the mode off.
-  await page.keyboard.press("Escape");
-  await expect(panel.locator("[data-osm-selected]")).toHaveCount(0);
-  await page.keyboard.press("j");
-  await expect(panel.locator("[data-osm-selected]")).toHaveCount(1);
-  await panel.getByRole("button", { name: "Fjern valget" }).click();
-  await expect(panel.locator("[data-osm-selected]")).toHaveCount(0);
-  await panel.getByRole("button", { name: "Slå av nye veier og baner" }).click();
-  await expect(panel).toHaveCount(0);
-  await expect(line).toHaveCount(0);
-  await expect(page.locator("[data-overlay-on]")).toHaveCount(0);
-  // The list comes back.
-  await expect(page.getByRole("region", { name: "Prosjektliste", exact: true })).toBeVisible();
-  await expect(page.locator("[data-sidebar-toggle]")).toBeVisible();
+    // Escape lets go of the candidate, and so does its card's X; the bar's
+    // own X turns the mode off.
+    await page.keyboard.press("Escape");
+    await expect(panel.locator("[data-osm-selected]")).toHaveCount(0);
+    await page.keyboard.press("j");
+    await expect(panel.locator("[data-osm-selected]")).toHaveCount(1);
+    await panel.getByRole("button", { name: "Fjern valget" }).click();
+    await expect(panel.locator("[data-osm-selected]")).toHaveCount(0);
+    await panel.getByRole("button", { name: "Slå av nye veier og baner" }).click();
+    await expect(panel).toHaveCount(0);
+    await expect(line).toHaveCount(0);
+    await expect(page.locator("[data-overlay-on]")).toHaveCount(0);
+    // The list comes back.
+    await expect(page.getByRole("region", { name: "Prosjektliste", exact: true })).toBeVisible();
+    await expect(page.locator("[data-sidebar-toggle]")).toBeVisible();
+  });
 });
