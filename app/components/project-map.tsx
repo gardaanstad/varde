@@ -182,13 +182,12 @@ function localize(
     layers: style.layers.map((layer) => {
       if (layer.type !== "symbol") return layer;
       const named = JSON.stringify(layer.layout?.["text-field"] ?? "").includes("name");
-      return {
-        ...layer,
-        layout: named ? { ...layer.layout, "text-field": norwegianName } : layer.layout,
-        paint: standard
-          ? { ...layer.paint, "text-opacity": 0.8, "icon-opacity": 0.8 }
-          : layer.paint,
-      };
+      // Keys are only set when changed: MapLibre rejects an undefined `paint`.
+      const next = { ...layer };
+      if (named) next.layout = { ...layer.layout, "text-field": norwegianName };
+      if (standard)
+        next.paint = { ...layer.paint, "text-opacity": 0.8, "icon-opacity": 0.8 };
+      return next;
     }),
   };
 }
