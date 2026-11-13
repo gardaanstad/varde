@@ -314,8 +314,8 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
         (element) => element.parentElement!.getBoundingClientRect().top,
       );
     // A tap still chooses.
-    await filters.getByRole("button", { name: /^Status:/ }).click();
-    const status = page.getByRole("listbox", { name: "Status", exact: true });
+    await filters.getByRole("button", { name: /^Prosjektstatus:/ }).click();
+    const status = page.getByRole("listbox", { name: "Prosjektstatus", exact: true });
     await expect(status).toBeVisible();
     const rest = await offset(status);
     await status.getByRole("option", { name: /^Ferdigstilt/ }).tap();
@@ -343,7 +343,7 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     await drag(page, status.getByRole("option").nth(1), 120);
     await expect(status).toBeHidden();
     await expect(
-      filters.getByRole("button", { name: "Status: Planlagt, Under bygging, Ferdigstilt", exact: true }),
+      filters.getByRole("button", { name: "Prosjektstatus: Planlagt, Under bygging, Ferdigstilt", exact: true }),
     ).toBeVisible();
     // A list that scrolls closes from its top.
     await filters.getByRole("button", { name: /^Sted/ }).click();
@@ -390,8 +390,8 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
         ),
       );
     // Everything fits: no fade.
-    await filters.getByRole("button", { name: /^Status:/ }).click();
-    const status = page.getByRole("listbox", { name: "Status", exact: true });
+    await filters.getByRole("button", { name: /^Prosjektstatus:/ }).click();
+    const status = page.getByRole("listbox", { name: "Prosjektstatus", exact: true });
     await expect(status).toBeVisible();
     await expect.poll(() => opacity(status)).toBe(0);
     await page.keyboard.press("Escape");
@@ -450,9 +450,9 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     });
     await expect(filters).toBeVisible();
     await shot(page, "mobile-390");
-    await filters.getByRole("button", { name: /^Status:/ }).click();
+    await filters.getByRole("button", { name: /^Prosjektstatus:/ }).click();
     await expect(
-      page.getByRole("listbox", { name: "Status", exact: true }),
+      page.getByRole("listbox", { name: "Prosjektstatus", exact: true }),
     ).toBeVisible();
     await shot(page, "mobile-390-status-sheet");
     await page.keyboard.press("Escape");
@@ -498,18 +498,18 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     });
     await filters
       .getByRole("button", {
-        name: "Status: Planlagt, Under bygging",
+        name: "Prosjektstatus: Planlagt, Under bygging",
         exact: true,
       })
       .click();
-    const status = page.getByRole("listbox", { name: "Status", exact: true });
+    const status = page.getByRole("listbox", { name: "Prosjektstatus", exact: true });
     await expectMenuFits(status);
     await expect(status.getByRole("option", { selected: true })).toHaveCount(
       2,
     );
     // The sheet opens over a trigger that keeps still: no turned chevron, no
     // open highlight.
-    const statusTrigger = filters.getByRole("button", { name: /^Status:/ });
+    const statusTrigger = filters.getByRole("button", { name: /^Prosjektstatus:/ });
     await expect(statusTrigger.locator("svg.lucide-chevron-down")).toHaveCSS(
       "transform",
       "none",
@@ -820,7 +820,7 @@ test.describe("desktop explorer", () => {
     });
     // A dot per status shown, a ring for finished ones, hidden by default.
     const trigger = filters.getByRole("button", {
-      name: "Status: Planlagt, Under bygging",
+      name: "Prosjektstatus: Planlagt, Under bygging",
       exact: true,
     });
     await expect(trigger.locator("[data-status-dots]")).toHaveAttribute(
@@ -828,7 +828,7 @@ test.describe("desktop explorer", () => {
       "planned,construction",
     );
     await trigger.click();
-    const menu = page.getByRole("listbox", { name: "Status", exact: true });
+    const menu = page.getByRole("listbox", { name: "Prosjektstatus", exact: true });
     // Several can be chosen, and each chosen one is checked.
     await expect(menu).toHaveAttribute("aria-multiselectable", "true");
     await expect(menu.getByRole("option", { selected: true })).toHaveCount(2);
@@ -880,11 +880,11 @@ test.describe("desktop explorer", () => {
     await expect(active).toBeHidden();
     await filters
       .getByRole("button", {
-        name: "Status: Planlagt, Under bygging",
+        name: "Prosjektstatus: Planlagt, Under bygging",
         exact: true,
       })
       .click();
-    const status = page.getByRole("listbox", { name: "Status", exact: true });
+    const status = page.getByRole("listbox", { name: "Prosjektstatus", exact: true });
     await status.getByRole("option", { name: /^Planlagt/ }).click();
     await page.keyboard.press("Escape");
     await expect(
@@ -970,7 +970,7 @@ test.describe("desktop explorer", () => {
     await expect(page).toHaveURL(/sorter=title/);
     await page.reload();
     await expect(
-      filters.getByRole("button", { name: "Status: Under bygging", exact: true }),
+      filters.getByRole("button", { name: "Prosjektstatus: Under bygging", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", {
