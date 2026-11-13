@@ -89,7 +89,7 @@ test("opened projects count what is new per project and clear one at a time", as
 
   // Commenting counts as opening; replies to the reader count separately,
   // and the reader's own comments never count.
-  const mine = await commentAs(request, reader, discussed.id, "Mitt innspill");
+  const mine = await commentAs(request, reader, discussed.id, "Min kommentar");
   await commentAs(request, neighbour, discussed.id, "Svar til deg", mine);
   // A project the reader never opened has no read state at all.
   await commentAs(request, neighbour, unseen.id, "Ikke åpnet");

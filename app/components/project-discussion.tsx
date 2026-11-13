@@ -496,7 +496,7 @@ export default function ProjectDiscussion({
   return (
     <section
       aria-label={
-        scoped ? "Kommentarer til oppdateringen" : "Prosjektdiskusjon"
+        scoped ? "Kommentarer til oppdateringen" : "Kommentarer"
       }
       className={cn(scoped && "pt-3.5 -mb-2.5 max-sm:pt-3")}
       data-scoped={scoped || undefined}
@@ -509,14 +509,14 @@ export default function ProjectDiscussion({
               className="font-medium text-ink underline decoration-ink/35 underline-offset-3 transition-[text-decoration-color] duration-150 hover:decoration-current"
               onClick={() =>
                 requireLogin(
-                  "Du må være logget inn for å delta i diskusjonen.",
+                  "Du må være logget inn for å kommentere.",
                   { type: "comment", projectId },
                 )
               }
             >
               {user ? "Velg brukernavn" : "Logg inn"}
             </button>{" "}
-            for å delta i diskusjonen.
+            for å kommentere.
           </p>
         </div>
       )}
@@ -582,7 +582,7 @@ export default function ProjectDiscussion({
             {commentCount} {commentCount === 1 ? "kommentar" : "kommentarer"}
           </span>
           <ChoiceSelect
-            label="Sorter diskusjon"
+            label="Sorter kommentarer"
             value={sort}
             className={sortChoice}
             icon={<ArrowDownUp size={14} />}
@@ -603,7 +603,7 @@ export default function ProjectDiscussion({
           ) : (
             <EmptyState
               icon={<MessageCircle size={24} />}
-              title="Ingen innspill ennå"
+              title="Ingen kommentarer ennå"
             />
           ))}
       </div>

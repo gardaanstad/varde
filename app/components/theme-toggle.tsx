@@ -64,6 +64,11 @@ function setTheme(theme: Theme) {
     .finished.finally(() => delete root.dataset.themeTransition);
 }
 
+/** Switches between light and dark. */
+export function toggleTheme() {
+  setTheme(currentTheme() === "dark" ? "light" : "dark");
+}
+
 /** Brings theme-color in line with a theme chosen on an earlier visit. */
 export function ThemeColorSync() {
   useEffect(() => {
@@ -97,7 +102,7 @@ export default function ThemeToggle({ tooltip = true }: { tooltip?: boolean }) {
         tooltip ? (dark ? "Bytt til lys modus" : "Bytt til mørk modus") : undefined
       }
       className={cn(iconButton, "relative rounded-lg hover:text-ink")}
-      onClick={() => setTheme(currentTheme() === "dark" ? "light" : "dark")}
+      onClick={toggleTheme}
     >
       <Sun
         size={19}

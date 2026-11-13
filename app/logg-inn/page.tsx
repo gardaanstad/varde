@@ -24,7 +24,7 @@ export default async function LoginPage({
         Logg inn
       </h1>
       <p className="mt-2 mb-6 text-sm leading-6 text-muted">
-        Lagre prosjekter og delta i diskusjonene.
+        Lagre og kommenter prosjekter.
       </p>
       {params.error && (
         <p
