@@ -3,7 +3,7 @@ import { type RefObject, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn";
 
 const storageKey = "varde-panel-width";
-const minWidth = 340;
+const minWidth = 280;
 const maxWidth = 760;
 // The map keeps at least this much of the window.
 const minMap = 360;
@@ -55,6 +55,7 @@ export default function PanelResizer({
   onResize,
   onResizeEnd,
   contentWidth,
+  naturalWidth,
   contentRef,
 }: {
   panel: RefObject<HTMLElement | null>;
@@ -68,6 +69,8 @@ export default function PanelResizer({
   onResizeEnd?: () => void;
   /** The narrowest the panel's content fits in; it is never made narrower. */
   contentWidth?: () => number;
+  /** The width the content fits in whole; the default width is at least it. */
+  naturalWidth?: () => number;
   /** Changes to the elements whose size sets `contentWidth`. */
   contentRef?: RefObject<HTMLElement | null>;
 }) {
@@ -80,13 +83,15 @@ export default function PanelResizer({
     null,
   );
 
+  const initialWidth = () =>
+    Math.max(defaultWidth(), Math.ceil(naturalWidth?.() ?? 0));
   function apply(next: number) {
     panel.current?.style.setProperty("--panel-width", `${next}px`);
     handle.current?.setAttribute("aria-valuenow", String(next));
   }
   /** Applies a width outside a drag: clamped, remembered, map in sync. */
   function commit(next: number | null) {
-    const value = clamp(next ?? defaultWidth(), contentWidth?.());
+    const value = clamp(next ?? initialWidth(), contentWidth?.());
     onResizeStart?.();
     apply(value);
     onResizeEnd?.();
@@ -100,7 +105,7 @@ export default function PanelResizer({
     const fit = () => {
       const fits = contentWidth?.();
       setRange(bounds(fits));
-      const value = clamp(storedWidth() ?? defaultWidth(), fits);
+      const value = clamp(storedWidth() ?? initialWidth(), fits);
       if (value === last) return;
       last = value;
       onResizeStart?.();

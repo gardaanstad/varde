@@ -202,6 +202,8 @@ export type MapApi = {
   ) => void;
   show: (view: MapView) => void;
   showNorway: () => void;
+  /** The view down to `inset` pixels above the map's bottom edge. */
+  boundsAbove: (inset: number) => ViewBounds;
   /**
    * The map follows its container on its own, keeping the geography on
    * screen in place; `syncSize` does so at once. While the container is
@@ -482,10 +484,19 @@ export default function ProjectMap({
     resize.observe(element);
     // The container can also move without resizing.
     window.addEventListener("resize", sync);
+    // Browsers with swipe navigation anywhere on the page (Arc Search) take
+    // a sideways drag as back or forward unless the page cancels its first
+    // move. Leaflet only cancels moves past its click tolerance, so every
+    // move on the map is cancelled here. Touchstart isn't, so taps still click.
+    const claimTouch = (event: TouchEvent) => {
+      if (event.cancelable && map.dragging.enabled()) event.preventDefault();
+    };
+    element.addEventListener("touchmove", claimTouch, { passive: false });
     setReady(true);
     return () => {
       resize.disconnect();
       window.removeEventListener("resize", sync);
+      element.removeEventListener("touchmove", claimTouch);
       syncRef.current = () => {};
       mapRef.current = null;
       map.stop();
@@ -603,32 +614,29 @@ export default function ProjectMap({
     const start = startView.current ?? storedMapView();
     if (start) map.setView(start.center, start.zoom, { animate: false });
     else showNorway(false);
-    const report = () => {
-      if (resizing.current || syncing.current) return;
-      const center = map.getCenter();
+    const boundsAbove = (bottom: number): ViewBounds => {
       const size = map.getSize();
       const bounds = L.latLngBounds(
         map.containerPointToLatLng([0, 0]),
-        map.containerPointToLatLng([
-          size.x,
-          Math.max(1, size.y - inset()),
-        ]),
+        map.containerPointToLatLng([size.x, Math.max(1, size.y - bottom)]),
       );
+      return {
+        south: bounds.getSouth(),
+        west: bounds.getWest(),
+        north: bounds.getNorth(),
+        east: bounds.getEast(),
+        zoom: map.getZoom(),
+      };
+    };
+    const report = () => {
+      if (resizing.current || syncing.current) return;
+      const center = map.getCenter();
       const view: MapView = {
         center: [center.lat, center.lng],
         zoom: map.getZoom(),
       };
       storeMapView(view);
-      handlers.current.onViewChange?.({
-        ...view,
-        bounds: {
-          south: bounds.getSouth(),
-          west: bounds.getWest(),
-          north: bounds.getNorth(),
-          east: bounds.getEast(),
-          zoom: view.zoom,
-        },
-      });
+      handlers.current.onViewChange?.({ ...view, bounds: boundsAbove(inset()) });
     };
     report();
     map.on("moveend", report);
@@ -663,6 +671,7 @@ export default function ProjectMap({
         );
       },
       showNorway: () => settled(() => showNorway(!reducedMotion())),
+      boundsAbove,
       beginResize() {
         resizing.current = true;
       },

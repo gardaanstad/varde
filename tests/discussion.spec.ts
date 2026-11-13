@@ -128,7 +128,7 @@ test("commenting under an update references it in the main discussion and preser
   await signIn(context, await member({ username: name() }));
   await page.goto(path);
   const discussion = page.getByRole("region", {
-    name: "Prosjektdiskusjon",
+    name: "Kommentarer",
     exact: true,
   });
   await expect(discussion.locator('[data-comment-id="c4"]')).toBeVisible();
@@ -145,7 +145,7 @@ test("commenting under an update references it in the main discussion and preser
     timeline.getByRole("button", { name: "Referer til oppdateringen" }),
   ).toHaveCount(0);
   const entry = timeline.locator("#update-u-byrom");
-  const toggle = entry.getByRole("button", { name: /kommentarer/ });
+  const toggle = entry.getByRole("button", { name: /^(Se|Skjul) kommentarer/ });
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   const section = entry.getByRole("region", {
@@ -163,7 +163,7 @@ test("commenting under an update references it in the main discussion and preser
     .getByRole("button", { name: "Send kommentar", exact: true })
     .click();
   await expect(section.getByText(text, { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /^Diskusjon/ }).click();
+  await page.getByRole("button", { name: /^Kommentarer/ }).click();
   await expect(composer).toHaveValue(draft);
   await page.reload();
   const added = discussion
@@ -208,7 +208,7 @@ test("moderators edit the reference page and publish sourced updates without new
   await signIn(context, moderator);
   await page.goto(`/prosjekt/${id}`);
   await expect(
-    page.getByRole("heading", { name: "Ingen innspill ennå" }),
+    page.getByRole("heading", { name: "Ingen kommentarer ennå" }),
   ).toBeVisible();
   // Edit mode: everything is editable in place, changes are marked and
   // reviewed before anything is saved.
@@ -309,7 +309,7 @@ test("moderators edit the reference page and publish sourced updates without new
   await expect(
     page.getByRole("heading", { name: "Planen er vedtatt", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: /^Diskusjon/ }).click();
+  await page.getByRole("button", { name: /^Kommentarer/ }).click();
   await expect(
     page.getByRole("textbox", { name: "Kommenter prosjektet" }),
   ).toHaveCount(1);
@@ -367,10 +367,10 @@ test("replies under an update stay in their thread in both sections", async ({
       exact: true,
     }),
   ).toHaveAttribute("href", "https://example.org/source");
-  await page.getByRole("button", { name: /^Diskusjon/ }).click();
+  await page.getByRole("button", { name: /^Kommentarer/ }).click();
   await expect(
     page
-      .getByRole("region", { name: "Prosjektdiskusjon", exact: true })
+      .getByRole("region", { name: "Kommentarer", exact: true })
       .locator(`[data-comment-id="${rootId}"]`)
       .getByText(text, { exact: true }),
   ).toBeVisible();
