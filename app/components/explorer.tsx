@@ -94,7 +94,7 @@ import FollowedProjects, {
 import { useFollowing } from "./following-provider";
 import { unreadCount, unreadProjects } from "../lib/following";
 import EmptyState from "./empty-state";
-import Toast, { type ToastMessage } from "./toast";
+import { notify } from "./toast";
 import {
   Drawer,
   DrawerContent,
@@ -439,8 +439,6 @@ export default memo(function Explorer({
   const [editorOpen, setEditorOpen] = useState(false);
   // The editor's own close, which asks before dropping a draft.
   const editorClose = useRef<(() => void) | null>(null);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
-  const notify = (message: string) => setToast({ message });
   const searchRef = useRef<HTMLInputElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLElement>(null);
@@ -659,12 +657,6 @@ export default memo(function Explorer({
       window.removeEventListener("popstate", onPopState);
     };
   }, [openSearch]);
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 6000);
-    return () => clearTimeout(timer);
-  }, [toast]);
 
   // "Aktuelt" ranks by discussion over the past week, then by latest update.
   const [weekAgo] = useState(() =>
@@ -1343,18 +1335,23 @@ export default memo(function Explorer({
       await mutate({ action: "follow", projectId: id, following: !exists });
       const title =
         projects.find((project) => project.id === id)?.title || "Prosjektet";
-      setToast({
-        message: exists ? `Følger ikke ${title}` : `Følger ${title}`,
+      notify(exists ? `Sluttet å følge ${title}` : `Følger ${title}`, {
         undo: () => {
-          void mutate({ action: "follow", projectId: id, following: exists })
-            .then(() => setToast(null))
-            .catch((error) =>
-              notify(errorMessage(error, "Kunne ikke angre endringen.")),
-            );
+          void mutate({
+            action: "follow",
+            projectId: id,
+            following: exists,
+          }).catch((error) =>
+            notify(errorMessage(error, "Kunne ikke angre endringen."), {
+              error: true,
+            }),
+          );
         },
       });
     } catch (error) {
-      notify(errorMessage(error, "Kunne ikke følge prosjektet."));
+      notify(errorMessage(error, "Kunne ikke følge prosjektet."), {
+        error: true,
+      });
     } finally {
       pendingFollows.current.delete(id);
     }
@@ -1372,7 +1369,9 @@ export default memo(function Explorer({
       projectId: follow.projectId,
       following: true,
     }).catch((error) =>
-      notify(errorMessage(error, "Kunne ikke følge prosjektet.")),
+      notify(errorMessage(error, "Kunne ikke følge prosjektet."), {
+        error: true,
+      }),
     );
     // An intent is consumed once when the account is ready.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1395,10 +1394,6 @@ export default memo(function Explorer({
     setFollowingOnly(false);
     setSnapPoint(1);
   }
-
-  const feedback = toast && (
-    <Toast toast={toast} mobile={isMobile} onClose={() => setToast(null)} />
-  );
 
   const brand = (
     <Link
@@ -2779,7 +2774,6 @@ export default memo(function Explorer({
       )}
       {panelDrawers}
       {panelShell}
-      {feedback}
     </div>
   );
 });
