@@ -2,13 +2,13 @@ import "server-only";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { getDb } from "../db/client";
-import { comment, follow, project } from "../db/schema";
-import { getProjectUpdates } from "../data";
-import type { FollowedProject, Following } from "../following";
+import { comment, project, projectView } from "../db/schema";
+import { getProjectUpdates, type Project } from "../data";
+import type { ProjectNews, Unread } from "../unread";
 import { HttpError } from "./http";
 import { serverNow } from "./clock";
 
-/** One unread item on a followed project. */
+/** One unread item on a project the user has opened. */
 export type UnreadItem = {
   projectId: string;
   kind: "update" | "comment" | "reply";
@@ -22,36 +22,43 @@ export type UnreadItem = {
 const slack = 24 * 60 * 60 * 1000;
 const time = (date: string) => Date.parse(date) || 0;
 
-async function followedProjects(userId: string) {
+// Async, so the query runs once however many callers await it.
+async function readProjects(ids: string[]) {
   return getDb()
-    .select({ projectId: follow.projectId, seenAt: follow.seenAt })
-    .from(follow)
-    .where(and(eq(follow.userId, userId), eq(follow.following, true)));
+    .select({ data: project.data })
+    .from(project)
+    .where(inArray(project.id, ids));
+}
+
+async function viewedProjects(userId: string) {
+  return getDb()
+    .select({ projectId: projectView.projectId, seenAt: projectView.seenAt })
+    .from(projectView)
+    .where(eq(projectView.userId, userId));
 }
 
 /**
- * Everything on the user's followed projects since each was last seen: new
- * updates, and comments by others (replies to the user's own comments marked
- * as such). Oldest first. A notification digest can reuse this as it is.
+ * Everything on the projects the user has opened since each was last seen:
+ * new updates, and comments by others (replies to the user's own comments
+ * marked as such). Oldest first. A notification digest can reuse this.
  */
 export async function unreadActivity(
   userId: string,
-  follows?: { projectId: string; seenAt: Date }[],
+  views?: { projectId: string; seenAt: Date }[],
+  /** The viewed projects' data, when the caller has read it already. */
+  projectData?: Promise<{ data: Project }[]>,
 ) {
-  follows ??= await followedProjects(userId);
-  if (follows.length === 0) return [];
+  views ??= await viewedProjects(userId);
+  if (views.length === 0) return [];
   const db = getDb();
   const seen = new Map(
-    follows.map((row) => [row.projectId, row.seenAt.getTime()]),
+    views.map((row) => [row.projectId, row.seenAt.getTime()]),
   );
   const ids = [...seen.keys()];
   const earliest = Math.min(...seen.values()) - slack;
   const parent = alias(comment, "parent");
   const [projects, comments] = await Promise.all([
-    db
-      .select({ data: project.data })
-      .from(project)
-      .where(inArray(project.id, ids)),
+    projectData ?? readProjects(ids),
     db
       .select({
         id: comment.id,
@@ -95,15 +102,16 @@ export async function unreadActivity(
   return items.sort((a, b) => time(a.date) - time(b.date));
 }
 
-/** Each followed project with its unread counts and latest activity. */
-export async function readFollowing(userId: string): Promise<Following> {
+/** Each opened project with its unread counts and latest activity. */
+export async function readUnread(userId: string): Promise<Unread> {
   const readAt = serverNow().toISOString();
-  const follows = await followedProjects(userId);
-  if (follows.length === 0) return { projects: [], readAt };
-  const ids = follows.map((row) => row.projectId);
+  const views = await viewedProjects(userId);
+  if (views.length === 0) return { projects: [], readAt };
+  const ids = views.map((row) => row.projectId);
   const db = getDb();
+  const projectData = readProjects(ids);
   const [unread, latestComments, projects] = await Promise.all([
-    unreadActivity(userId, follows),
+    unreadActivity(userId, views, projectData),
     db
       .select({
         projectId: comment.projectId,
@@ -112,12 +120,9 @@ export async function readFollowing(userId: string): Promise<Following> {
       .from(comment)
       .where(inArray(comment.projectId, ids))
       .groupBy(comment.projectId),
-    db
-      .select({ data: project.data })
-      .from(project)
-      .where(inArray(project.id, ids)),
+    projectData,
   ]);
-  const summaries = new Map<string, FollowedProject>(
+  const summaries = new Map<string, ProjectNews>(
     projects.map(({ data }) => [
       data.id,
       {
@@ -148,8 +153,9 @@ export async function readFollowing(userId: string): Promise<Following> {
 }
 
 /**
- * Marks one followed project read up to a given read. Never moves back, and
- * never past the server's clock, so later activity stays unread.
+ * Marks a project opened and read up to a given read. Never moves back, and
+ * never past the server's clock, so later activity stays unread. The first
+ * time, this starts keeping the project's read state.
  */
 export async function markProjectSeen(
   userId: string,
@@ -158,14 +164,17 @@ export async function markProjectSeen(
 ) {
   const until = Math.min(Date.parse(readAt), serverNow().getTime());
   if (!Number.isFinite(until)) throw new HttpError(400, "Ugyldig tidspunkt.");
+  const [exists] = await getDb()
+    .select({ id: project.id })
+    .from(project)
+    .where(eq(project.id, projectId));
+  if (!exists) throw new HttpError(404, "Prosjektet finnes ikke.");
+  const at = new Date(until);
   await getDb()
-    .update(follow)
-    .set({ seenAt: sql`max(${follow.seenAt}, ${until})` })
-    .where(
-      and(
-        eq(follow.userId, userId),
-        eq(follow.projectId, projectId),
-        eq(follow.following, true),
-      ),
-    );
+    .insert(projectView)
+    .values({ userId, projectId, saved: false, createdAt: at, seenAt: at })
+    .onConflictDoUpdate({
+      target: [projectView.userId, projectView.projectId],
+      set: { seenAt: sql`max(${projectView.seenAt}, ${until})` },
+    });
 }

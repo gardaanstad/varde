@@ -7,7 +7,7 @@ import { iconButton } from "../lib/ui";
 
 /**
  * Desktop: how the sidebar sits beside the map. The explorer list is its
- * base layer; panels (a project, Følger, Forslag, a profile) stack on top
+ * base layer; panels (a project, Lagret, Forslag, a profile) stack on top
  * and share the mode. A collapsed sidebar still shows panels at normal width.
  */
 export type SidebarMode = "collapsed" | "normal" | "maximized";

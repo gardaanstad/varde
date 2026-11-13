@@ -64,6 +64,13 @@
       "when": 1794589269418,
       "tag": "0008_osm_candidates",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1794600000000,
+      "tag": "0009_saved_projects",
+      "breakpoints": true
     }
   ]
 }

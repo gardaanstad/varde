@@ -113,10 +113,11 @@ export const comment = sqliteTable(
   ],
 );
 /**
- * Projects a user follows. The table keeps its original name from when
- * following was called saving, so existing rows carry over unchanged.
+ * Projects a user has opened, with how far they have read each one, and
+ * whether they saved it. The table keeps its original name from when it held
+ * saved projects only, so existing rows carry over unchanged.
  */
-export const follow = sqliteTable(
+export const projectView = sqliteTable(
   "bookmark",
   {
     userId: text("user_id")
@@ -125,14 +126,9 @@ export const follow = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => project.id, { onDelete: "cascade" }),
-    /**
-     * False after an explicit unfollow. The row stays so that commenting on
-     * the project later doesn't follow it again.
-     */
-    following: integer("following", { mode: "boolean" })
-      .notNull()
-      .default(true),
-    // Always given on insert (see newFollow in server/community.ts). The
+    /** On the user's saved list. Always given on insert. */
+    saved: integer("saved", { mode: "boolean" }).notNull().default(true),
+    // Always given on insert (see newView in server/community.ts). The
     // database defaults only let the columns be added to old rows, which the
     // migration then sets.
     createdAt: integer("created_at", { mode: "timestamp_ms" })

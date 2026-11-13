@@ -1,8 +1,7 @@
 import { memo } from "react";
 import Image from "next/image";
 import {
-  Bell,
-  BellRing,
+  Bookmark,
   MapPin,
   Megaphone,
   MessageCircle,
@@ -18,6 +17,7 @@ import {
   statuses,
 } from "../lib/data";
 import type { ListDensity } from "../lib/explore-state";
+import { type ProjectNews, unreadCount, unreadSummary } from "../lib/unread";
 import { cn } from "../lib/cn";
 import { statusTone } from "../lib/ui";
 import ImageGallery from "./image-gallery";
@@ -49,29 +49,62 @@ const reach = {
   },
 };
 
+/**
+ * What is new since the user last opened the project: a dot and a count in
+ * the accent colour, at the end of the stats, with the details on hover.
+ */
+function UnreadMark({
+  news,
+  className,
+}: {
+  news: ProjectNews;
+  className?: string;
+}) {
+  const count = unreadCount(news);
+  const summary = unreadSummary(news);
+  return (
+    <span
+      className={cn(
+        "relative z-1 inline-flex shrink-0 items-center gap-1.25 font-medium whitespace-nowrap text-accent-strong tabular-nums",
+        className,
+      )}
+      data-tooltip={summary}
+      data-unread-mark=""
+    >
+      <i className="size-1.5 shrink-0 rounded-full bg-accent" />
+      <span aria-hidden="true">{count === 1 ? "1 ny" : `${count} nye`}</span>
+      <span className="sr-only">{summary} siden sist</span>
+    </span>
+  );
+}
+
 /** One project in the results list; the whole card opens the project. */
 /** Memoized with stable callbacks, so a list change only renders new cards. */
 export default memo(function ProjectCard({
   project,
   commentCount,
   density,
-  following,
+  saved,
+  news,
   onOpen,
-  onFollow,
+  onSave,
   onHover,
 }: {
   project: Project;
   commentCount: number;
   density: ListDensity;
-  following: boolean;
+  saved: boolean;
+  /** What is new since the user last opened it, for projects they have. */
+  news?: ProjectNews;
   onOpen: (id: string, section?: Section) => void;
-  onFollow: (id: string) => void;
+  onSave: (id: string) => void;
   /** Pointer or keyboard focus entering (true) or leaving the card. */
   onHover?: (id: string, hovering: boolean) => void;
 }) {
   const updates = getProjectUpdates(project);
   const expanded = density === "expanded";
   const labels = categoryLabels(project.categories);
+  const fresh = news && unreadCount(news) > 0 ? news : undefined;
   const title = (
     <h2
       className={cn(
@@ -88,7 +121,7 @@ export default memo(function ProjectCard({
           reach[density].link,
           "focus-visible:after:outline-2 focus-visible:after:outline-focus",
         )}
-        aria-label={`${project.title} · ${labels.join(", ")} · ${project.city}`}
+        aria-label={`${project.title} · ${labels.join(", ")} · ${project.city}${fresh ? ` · ${unreadSummary(fresh)}` : ""}`}
         data-press=""
         onClick={() => onOpen(project.id)}
       >
@@ -130,6 +163,7 @@ export default memo(function ProjectCard({
       )}
       data-card-id={project.id}
       data-density={density}
+      data-unread={fresh ? true : undefined}
       onPointerEnter={(event) => {
         if (event.pointerType === "mouse") onHover?.(project.id, true);
       }}
@@ -190,23 +224,25 @@ export default memo(function ProjectCard({
                 </span>
               </button>
             )}
+            {fresh && <UnreadMark news={fresh} className="text-ui" />}
             <button
               type="button"
               className={cn(
                 action,
                 "ml-auto",
-                following && "text-accent hover:text-accent-strong",
+                saved && "text-accent hover:text-accent-strong",
               )}
-              aria-pressed={following}
-              data-tooltip={following ? "Slutt å følge" : undefined}
-              onClick={() => onFollow(project.id)}
+              aria-pressed={saved}
+              data-save=""
+              data-tooltip={saved ? "Fjern fra lagrede" : undefined}
+              onClick={() => onSave(project.id)}
             >
-              {following ? (
-                <BellRing size={15} aria-hidden="true" />
-              ) : (
-                <Bell size={15} aria-hidden="true" />
-              )}
-              {following ? "Følger" : "Følg"}
+              <Bookmark
+                size={15}
+                fill={saved ? "currentColor" : "none"}
+                aria-hidden="true"
+              />
+              {saved ? "Lagret" : "Lagre"}
             </button>
           </div>
         </>
@@ -216,6 +252,8 @@ export default memo(function ProjectCard({
             <p className={cn(meta, "gap-1")}>
               <MapPin size={13} className="shrink-0" aria-hidden="true" />
               <span className="min-w-0 truncate">{projectPlace(project)}</span>
+              {/* The place gives way, so this fits at any width. */}
+              {fresh && <UnreadMark news={fresh} className="ml-auto pl-2" />}
             </p>
             {title}
             {/* Stats sit above the card link for their tooltips; forward clicks. */}

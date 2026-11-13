@@ -17,7 +17,8 @@ import type { SuggestionInput, SuggestionMutation } from "../lib/suggestions";
 type CommunityData = {
   projects: Project[];
   comments: Comment[];
-  following: string[];
+  /** The member's saved projects. */
+  saved: string[];
   votes: Record<string, number>;
   /** Pending suggestions: the queue for moderators, one's own otherwise. */
   suggestions: number;
@@ -40,7 +41,7 @@ function merge(current: CommunityData, next: CommunityData): CommunityData {
   return {
     projects: reuse(current.projects, next.projects),
     comments: reuse(current.comments, next.comments),
-    following: reuse(current.following, next.following),
+    saved: reuse(current.saved, next.saved),
     votes: reuse(current.votes, next.votes),
     suggestions: next.suggestions,
     reviewed: next.reviewed,
@@ -60,12 +61,12 @@ export function CommunityProvider({
     data: initialData,
     userId: initialUserId,
   });
-  // Follows shown before the server confirms them, by project.
-  const [pendingFollows, setPendingFollows] = useState<Record<string, boolean>>(
+  // Saves shown before the server confirms them, by project.
+  const [pendingSaves, setPendingSaves] = useState<Record<string, boolean>>(
     {},
   );
-  // Each project's follows reach the server in the order they were made.
-  const followQueue = useRef(new Map<string, Promise<unknown>>());
+  // Each project's saves reach the server in the order they were made.
+  const saveQueue = useRef(new Map<string, Promise<unknown>>());
   const identity = useRef(user?.id);
   const revision = useRef(0);
   // Whose data is held: the server's render needs no immediate refetch.
@@ -105,28 +106,28 @@ export function CommunityProvider({
   }, [refresh, user?.id]);
   async function mutate(mutation: CommunityMutation) {
     const current = user?.id;
-    // A follow shows at once and falls back if the server refuses it.
-    const follow = mutation.action === "follow" ? mutation : null;
-    if (!follow) return send(mutation, current);
-    setPendingFollows((pending) => ({
+    // A save shows at once and falls back if the server refuses it.
+    const save = mutation.action === "save" ? mutation : null;
+    if (!save) return send(mutation, current);
+    setPendingSaves((pending) => ({
       ...pending,
-      [follow.projectId]: follow.following,
+      [save.projectId]: save.saved,
     }));
-    const queue = followQueue.current;
-    const previous = queue.get(follow.projectId);
+    const queue = saveQueue.current;
+    const previous = queue.get(save.projectId);
     const request = (previous ?? Promise.resolve())
       .catch(() => {})
       .then(() => send(mutation, current));
-    queue.set(follow.projectId, request);
+    queue.set(save.projectId, request);
     try {
       await request;
     } finally {
-      // A later follow of the same project keeps showing until it lands.
-      if (queue.get(follow.projectId) === request) {
-        queue.delete(follow.projectId);
-        setPendingFollows((pending) => {
+      // A later save of the same project keeps showing until it lands.
+      if (queue.get(save.projectId) === request) {
+        queue.delete(save.projectId);
+        setPendingSaves((pending) => {
           const rest = { ...pending };
-          delete rest[follow.projectId];
+          delete rest[save.projectId];
           return rest;
         });
       }
@@ -142,16 +143,16 @@ export function CommunityProvider({
       receive(data, current);
     else if (identity.current === current) await refresh();
   }
-  const following = useMemo(() => {
-    const changes = Object.entries(pendingFollows);
-    if (!changes.length) return state.data.following;
-    const ids = new Set(state.data.following);
+  const saved = useMemo(() => {
+    const changes = Object.entries(pendingSaves);
+    if (!changes.length) return state.data.saved;
+    const ids = new Set(state.data.saved);
     for (const [id, on] of changes) {
       if (on) ids.add(id);
       else ids.delete(id);
     }
     return [...ids];
-  }, [pendingFollows, state.data.following]);
+  }, [pendingSaves, state.data.saved]);
   async function suggest(suggestion: SuggestionInput) {
     await apiRequest("/api/suggestions", {
       method: "POST",
@@ -168,7 +169,7 @@ export function CommunityProvider({
     <Context.Provider
       value={{
         ...state.data,
-        following: personal ? following : [],
+        saved: personal ? saved : [],
         votes: personal ? state.data.votes : {},
         suggestions: personal ? state.data.suggestions : 0,
         reviewed: personal ? state.data.reviewed : 0,

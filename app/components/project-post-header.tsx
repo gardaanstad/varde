@@ -2,8 +2,7 @@
 
 import { useEffect, useState, type RefObject } from "react";
 import {
-  Bell,
-  BellRing,
+  Bookmark,
   Check,
   Ellipsis,
   MapPin,
@@ -47,12 +46,12 @@ export type ProjectActionsProps = {
   onEdit?: () => void;
   suggest?: boolean;
   copied: boolean;
-  following: boolean;
-  onFollow: () => void;
+  saved: boolean;
+  onSave: () => void;
   onShare: () => void;
   /** Shows the project on the map, where the map is out of sight. */
   onMap?: () => void;
-  /** Signed out: following and suggesting ask to log in first. */
+  /** Signed out: saving and suggesting ask to log in first. */
   guest?: boolean;
 };
 
@@ -70,13 +69,13 @@ type HeaderProps = {
   mobile?: boolean;
 };
 
-/** Desktop: follow, suggest a change and share, under the intro. */
+/** Desktop: save, suggest a change and share, under the intro. */
 export function DesktopActions({
   onEdit,
   suggest = false,
   copied,
-  following,
-  onFollow,
+  saved,
+  onSave,
   onShare,
 }: ProjectActionsProps) {
   return (
@@ -88,20 +87,20 @@ export function DesktopActions({
         type="button"
         className={cn(
           actionPill,
-          following &&
+          saved &&
             "border-transparent bg-accent-soft text-accent-strong hover:bg-accent/16",
         )}
-        onClick={onFollow}
-        data-follow=""
-        aria-pressed={following}
-        data-tooltip={following ? "Slutt å følge" : undefined}
+        onClick={onSave}
+        data-save=""
+        aria-pressed={saved}
+        data-tooltip={saved ? "Fjern fra lagrede" : undefined}
       >
-        {following ? (
-          <BellRing size={14} aria-hidden="true" />
-        ) : (
-          <Bell size={14} aria-hidden="true" />
-        )}
-        {following ? "Følger" : "Følg"}
+        <Bookmark
+          size={14}
+          fill={saved ? "currentColor" : "none"}
+          aria-hidden="true"
+        />
+        {saved ? "Lagret" : "Lagre"}
       </button>
       {onEdit && (
         <button
@@ -140,8 +139,8 @@ function MobileActions({
   onEdit,
   suggest = false,
   copied,
-  following,
-  onFollow,
+  saved,
+  onSave,
   onShare,
   onMap,
   guest = false,
@@ -149,12 +148,12 @@ function MobileActions({
   const [open, setOpen] = useState(false);
   const actions: SheetAction[] = [
     {
-      id: "follow",
-      label: following ? "Slutt å følge" : "Følg",
-      icon: following ? <BellRing size={20} /> : <Bell size={20} />,
-      onSelect: onFollow,
+      id: "save",
+      label: saved ? "Fjern fra lagrede" : "Lagre",
+      icon: <Bookmark size={20} fill={saved ? "currentColor" : "none"} />,
+      onSelect: onSave,
       locked: guest,
-      pressed: following,
+      pressed: saved,
     },
     ...(onEdit
       ? [
@@ -196,7 +195,7 @@ function MobileActions({
         onClick={() => setOpen(true)}
       >
         <Ellipsis size={20} />
-        {following && (
+        {saved && (
           <span
             aria-hidden="true"
             className="absolute top-2 right-2 size-2 rounded-full border-2 border-surface bg-accent"

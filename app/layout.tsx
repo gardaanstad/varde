@@ -24,7 +24,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Varde",
   description:
-    "Samferdsel, energi, vann, offentlige bygg og byutvikling i Norge. Følg prosjektene, se oppdateringer og diskuter.",
+    "Samferdsel, energi, vann, offentlige bygg og byutvikling i Norge. Se prosjektene, få med deg oppdateringer og diskuter.",
 };
 
 async function chosenTheme() {

@@ -3,8 +3,8 @@ import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
   comment,
-  follow,
   project,
+  projectView,
   rateLimit,
   suggestion,
   user,
@@ -22,7 +22,7 @@ import { serverNow } from "./clock";
  */
 export async function readCommunity(userId?: string, moderator = false) {
   const db = getDb();
-  const [projects, rows, followed, votes, [pending], [reviewed], credits] =
+  const [projects, rows, saved, votes, [pending], [reviewed], credits] =
     await Promise.all([
     db.select().from(project),
     db
@@ -43,9 +43,11 @@ export async function readCommunity(userId?: string, moderator = false) {
       .orderBy(comment.date, comment.id),
     userId
       ? db
-          .select({ projectId: follow.projectId })
-          .from(follow)
-          .where(and(eq(follow.userId, userId), eq(follow.following, true)))
+          .select({ projectId: projectView.projectId })
+          .from(projectView)
+          .where(
+            and(eq(projectView.userId, userId), eq(projectView.saved, true)),
+          )
       : [],
     userId ? db.select().from(vote).where(eq(vote.userId, userId)) : [],
     userId
@@ -90,7 +92,7 @@ export async function readCommunity(userId?: string, moderator = false) {
   return {
     projects: projects.map((row) => credit(row.data, credits)),
     comments,
-    following: followed.map((row) => row.projectId),
+    saved: saved.map((row) => row.projectId),
     votes: Object.fromEntries(votes.map((row) => [row.commentId, row.value])),
     suggestions: pending?.count ?? 0,
     /** The member's suggestions reviewed since they last looked. */
@@ -183,33 +185,25 @@ export async function castVote(
       });
 }
 
-/** A follow that starts now, with nothing before it unread. */
-function newFollow(userId: string, projectId: string, following = true) {
+/** A first view of a project, now: nothing before it is unread. */
+function newView(userId: string, projectId: string, saved = false) {
   const now = serverNow();
-  return { userId, projectId, following, createdAt: now, seenAt: now };
+  return { userId, projectId, saved, createdAt: now, seenAt: now };
 }
 
-export async function setFollow(
+/** Saving keeps the read state of a project already opened. */
+export async function setSaved(
   userId: string,
   projectId: string,
-  following: boolean,
+  saved: boolean,
 ) {
   await findProject(projectId);
-  const values = newFollow(userId, projectId, following);
-  const now = values.createdAt.getTime();
-  // Following again starts fresh; staying followed keeps the read state.
   await getDb()
-    .insert(follow)
-    .values(values)
+    .insert(projectView)
+    .values(newView(userId, projectId, saved))
     .onConflictDoUpdate({
-      target: [follow.userId, follow.projectId],
-      set: following
-        ? {
-            following: true,
-            createdAt: sql`case when ${follow.following} then ${follow.createdAt} else ${now} end`,
-            seenAt: sql`case when ${follow.following} then ${follow.seenAt} else ${now} end`,
-          }
-        : { following: false },
+      target: [projectView.userId, projectView.projectId],
+      set: { saved },
     });
 }
 
@@ -238,8 +232,8 @@ export async function addComment(
       throw new HttpError(400, "Svaret må tilhøre den samme samtalen.");
   }
   // Identity and timestamps always come from the verified session and server.
-  // Taking part in a discussion follows the project, unless the user has
-  // unfollowed it before; an existing follow keeps its read state.
+  // Commenting counts as having opened the project; an earlier view keeps
+  // its read state.
   await db.batch([
     db.insert(comment).values({
       id: crypto.randomUUID(),
@@ -251,8 +245,8 @@ export async function addComment(
       userId,
     }),
     db
-      .insert(follow)
-      .values(newFollow(userId, input.projectId))
+      .insert(projectView)
+      .values(newView(userId, input.projectId))
       .onConflictDoNothing(),
   ]);
 }

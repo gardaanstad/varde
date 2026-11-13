@@ -5,7 +5,7 @@
  * return signed in. Kept for the tab only, and read once.
  */
 export type LoginIntent =
-  | { type: "follow"; projectId: string }
+  | { type: "save"; projectId: string }
   | { type: "suggest-project" }
   | { type: "comment"; projectId: string }
   | { type: "tip"; projectId: string }

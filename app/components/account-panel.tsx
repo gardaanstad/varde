@@ -3,7 +3,7 @@
 import Link from "next/link";
 import {
   ArrowLeft,
-  Bell,
+  Bookmark,
   ChevronRight,
   Inbox,
   LoaderCircle,
@@ -37,20 +37,20 @@ const profileLink = cn(
 
 export default function AccountPanel({
   onBack,
-  onFollowing,
+  onSaved,
   onSuggestions,
-  followingCount = 0,
+  savedCount = 0,
   suggestionCount = 0,
   reviewedCount = 0,
   initialView = "profile",
   onSignedOut,
 }: {
   onBack?: () => void;
-  /** Opens the followed projects, where the app has no other entry to them. */
-  onFollowing?: () => void;
+  /** Opens the saved projects, where the app has no other entry to them. */
+  onSaved?: () => void;
   /** Opens the suggestions in place; otherwise they are a link. */
   onSuggestions?: () => void;
-  followingCount?: number;
+  savedCount?: number;
   /** Pending suggestions: one's own, or the whole queue for moderators. */
   suggestionCount?: number;
   /** One's own suggestions reviewed since last looked; shown as a badge. */
@@ -228,18 +228,18 @@ export default function AccountPanel({
               }
               links={
                 <div className="mt-5 border-t border-border">
-                  {onFollowing && (
+                  {onSaved && (
                     <button
                       type="button"
                       className={profileLink}
                       data-press=""
-                      onClick={onFollowing}
+                      onClick={onSaved}
                     >
-                      <Bell size={18} aria-hidden="true" />
-                      <span className="flex-1">Følger</span>
-                      {followingCount > 0 && (
+                      <Bookmark size={18} aria-hidden="true" />
+                      <span className="flex-1">Lagret</span>
+                      {savedCount > 0 && (
                         <span className="text-ui text-muted tabular-nums">
-                          {followingCount}
+                          {savedCount}
                         </span>
                       )}
                       <ChevronRight size={16} aria-hidden="true" />

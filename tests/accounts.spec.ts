@@ -5,8 +5,8 @@ import { safeReturnPath, usernameSchema } from "../app/lib/account-rules";
 import { seedProjects } from "../app/lib/data";
 import {
   account,
-  follow,
   comment,
+  projectView,
   session,
   user,
   vote,
@@ -56,9 +56,9 @@ test("anonymous and forged sessions cannot perform account or community mutation
   expect(
     (
       await mutation(request, "/api/community", {
-        action: "follow",
+        action: "save",
         projectId: project.id,
-        following: true,
+        saved: true,
       })
     ).status(),
   ).toBe(401);
@@ -135,7 +135,7 @@ test("onboarding and same-origin checks are enforced on the server", async ({
       await mutation(
         request,
         "/api/community",
-        { action: "follow", projectId: project.id, following: true },
+        { action: "save", projectId: project.id, saved: true },
         fresh,
       )
     ).status(),
@@ -217,7 +217,7 @@ test("comments use server identity; follows and votes stay with the correct acco
   await mutation(
     request,
     "/api/community",
-    { action: "follow", projectId: project.id, following: true },
+    { action: "save", projectId: project.id, saved: true },
     first,
   );
   const firstState = await (
@@ -226,8 +226,8 @@ test("comments use server identity; follows and votes stay with the correct acco
   const secondState = await (
     await request.get("/api/community", { headers: cookieHeaders(second) })
   ).json();
-  expect(firstState.following).toContain(project.id);
-  expect(secondState.following).toEqual([]);
+  expect(firstState.saved).toContain(project.id);
+  expect(secondState.saved).toEqual([]);
   expect(firstState.votes).toEqual({});
   expect(secondState.votes[created.id]).toBe(1);
   expect(
@@ -235,7 +235,7 @@ test("comments use server identity; follows and votes stay with the correct acco
       .votes,
   ).toBe(1);
   const anonymous = await (await request.get("/api/community")).json();
-  expect(anonymous.following).toEqual([]);
+  expect(anonymous.saved).toEqual([]);
   expect(anonymous.votes).toEqual({});
   expect(
     (
@@ -342,7 +342,7 @@ test("sign-out revokes the actual session and deletion removes account-owned rec
   await mutation(
     request,
     "/api/community",
-    { action: "follow", projectId: project.id, following: true },
+    { action: "save", projectId: project.id, saved: true },
     person,
   );
   await mutation(
@@ -354,7 +354,7 @@ test("sign-out revokes the actual session and deletion removes account-owned rec
   expect(
     (await mutation(request, "/api/auth/delete-user", {}, person)).status(),
   ).toBe(200);
-  for (const table of [session, account, follow, vote, comment])
+  for (const table of [session, account, projectView, vote, comment])
     expect(
       await db.select().from(table).where(eq(table.userId, person.id)),
     ).toHaveLength(0);
@@ -377,7 +377,7 @@ test("sign-out revokes the actual session and deletion removes account-owned rec
       await mutation(
         request,
         "/api/community",
-        { action: "follow", projectId: project.id, following: true },
+        { action: "save", projectId: project.id, saved: true },
         another,
       )
     ).status(),
@@ -574,27 +574,27 @@ test("comment failures preserve the draft and successful comments persist after 
   await expect(page.getByText(message, { exact: true })).toBeVisible();
 });
 
-test("a follow intent survives login and profile settings update the public page", async ({
+test("a save intent survives login and profile settings update the public page", async ({
   page,
   context,
 }) => {
   await page.goto(`/prosjekt/${project.id}`);
   await page
-    .getByRole("button", { name: "Følg", exact: true })
+    .getByRole("button", { name: "Lagre", exact: true })
     .click();
   await expect(page.getByRole("dialog", { name: "Logg inn" })).toContainText(
-    "følge prosjekter",
+    "lagre prosjekter",
   );
   expect(
     await page.evaluate(() => sessionStorage.getItem("varde-login-intent")),
-  ).toBe(JSON.stringify({ type: "follow", projectId: project.id }));
+  ).toBe(JSON.stringify({ type: "save", projectId: project.id }));
   const person = await member({ username: uniqueName() });
   await signIn(context, person);
   await page.goto(
     `/velkommen?next=${encodeURIComponent(`/prosjekt/${project.id}`)}`,
   );
   await expect(
-    page.getByRole("button", { name: "Følger", exact: true, pressed: true }),
+    page.getByRole("button", { name: "Lagret", exact: true, pressed: true }),
   ).toBeVisible();
   await page.goto(`/profil/${person.username}`);
   await page
@@ -664,9 +664,9 @@ for (const viewport of [
         return settled;
       })
       .toBe(true);
-    // Followed projects are reached through the profile at every width.
+    // Saved projects are reached through the profile at every width.
     await expect(
-      panel.getByRole("button", { name: /^Følger/ }),
+      panel.getByRole("button", { name: /^Lagret/ }),
     ).toHaveCount(1);
     await expect(page).toHaveURL(/:\d+\/(\?|$)/);
     await expect(

@@ -19,7 +19,8 @@ export default function PrivacyPage() {
       <Section title="Hva vi lagrer">
         Navn, e-post og profilbilde fra Google-kontoen din, brukt kun til
         innlogging og aldri vist offentlig. Brukernavn, bio, sted, kommentarer,
-        stemmer, prosjektene du følger og når du sist åpnet hvert av dem.
+        stemmer, prosjektene du har lagret, og hvilke prosjekter du har åpnet
+        og når du sist åpnet hvert av dem.
         Innloggingsøkter med IP-adresse og nettlesertype.
       </Section>
       <Section title="Hvorfor">
@@ -35,7 +36,8 @@ export default function PrivacyPage() {
       </Section>
       <Section title="Sletting og rettigheter">
         Du kan slette kontoen din under kontoinnstillinger. Da slettes
-        kontoen, kommentarene, stemmene og prosjektene du følger. Du har
+        kontoen, kommentarene, stemmene og prosjektene du har lagret og åpnet.
+        Du har
         rett til innsyn, retting og sletting, og kan klage til Datatilsynet.
       </Section>
       <Section title="Kontakt">

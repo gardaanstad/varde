@@ -5,7 +5,7 @@ import {
   castVote,
   readCommunity,
   saveProject,
-  setFollow,
+  setSaved,
   throttle,
 } from "@/app/lib/server/community";
 import {
@@ -41,8 +41,8 @@ export function POST(request: Request) {
       case "vote":
         await castVote(member.id, body.commentId, body.value);
         break;
-      case "follow":
-        await setFollow(member.id, body.projectId, body.following);
+      case "save":
+        await setSaved(member.id, body.projectId, body.saved);
         break;
       case "comment":
         await addComment(member.id, body);

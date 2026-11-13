@@ -18,7 +18,7 @@ export const pillButton = [
 ].join(" ");
 
 /**
- * The sort menu at the end of a count row (projects, comments, followed):
+ * The sort menu at the end of a count row (projects, comments, saved):
  * muted text, its chevron on the content's edge.
  */
 export const sortChoice = [
@@ -131,7 +131,7 @@ export const statusTone = {
 } as const;
 
 /**
- * A panel's title (a project, Følger, Forslag): the largest type in the
+ * A panel's title (a project, Lagret, Forslag): the largest type in the
  * sidebar, set beside the panel's controls.
  */
 export const panelTitle = "text-display max-md:text-[1.5rem]";

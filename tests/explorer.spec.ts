@@ -18,11 +18,11 @@ const atList = /:\d+\/(\?|$)/;
 async function expectDrawerHeight(
   page: Page,
   fraction: number,
-  drawer: "explorer" | "project" | "following" = "explorer",
+  drawer: "explorer" | "project" | "saved" = "explorer",
 ) {
   // Panels other than projects are drawers named by `data-panel-drawer`.
   const selector =
-    drawer === "following"
+    drawer === "saved"
       ? `[data-panel-drawer="${drawer}"]`
       : `[data-${drawer}-drawer]`;
   await expect
@@ -631,7 +631,7 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
   });
 });
 
-test("followed projects keep their collection and full reading height", async ({
+test("saved projects keep their collection and full reading height", async ({
   page,
   context,
   request,
@@ -646,7 +646,7 @@ test("followed projects keep their collection and full reading height", async ({
       await mutation(
         request,
         "/api/community",
-        { action: "follow", projectId: project.id, following: true },
+        { action: "save", projectId: project.id, saved: true },
         person,
       )
     ).ok(),
@@ -655,12 +655,12 @@ test("followed projects keep their collection and full reading height", async ({
   // Desktop markup comes first here, then the mobile drawer replaces it.
   await expect(page.locator("[data-explorer-drawer]")).toBeVisible();
   await page.getByRole("button", { name: "Din profil", exact: true }).click();
-  await page.getByRole("button", { name: /^Følger/ }).click();
+  await page.getByRole("button", { name: /^Lagret/ }).click();
   // Panels open in drawers of their own, over the explorer where it was.
-  await expectDrawerHeight(page, 1, "following");
+  await expectDrawerHeight(page, 1, "saved");
   await expectDrawerHeight(page, 0.58);
   await page
-    .getByRole("region", { name: "Følger", exact: true })
+    .getByRole("region", { name: "Lagret", exact: true })
     .getByRole("button", { name: new RegExp(project.title) })
     .first()
     .click();
@@ -669,9 +669,9 @@ test("followed projects keep their collection and full reading height", async ({
     .getByRole("button", { name: "Lukk prosjekt", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Følger", exact: true, level: 1 }),
+    page.getByRole("heading", { name: "Lagret", exact: true, level: 1 }),
   ).toBeVisible();
-  await expectDrawerHeight(page, 1, "following");
+  await expectDrawerHeight(page, 1, "saved");
   await page.getByRole("button", { name: "Tilbake", exact: true }).click();
   await expect(page.locator("[data-account-panel]")).toBeVisible();
 });
@@ -776,14 +776,14 @@ test.describe("desktop explorer", () => {
     await first.getByRole("heading").hover();
     await shot(page, "list-expanded-hover");
 
-    // Like a feed post: the counts and follow sit under the photos.
+    // Like a feed post: the counts and saving sit under the photos.
     const comments = first.getByRole("button", { name: /^\d+ innspill$/ });
     const [galleryBox, commentsBox] = await Promise.all([
       gallery.boundingBox(),
       comments.boundingBox(),
     ]);
     expect(commentsBox!.y).toBeGreaterThan(galleryBox!.y + galleryBox!.height);
-    await expect(first.getByRole("button", { name: "Følg" })).toBeVisible();
+    await expect(first.getByRole("button", { name: "Lagre" })).toBeVisible();
     // The comment count opens the project at its discussion.
     await comments.click();
     await expect(
@@ -1804,13 +1804,13 @@ test.describe("desktop sidebar panels", () => {
     await expect(list).toBeVisible();
     await expect(page).toHaveURL(atList);
 
-    // Følger and the profile open the same way.
-    await page.getByRole("button", { name: /^Følger/ }).click();
-    const followed = page.locator('[data-sidebar-panel="following"]');
-    await expect(followed).toBeVisible();
-    await expect.poll(() => box("following")).toEqual([0, 0, inner, 800]);
+    // Lagret and the profile open the same way.
+    await page.getByRole("button", { name: "Lagret", exact: true }).click();
+    const saved = page.locator('[data-sidebar-panel="saved"]');
+    await expect(saved).toBeVisible();
+    await expect.poll(() => box("saved")).toEqual([0, 0, inner, 800]);
     await page.keyboard.press("Escape");
-    await expect(followed).toHaveCount(0);
+    await expect(saved).toHaveCount(0);
     await page.getByRole("button", { name: "Din profil", exact: true }).click();
     const account = page.locator('[data-sidebar-panel="account"]');
     await expect(account).toBeVisible();

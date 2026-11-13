@@ -16,7 +16,7 @@ The Playwright suite (`bun run test`) runs against a production build. Before co
 - `panels.spec.ts`: project panels and their headers and actions, the login prompt, and flows that stay in place (account panel, Forslag)
 - `accounts.spec.ts`: sign-in, onboarding, usernames, profiles, account settings, and server-side authorization
 - `discussion.spec.ts`: comments, replies, votes, sorting, and project updates
-- `following.spec.ts`: following, unread counts, and the Følger list
+- `saved.spec.ts`: read state of opened projects, unread marks on cards, saving, and the Lagret list
 - `suggestions.spec.ts`: suggestions and the moderation queue
 - `uploads.spec.ts`: photo uploads
 - `diff.spec.ts`: the suggestion diff (pure functions, no browser)

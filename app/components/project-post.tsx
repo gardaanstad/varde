@@ -108,8 +108,8 @@ type Props = {
   closeOnEscape?: boolean;
   onClose: () => void;
   feedback?: ReactNode;
-  following: boolean;
-  onFollow: () => void;
+  saved: boolean;
+  onSave: () => void;
   /** Mobile: the drawer covers the map, so it offers to show the project there. */
   onMap?: () => void;
   /** Replaces closing on Escape, e.g. to step down from a full page first. */
@@ -1053,8 +1053,8 @@ export default function ProjectPost({
   mobile = false,
   onToggleFull,
   feedback,
-  following,
-  onFollow,
+  saved,
+  onSave,
   onMap,
   comments,
   onNotify,
@@ -1319,8 +1319,8 @@ export default function ProjectPost({
     onEdit: startEditing,
     suggest: !canModerate,
     copied,
-    following,
-    onFollow,
+    saved,
+    onSave,
     onShare: share,
     onMap,
     guest: !user,

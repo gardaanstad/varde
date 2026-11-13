@@ -25,7 +25,7 @@ import {
 } from "./sidebar-panel";
 
 /**
- * Panels are pages over the explorer: a project, a profile, Følger, Forslag.
+ * Panels are pages over the explorer: a project, a profile, Lagret, Forslag.
  * Their content is written once. On desktop each is a layer in the sidebar
  * stack (`SidebarPanel`); on phones each is a drawer of its own, stacked
  * over the explorer's drawer, which stays where it was (`PanelDrawer`).
@@ -178,21 +178,18 @@ type PanelFrame = {
 const PanelFrameContext = createContext<PanelFrame | null>(null);
 
 /**
- * The header of a panel whose content names itself (Følger, Forslag, a new
+ * The header of a panel whose content names itself (Lagret, Forslag, a new
  * project): back, the title, and the panel's controls on one row, laid out
  * like a project's header. Render it above the content's scroller.
  */
 export function PanelHeader({
   title,
   id,
-  badge,
   actions,
 }: {
   title: ReactNode;
   /** The heading's id, for `aria-labelledby`. */
   id?: string;
-  /** Beside the title, such as an unread count. */
-  badge?: ReactNode;
   /** Before the panel's own controls, such as a sort menu. */
   actions?: ReactNode;
 }) {
@@ -237,7 +234,6 @@ export function PanelHeader({
         >
           {title}
         </h1>
-        {badge}
       </div>
       {/* Offsets put the icon glyphs, not the hit areas, on the content edge. */}
       <div

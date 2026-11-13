@@ -74,7 +74,7 @@ test.describe("login prompt", () => {
     await expect(login).toBeFocused();
   });
 
-  test("actions that need an account say why, and a follow goes ahead after login", async ({
+  test("actions that need an account say why, and a save goes ahead after login", async ({
     page,
     context,
   }) => {
@@ -82,9 +82,9 @@ test.describe("login prompt", () => {
     await page.goto(projectPath);
     const post = page.locator("[data-project-post]");
     await expect(post).toBeVisible();
-    await post.getByRole("button", { name: "Følg", exact: true }).click();
+    await post.getByRole("button", { name: "Lagre", exact: true }).click();
     await expect(prompt).toContainText(
-      "Du må være logget inn for å følge prosjekter.",
+      "Du må være logget inn for å lagre prosjekter.",
     );
     await expect(page).toHaveURL(new RegExp(projectPath));
     await shot(page, "desktop-login-prompt");
@@ -99,14 +99,14 @@ test.describe("login prompt", () => {
     await page.keyboard.press("Escape");
     await expect(prompt).toHaveCount(0);
 
-    // Coming back signed in, the follow asked for is done.
-    await post.getByRole("button", { name: "Følg", exact: true }).click();
+    // Coming back signed in, the save asked for is done.
+    await post.getByRole("button", { name: "Lagre", exact: true }).click();
     await expect(prompt).toBeVisible();
     const person = await member({ username: `login_${randomUUID().slice(0, 8)}` });
     await signIn(context, person);
     await page.reload();
     await expect(
-      page.getByRole("button", { name: "Følger", exact: true, pressed: true }),
+      page.getByRole("button", { name: "Lagret", exact: true, pressed: true }),
     ).toBeVisible();
   });
 });
@@ -156,8 +156,8 @@ test.describe("mobile panels", () => {
     await drawer.getByRole("button", { name: "Handlinger" }).click();
     const actions = page.getByRole("dialog", { name: "Handlinger" });
     await expect(actions).toBeVisible();
-    const follow = actions.getByRole("button", { name: "Følg, krever innlogging" });
-    await expect(follow).toHaveAttribute("data-locked", "true");
+    const save = actions.getByRole("button", { name: "Lagre, krever innlogging" });
+    await expect(save).toHaveAttribute("data-locked", "true");
     await expect(
       actions.getByRole("button", { name: "Foreslå endring, krever innlogging" }),
     ).toHaveAttribute("data-locked", "true");
@@ -175,11 +175,11 @@ test.describe("mobile panels", () => {
       )
       .toBe(0);
     await shot(page, "mobile-actions-sheet");
-    await follow.click();
+    await save.click();
     await expect(actions).toHaveCount(0);
     const prompt = page.getByRole("dialog", { name: "Logg inn" });
     await expect(prompt).toContainText(
-      "Du må være logget inn for å følge prosjekter.",
+      "Du må være logget inn for å lagre prosjekter.",
     );
     // Along the bottom edge, like the filter menus.
     const sheet = prompt.locator("> div");
@@ -223,13 +223,13 @@ test.describe("mobile panels", () => {
     expect(await scale()).toBe(transform);
     await shot(page, "mobile-profile-drawer");
 
-    // Følger opens over the profile and leads back to it.
-    await account.getByRole("button", { name: /^Følger/ }).click();
-    const following = page.locator('[data-panel-drawer="following"]');
+    // Lagret opens over the profile and leads back to it.
+    await account.getByRole("button", { name: /^Lagret/ }).click();
+    const saved = page.locator('[data-panel-drawer="saved"]');
     await expect(
-      following.getByRole("heading", { name: "Følger", exact: true, level: 1 }),
+      saved.getByRole("heading", { name: "Lagret", exact: true, level: 1 }),
     ).toBeVisible();
-    await following.getByRole("button", { name: "Tilbake", exact: true }).click();
+    await saved.getByRole("button", { name: "Tilbake", exact: true }).click();
     await expect(account.locator("[data-account-panel]")).toBeVisible();
     await account.getByRole("button", { name: "Lukk", exact: true }).click();
     await expect(account).toHaveCount(0);
@@ -285,7 +285,7 @@ test.describe("desktop headers", () => {
     const post = page.locator("[data-project-post]");
     await expect(post).toBeVisible();
     const actions = post.locator("[data-project-actions]");
-    for (const name of ["Følg", "Foreslå endring", "Del"])
+    for (const name of ["Lagre", "Foreslå endring", "Del"])
       await expect(actions.getByRole("button", { name, exact: true })).toBeVisible();
     const box = (selector: string) =>
       post.locator(selector).first().evaluate((element) => {
@@ -311,7 +311,7 @@ test.describe("desktop headers", () => {
     await shot(page, "desktop-project-header");
   });
 
-  test("Følger and Forslag carry their title where a project does", async ({
+  test("Lagret and Forslag carry their title where a project does", async ({
     page,
     context,
   }) => {
@@ -335,18 +335,18 @@ test.describe("desktop headers", () => {
     await expect(page.locator('[data-sidebar-panel="suggestions"]')).toBeVisible();
     await level("suggestions");
     await page.goto("/");
-    const following = page
+    const saved = page
       .getByRole("navigation", { name: "Konto" })
-      .getByRole("button", { name: /^Følger/ });
+      .getByRole("button", { name: "Lagret", exact: true });
     // The server renders the entry, so a click can land before hydration.
     await expect(async () => {
-      await following.click();
-      await expect(page.locator('[data-sidebar-panel="following"]')).toBeVisible({
+      await saved.click();
+      await expect(page.locator('[data-sidebar-panel="saved"]')).toBeVisible({
         timeout: 1000,
       });
     }).toPass();
-    await level("following");
-    await shot(page, "desktop-following-header");
+    await level("saved");
+    await shot(page, "desktop-saved-header");
   });
 
   test("maximized, the header lines up with the list's column", async ({
@@ -464,7 +464,7 @@ test.describe("mobile project actions, signed in", () => {
     isMobile: true,
   });
 
-  test("nothing is locked, and following works from the sheet", async ({
+  test("nothing is locked, and saving works from the sheet", async ({
     page,
     context,
   }) => {
@@ -476,12 +476,12 @@ test.describe("mobile project actions, signed in", () => {
     await menu.click();
     const actions = page.getByRole("dialog", { name: "Handlinger" });
     await expect(actions.locator("[data-locked]")).toHaveCount(0);
-    await actions.getByRole("button", { name: "Følg", exact: true }).click();
+    await actions.getByRole("button", { name: "Lagre", exact: true }).click();
     await expect(actions).toHaveCount(0);
     await expect(menu).toBeFocused();
     await menu.click();
     await expect(
-      actions.getByRole("button", { name: "Slutt å følge", exact: true }),
+      actions.getByRole("button", { name: "Fjern fra lagrede", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
     await page.keyboard.press("Escape");
     await expect(actions).toHaveCount(0);
