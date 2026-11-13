@@ -1,10 +1,40 @@
-import { devices, expect, test, type Page } from "@playwright/test";
+import {
+  devices,
+  expect,
+  test,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { seedProjects } from "../app/lib/data";
 import { member, shot, signIn } from "./support";
 
 const project = seedProjects[0];
 const projectPath = `/prosjekt/${project.id}`;
+/** Where a heading's capitals and first letter are on the page. */
+const capitals = (heading: Locator) =>
+  heading.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    const context = document.createElement("canvas").getContext("2d")!;
+    context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    const metrics = context.measureText("H");
+    // The ink of the first letter, past its side bearing.
+    const first = context.measureText(element.textContent!.trim()[0]);
+    const content =
+      metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent;
+    const baseline =
+      rect.top +
+      parseFloat(style.paddingTop) +
+      (parseFloat(style.lineHeight) - content) / 2 +
+      metrics.fontBoundingBoxAscent;
+    const top = baseline - metrics.actualBoundingBoxAscent;
+    return {
+      top,
+      bottom: baseline,
+      left: rect.left + parseFloat(style.paddingLeft) - first.actualBoundingBoxLeft,
+    };
+  });
 const top = (page: Page, selector: string) =>
   page.locator(selector).evaluate((element) =>
     Math.round(element.getBoundingClientRect().top),
@@ -267,20 +297,56 @@ test.describe("desktop headers", () => {
     expect(Math.round((await box("[data-project-close]")).middle)).toBe(
       Math.round(full.middle),
     );
-    // The title's first line sits level with them.
-    const firstLine = await post.locator("#project-card-title").evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      const line = parseFloat(getComputedStyle(element).lineHeight);
-      const top = rect.top + parseFloat(getComputedStyle(element).paddingTop);
-      return top + line / 2;
-    });
-    expect(Math.abs(firstLine - full.middle)).toBeLessThanOrEqual(1);
+    // The title's capitals sit level with them, as far below the panel's
+    // top as they are in from its side.
+    const title = await capitals(post.locator("#project-card-title"));
+    expect(Math.abs(title.top - title.left)).toBeLessThanOrEqual(1);
+    expect(title.top).toBeGreaterThanOrEqual(full.top);
+    expect(title.bottom).toBeLessThanOrEqual(full.bottom);
     const intro = await box('section[aria-label="Om prosjektet"]');
     const row = await box("[data-project-actions]");
     const tabs = await box("#project-sections");
     expect(row.top).toBeGreaterThanOrEqual(intro.bottom - 1);
     expect(tabs.top).toBeGreaterThanOrEqual(row.bottom);
     await shot(page, "desktop-project-header");
+  });
+
+  test("Følger and Forslag carry their title where a project does", async ({
+    page,
+    context,
+  }) => {
+    await signIn(
+      context,
+      await member({ username: `titled_${randomUUID().slice(0, 8)}` }),
+    );
+    await page.goto(projectPath);
+    const reference = await capitals(page.locator("#project-card-title"));
+    const level = async (name: string) => {
+      const panel = page.locator(`[data-sidebar-panel="${name}"]`);
+      const title = await capitals(panel.getByRole("heading", { level: 1 }));
+      const close = await panel
+        .locator("[data-sidebar-close]")
+        .evaluate((element) => element.getBoundingClientRect().top);
+      expect(Math.abs(title.top - reference.top)).toBeLessThanOrEqual(1);
+      expect(Math.abs(title.left - reference.left)).toBeLessThanOrEqual(1);
+      expect(close).toBe(10);
+    };
+    await page.goto("/forslag");
+    await expect(page.locator('[data-sidebar-panel="suggestions"]')).toBeVisible();
+    await level("suggestions");
+    await page.goto("/");
+    const following = page
+      .getByRole("navigation", { name: "Konto" })
+      .getByRole("button", { name: /^Følger/ });
+    // The server renders the entry, so a click can land before hydration.
+    await expect(async () => {
+      await following.click();
+      await expect(page.locator('[data-sidebar-panel="following"]')).toBeVisible({
+        timeout: 1000,
+      });
+    }).toPass();
+    await level("following");
+    await shot(page, "desktop-following-header");
   });
 
   test("maximized, the header lines up with the list's column", async ({
@@ -344,16 +410,15 @@ test.describe("flows stay in the explorer", () => {
     ).toBeVisible();
   });
 
-  test("without a username, it is chosen in the account panel, in place", async ({
+  test("without a username, it is chosen over the page, in place", async ({
     page,
     context,
   }) => {
     await signIn(context, await member());
     await page.goto(projectPath);
-    const post = page.locator("[data-project-post]");
-    await post.getByRole("button", { name: "Følg", exact: true }).click();
-    const account = page.locator('[data-sidebar-panel="account"]');
-    await expect(account.getByLabel("Brukernavn", { exact: true })).toBeVisible();
+    const prompt = page.getByRole("dialog", { name: "Hva skal vi kalle deg?" });
+    await expect(prompt.getByLabel("Brukernavn", { exact: true })).toBeFocused();
+    await expect(page.locator("[data-project-post]")).toBeVisible();
     await expect(page).toHaveURL(new RegExp(projectPath));
   });
 

@@ -48,7 +48,7 @@ import {
 import { cn } from "../lib/cn";
 import { iconButton, primaryButton, secondaryButton } from "../lib/ui";
 import type { OsmLayer, OsmLine } from "./project-map";
-import type { ToastMessage } from "./toast";
+import { notify } from "./toast";
 
 const modeKey = "varde-osm-mode";
 const modeEvent = "varde-osm-mode";
@@ -100,7 +100,6 @@ export function useOsmReview({
   allowed,
   projects,
   onFrame,
-  notify,
   beforeToggle,
 }: {
   /** Moderators only; the server checks too. */
@@ -110,7 +109,6 @@ export function useOsmReview({
   projects: Project[];
   /** Frames a candidate on the map. */
   onFrame: (points: Point[]) => void;
-  notify: (toast: ToastMessage) => void;
 }) {
   const stored = useOsmModeStored();
   const on = allowed && stored;
@@ -256,7 +254,9 @@ export function useOsmReview({
       });
     } catch (failure) {
       apply(!value);
-      notify({ message: errorMessage(failure, "Kunne ikke lagre endringen.") });
+      notify(errorMessage(failure, "Kunne ikke lagre endringen."), {
+        error: true,
+      });
       return false;
     }
     return true;
@@ -269,8 +269,7 @@ export function useOsmReview({
     if (!(await setDismissed([id], true))) return;
     if (next) show(next.candidate);
     else setSelectedId(null);
-    notify({
-      message: "Skjult",
+    notify("Skjult", {
       undo: () => {
         void setDismissed([id], false).then((done) => done && setSelectedId(id));
       },
@@ -280,8 +279,7 @@ export function useOsmReview({
   async function resetDismissed() {
     const ids = feed?.dismissed ?? [];
     if (!ids.length || !(await setDismissed(ids, false))) return;
-    notify({
-      message: ids.length === 1 ? "1 vises igjen" : `${ids.length} vises igjen`,
+    notify(ids.length === 1 ? "1 vises igjen" : `${ids.length} vises igjen`, {
       undo: () => void setDismissed(ids, true),
     });
   }

@@ -13,7 +13,6 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  ArrowLeft,
   ArrowRight,
   ArrowUpRight,
   Check,
@@ -62,16 +61,16 @@ import {
 import {
   dangerButton,
   fieldControl,
-  iconButton,
   secondaryButton,
   textButton,
 } from "../lib/ui";
 import { Menu } from "@base-ui/react/menu";
+import { PanelHeader } from "./panel";
 import BackLink from "./back-link";
 import ProfileAvatar from "./profile-avatar";
 import { fields, type FieldId } from "./project-edit";
 import RelativeTime from "./relative-time";
-import Toast, { type ToastMessage } from "./toast";
+import { notify } from "./toast";
 
 const ProjectMap = dynamic(() => import("./project-map"), { ssr: false });
 const openLink =
@@ -903,6 +902,7 @@ function SuggestionRow({
                     <button
                       type="button"
                       className={openLink}
+                      data-press=""
                       onClick={() => openProject(suggestion.projectId!)}
                     >
                       Åpne prosjekt
@@ -985,7 +985,6 @@ export default function SuggestionList({
   embedded = false,
   onOpenProject,
   onClose,
-  onBack,
   onChange,
 }: {
   /** Without it, the list loads itself (and marks reviews as seen). */
@@ -995,8 +994,6 @@ export default function SuggestionList({
   embedded?: boolean;
   onOpenProject?: (projectId: string) => void;
   onClose?: () => void;
-  /** Back to the panel it was opened from, beside the heading. */
-  onBack?: () => void;
   /** After a review, which changes what the explorer shows. */
   onChange?: () => void;
 }) {
@@ -1022,15 +1019,9 @@ export default function SuggestionList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [tab, setTab] = useState<Tab>(moderator ? "queue" : "mine");
-  const [toast, setToast] = useState<ToastMessage | null>(null);
   // One row open at a time.
   const [openId, setOpenId] = useState<string | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 6000);
-    return () => clearTimeout(timer);
-  }, [toast]);
   const queue = lists?.queue ?? [];
   const handled = lists?.handled ?? [];
   const mine = lists?.mine ?? [];
@@ -1057,9 +1048,11 @@ export default function SuggestionList({
     });
     setLists(next);
     onChange?.();
-    setToast({
-      message: mutation.action === "approve" ? "Godkjent" : "Avvist",
-    });
+    notify(
+      mutation.action === "approve"
+        ? "Forslaget er godkjent"
+        : "Forslaget er avvist",
+    );
     // Keyboard reviews carry on with the next suggestion.
     requestAnimationFrame(() => {
       const rows =
@@ -1070,51 +1063,26 @@ export default function SuggestionList({
   }
 
   const Root = embedded ? "div" : "main";
+  const title = moderator ? "Forslag" : "Mine forslag";
   return (
     <OpenProject value={onOpenProject ?? null}>
+    {embedded && <PanelHeader title={title} />}
     <Root
       className={
         embedded
-          ? "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4.5 pb-8 scrollbar-thin md:px-gutter-scroll"
+          ? "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4.5 pt-1 pb-8 scrollbar-thin md:px-gutter-scroll"
           : "min-h-dvh bg-canvas px-5 py-5 sm:px-10 sm:py-8 max-sm:px-3"
       }
       data-suggestion-list=""
       data-drawer-scroll={embedded || undefined}
     >
       <div className="mx-auto w-full max-w-200">
-        {!embedded && <BackLink href="/" />}
-        <div
-          className={cn(
-            embedded
-              ? "mb-2 flex min-h-14 items-center gap-x-3 max-md:min-h-12 max-md:pr-9"
-              : "mt-3 mb-4 flex items-baseline gap-3 px-1",
-          )}
-        >
-          {onBack && (
-            <button
-              type="button"
-              className={cn(iconButton, "-mr-2 -ml-3 rounded-lg text-muted")}
-              aria-label="Tilbake"
-              onClick={onBack}
-            >
-              <ArrowLeft size={20} />
-            </button>
-          )}
-          <h1
-            className={
-              embedded
-                ? "text-title max-md:text-[1.125rem]"
-                : "text-display"
-            }
-          >
-            {moderator ? "Forslag" : "Mine forslag"}
-          </h1>
-          {!moderator && mine.length > 0 && (
-            <span className="text-ui text-muted tabular-nums">
-              {mine.length}
-            </span>
-          )}
-        </div>
+        {!embedded && (
+          <>
+            <BackLink href="/" />
+            <h1 className="mt-3 mb-4 px-1 text-display">{title}</h1>
+          </>
+        )}
         {tabs.length > 0 && (
           <nav
             className={cn("mb-4 flex gap-6 border-b border-border", !embedded && "px-1")}
@@ -1213,9 +1181,6 @@ export default function SuggestionList({
           )}
         </div>
       </div>
-      {toast && (
-        <Toast toast={toast} mobile={false} onClose={() => setToast(null)} />
-      )}
     </Root>
     </OpenProject>
   );

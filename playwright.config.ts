@@ -11,6 +11,8 @@ export default defineConfig({
   fullyParallel: true,
   workers: 4,
   timeout: 45_000,
+  // On GitHub Actions, failures also show as annotations on the run.
+  reporter: process.env.GITHUB_ACTIONS ? [["github"], ["list"]] : "list",
   use: {
     baseURL: origin,
     browserName: "chromium",

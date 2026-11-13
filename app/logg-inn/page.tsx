@@ -4,7 +4,6 @@ import { getPageSession } from "../lib/auth";
 import {
   authBackHref,
   safeReturnPath,
-  welcomeHref,
 } from "../lib/account-rules";
 import AuthShell from "../components/auth-shell";
 import GoogleSignIn from "../components/google-sign-in";
@@ -18,7 +17,7 @@ export default async function LoginPage({
   const next = safeReturnPath(params.next);
   const session = await getPageSession();
   if (session && !params.reauth)
-    redirect(session.user.username ? next : welcomeHref(next));
+    redirect(session.user.username ? next : authBackHref(next));
   return (
     <AuthShell back={authBackHref(next)}>
       <h1 className="text-display text-ink">

@@ -434,3 +434,123 @@
     opacity: 0;
   }
 }
+
+/*
+ * Toasts (toast.tsx): Base UI sets the --toast-* variables. They stack with
+ * the newest in front, the others peeking out behind, and fan out while
+ * hovered or focused. Bottom centre on desktop, top on phones (`data-side`),
+ * coming in from that edge and swiped back out to it or to the side.
+ */
+.toast-viewport {
+  position: fixed;
+  inset: auto auto calc(24px + env(safe-area-inset-bottom)) 50%;
+  width: min(560px, calc(100vw - 24px));
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: visible;
+  background: none;
+  color: inherit;
+  translate: -50% 0;
+  &[data-side="top"] {
+    inset: calc(10px + env(safe-area-inset-top)) auto auto 50%;
+  }
+}
+.toast {
+  --dir: -1;
+  --gap: 8px;
+  --peek: 7px;
+  --scale: calc(max(0, 1 - var(--toast-index) * 0.05));
+  --shrink: calc(1 - var(--scale));
+  --height: var(--toast-frontmost-height, var(--toast-height));
+  --stack-y: calc(var(--dir) * (var(--toast-index) * var(--peek) + var(--shrink) * var(--height)));
+  --offset-y: calc(var(--dir) * (var(--toast-offset-y) + var(--toast-index) * var(--gap)));
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  z-index: calc(100 - var(--toast-index));
+  box-sizing: border-box;
+  /* As wide as its message needs, up to the viewport's width. */
+  width: max-content;
+  min-width: min(340px, 100%);
+  max-width: 100%;
+  translate: -50% 0;
+  height: var(--height);
+  border-radius: 16px;
+  background: var(--color-inverse);
+  color: var(--color-on-inverse);
+  box-shadow:
+    var(--shadow-float),
+    0 0 0 1px color-mix(in srgb, var(--color-on-inverse) 8%, transparent);
+  transform-origin: bottom center;
+  transform: translateX(var(--toast-swipe-movement-x))
+    translateY(calc(var(--toast-swipe-movement-y) + var(--stack-y)))
+    scale(var(--scale));
+  transition:
+    transform 420ms var(--ease-out-soft),
+    opacity 260ms ease-out,
+    height 160ms ease-out;
+  user-select: none;
+  cursor: default;
+  .toast-viewport[data-side="top"] & {
+    --dir: 1;
+    top: 0;
+    bottom: auto;
+    transform-origin: top center;
+  }
+  /* Keeps the stack open while the pointer crosses the gap between toasts. */
+  &::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 100%;
+    width: 100%;
+    height: calc(var(--gap) + 1px);
+  }
+  .toast-viewport[data-side="top"] &::after {
+    top: 100%;
+    bottom: auto;
+  }
+  &[data-expanded] {
+    height: var(--toast-height);
+    transform: translateX(var(--toast-swipe-movement-x))
+      translateY(calc(var(--toast-swipe-movement-y) + var(--offset-y)));
+  }
+  &[data-starting-style],
+  &[data-ending-style]:not([data-swipe-direction]) {
+    opacity: 0;
+    transform: translateY(calc(var(--dir) * -100%)) scale(0.96);
+  }
+  &[data-limited] {
+    opacity: 0;
+  }
+  &[data-ending-style] {
+    opacity: 0;
+    &[data-swipe-direction="up"] {
+      transform: translateY(calc(var(--toast-swipe-movement-y) - 120%));
+    }
+    &[data-swipe-direction="down"] {
+      transform: translateY(calc(var(--toast-swipe-movement-y) + 120%));
+    }
+    &[data-swipe-direction="left"] {
+      transform: translateX(calc(var(--toast-swipe-movement-x) - 110%))
+        translateY(var(--toast-swipe-movement-y));
+    }
+    &[data-swipe-direction="right"] {
+      transform: translateX(calc(var(--toast-swipe-movement-x) + 110%))
+        translateY(var(--toast-swipe-movement-y));
+    }
+  }
+  &:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    transition: opacity 160ms ease-out;
+    &[data-starting-style],
+    &[data-ending-style] {
+      transform: translateY(var(--stack-y)) scale(var(--scale));
+    }
+  }
+}

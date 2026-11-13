@@ -153,6 +153,7 @@ export function ProfileContent({
                   <div className="flex min-w-0 items-baseline gap-2">
                     <Link
                       href={projectHref(comment.projectId)}
+                      data-press=""
                       onClick={(event) => {
                         if (
                           !onOpenProject ||

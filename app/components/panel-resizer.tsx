@@ -14,12 +14,14 @@ const largeKeyStep = 64;
 function defaultWidth() {
   return Math.round(Math.min(Math.max(window.innerWidth * 0.36, 380), 540));
 }
-function bounds() {
-  const max = Math.max(minWidth, Math.min(maxWidth, window.innerWidth - minMap));
-  return { min: minWidth, max };
+/** `fits`: the narrowest the panel's content allows, which raises the floor. */
+function bounds(fits = 0) {
+  const min = Math.max(minWidth, Math.ceil(fits));
+  const max = Math.max(min, Math.min(maxWidth, window.innerWidth - minMap));
+  return { min, max };
 }
-function clamp(width: number) {
-  const { min, max } = bounds();
+function clamp(width: number, fits?: number) {
+  const { min, max } = bounds(fits);
   return Math.round(Math.min(Math.max(width, min), max));
 }
 function storedWidth() {
@@ -52,6 +54,8 @@ export default function PanelResizer({
   onResizeStart,
   onResize,
   onResizeEnd,
+  contentWidth,
+  contentRef,
 }: {
   panel: RefObject<HTMLElement | null>;
   /** Marked with `data-resizing` while dragging, for cursor and selection. */
@@ -62,6 +66,10 @@ export default function PanelResizer({
   /** Once per frame while the width changes. */
   onResize?: () => void;
   onResizeEnd?: () => void;
+  /** The narrowest the panel's content fits in; it is never made narrower. */
+  contentWidth?: () => number;
+  /** Changes to the elements whose size sets `contentWidth`. */
+  contentRef?: RefObject<HTMLElement | null>;
 }) {
   const handle = useRef<HTMLDivElement>(null);
   // Only for the ARIA values; the width itself lives in the CSS variable.
@@ -78,7 +86,7 @@ export default function PanelResizer({
   }
   /** Applies a width outside a drag: clamped, remembered, map in sync. */
   function commit(next: number | null) {
-    const value = clamp(next ?? defaultWidth());
+    const value = clamp(next ?? defaultWidth(), contentWidth?.());
     onResizeStart?.();
     apply(value);
     onResizeEnd?.();
@@ -86,18 +94,28 @@ export default function PanelResizer({
     storeWidth(next === null ? null : value);
   }
 
-  // The stored width, then again whenever the window changes size.
+  // The stored width, then again whenever the window or content changes size.
   useEffect(() => {
+    let last: number | null = null;
     const fit = () => {
-      setRange(bounds());
-      const value = clamp(storedWidth() ?? defaultWidth());
+      const fits = contentWidth?.();
+      setRange(bounds(fits));
+      const value = clamp(storedWidth() ?? defaultWidth(), fits);
+      if (value === last) return;
+      last = value;
+      onResizeStart?.();
       apply(value);
+      onResizeEnd?.();
       setWidth(value);
     };
     fit();
     window.addEventListener("resize", fit);
+    const content = contentRef?.current;
+    const observer = content ? new ResizeObserver(() => fit()) : null;
+    if (content) observer?.observe(content);
     return () => {
       window.removeEventListener("resize", fit);
+      observer?.disconnect();
       cancelAnimationFrame(frame.current);
     };
     // Mount only; `apply` reads refs.
@@ -149,7 +167,10 @@ export default function PanelResizer({
       onPointerMove={(event) => {
         const current = drag.current;
         if (!current) return;
-        current.to = clamp(current.from + event.clientX - current.start);
+        current.to = clamp(
+          current.from + event.clientX - current.start,
+          contentWidth?.(),
+        );
         // Many pointer events per frame; one style write and map sync.
         frame.current ||= requestAnimationFrame(() => {
           frame.current = 0;

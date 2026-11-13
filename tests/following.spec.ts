@@ -205,15 +205,32 @@ for (const [viewport, project, direct] of [
     ).toHaveAccessibleName("1 med nytt");
 
     // Opening a followed project any other way reads it too.
+    // On phones the follow button moves into the actions sheet once the page
+    // is interactive, so the server-rendered one can't be checked.
+    const followed = async () => {
+      if (!mobile)
+        return expect(
+          page.getByRole("button", { name: "Følger", exact: true, pressed: true }),
+        ).toBeVisible();
+      const menu = page
+        .locator('[data-panel-drawer="project"]')
+        .getByRole("button", { name: "Handlinger" });
+      const actions = page.getByRole("dialog", { name: "Handlinger" });
+      await expect(async () => {
+        await menu.click();
+        await expect(actions).toBeVisible({ timeout: 1000 });
+      }).toPass();
+      await expect(
+        actions.getByRole("button", { name: "Slutt å følge", exact: true }),
+      ).toHaveAttribute("aria-pressed", "true");
+      await page.keyboard.press("Escape");
+      await expect(actions).toHaveCount(0);
+    };
     await page.goto(`/prosjekt/${direct.id}`);
-    await expect(
-      page.getByRole("button", { name: "Følger", exact: true, pressed: true }),
-    ).toBeVisible();
+    await followed();
     await expect(page.locator("[data-unread-badge]")).toHaveCount(0);
     await page.reload();
-    await expect(
-      page.getByRole("button", { name: "Følger", exact: true, pressed: true }),
-    ).toBeVisible();
+    await followed();
     await expect(page.locator("[data-unread-badge]")).toHaveCount(0);
   });
 }
@@ -234,19 +251,13 @@ test("unfollowing from a row can be undone, and following from a project page", 
     .getByRole("button", { name: /^Følger/ })
     .click();
   const row = page.locator(`[data-followed-project="${listed.id}"]`);
-  const unfollow = row.getByRole("button", {
-    name: `Slutt å følge ${listed.title}`,
-  });
-  // With a mouse, unfollow shows on hover or keyboard focus in the row.
-  await expect(unfollow).toHaveCSS("opacity", "0");
-  await row.getByRole("button", { name: listed.title, exact: true }).focus();
-  await expect(unfollow).toHaveCSS("opacity", "1");
-  await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
-  await page.mouse.move(0, 0);
-  await expect(unfollow).toHaveCSS("opacity", "0");
-  await row.hover();
-  await expect(unfollow).toHaveCSS("opacity", "1");
-  await shot(page, "following-hover-1280");
+  // Unfollowing sits in the row's menu, behind its dots.
+  const more = row.getByRole("button", { name: `Valg for ${listed.title}` });
+  await expect(more).toBeVisible();
+  await more.click();
+  const unfollow = page.getByRole("menuitem", { name: "Slutt å følge" });
+  await expect(unfollow).toBeVisible();
+  await shot(page, "following-menu-1280");
   await unfollow.click();
   await expect(row).toHaveCount(0);
   await expect(page.getByText("Følger ingen prosjekter")).toBeVisible();
@@ -264,7 +275,7 @@ test("unfollowing from a row can be undone, and following from a project page", 
   await expect(followButton).toHaveAttribute("aria-pressed", "false");
 });
 
-test("on touch screens the unfollow button stays visible", async ({
+test("on touch screens a row's menu unfollows", async ({
   browser,
   request,
 }) => {
@@ -287,10 +298,40 @@ test("on touch screens the unfollow button stays visible", async ({
       page.locator('[data-panel-drawer="following"] [data-followed-projects]'),
     ).toBeVisible({ timeout: 1000 });
   }).toPass();
-  const unfollow = page
-    .locator(`[data-followed-project="${listed.id}"]`)
-    .getByRole("button", { name: `Slutt å følge ${listed.title}` });
-  await expect(unfollow).toBeVisible();
-  await expect(unfollow).toHaveCSS("opacity", "1");
+  const row = page.locator(`[data-followed-project="${listed.id}"]`);
+  await row.getByRole("button", { name: `Valg for ${listed.title}` }).tap();
+  // The menu opens above the drawer.
+  await page.getByRole("menuitem", { name: "Slutt å følge" }).tap();
+  await expect(row).toHaveCount(0);
   await context.close();
+});
+
+test("following shows at once and goes back if the server refuses it", async ({
+  page,
+  context,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const project = seedProjects[14];
+  const reader = await member({ username: uniqueName() });
+  await signIn(context, reader);
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/community", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    await held;
+    await route.fulfill({ status: 500, json: { error: "Serveren svarte ikke." } });
+  });
+  await page.goto(`/prosjekt/${project.id}`);
+  const followButton = page.locator("[data-follow]");
+  // The server renders the button, so a click can land before hydration.
+  await expect(async () => {
+    await followButton.click();
+    await expect(followButton).toHaveAttribute("aria-pressed", "true", {
+      timeout: 1000,
+    });
+  }).toPass();
+  await expect(page.getByText(`Følger ${project.title}`)).toBeVisible();
+  release();
+  await expect(followButton).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByText("Serveren svarte ikke.")).toBeVisible();
 });

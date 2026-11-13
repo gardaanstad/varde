@@ -1,16 +1,28 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  use,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { ArrowLeft, X } from "lucide-react";
 import { cn } from "../lib/cn";
-import { iconButton } from "../lib/ui";
+import { iconButton, panelTitle, panelTitleTop } from "../lib/ui";
 import {
   Drawer,
   DrawerContent,
   DrawerTitle,
   DrawerVirtualKeyboardProvider,
 } from "./drawer";
-import { SidebarPanel, usePanelEscape } from "./sidebar-panel";
+import {
+  controlButton,
+  MaximizeButton,
+  SidebarPanel,
+  usePanelEscape,
+} from "./sidebar-panel";
 
 /**
  * Panels are pages over the explorer: a project, a profile, Følger, Forslag.
@@ -153,6 +165,109 @@ export function PanelShell({ children }: { children: ReactNode }) {
 
 const mobileControl = cn(iconButton, "rounded-lg");
 
+type PanelFrame = {
+  mobile: boolean;
+  maximized: boolean;
+  onToggleMaximized: () => void;
+  onClose: () => void;
+  onBack?: () => void;
+  closeLabel: string;
+  /** The content has scrolled under the header. */
+  scrolled: boolean;
+};
+const PanelFrameContext = createContext<PanelFrame | null>(null);
+
+/**
+ * The header of a panel whose content names itself (Følger, Forslag, a new
+ * project): back, the title, and the panel's controls on one row, laid out
+ * like a project's header. Render it above the content's scroller.
+ */
+export function PanelHeader({
+  title,
+  id,
+  badge,
+  actions,
+}: {
+  title: ReactNode;
+  /** The heading's id, for `aria-labelledby`. */
+  id?: string;
+  /** Beside the title, such as an unread count. */
+  badge?: ReactNode;
+  /** Before the panel's own controls, such as a sort menu. */
+  actions?: ReactNode;
+}) {
+  const frame = use(PanelFrameContext);
+  if (!frame) throw new Error("PanelHeader must be used within a Panel.");
+  const { mobile, maximized, onToggleMaximized, onClose, onBack, closeLabel } =
+    frame;
+  const control = mobile
+    ? cn(mobileControl, "size-10 active:scale-100")
+    : controlButton;
+  return (
+    <header
+      className={cn(
+        "z-20 flex shrink-0 items-start gap-2 border-b bg-surface",
+        "transition-[border-color] duration-200 motion-reduce:transition-none",
+        frame.scrolled ? "border-border" : "border-transparent",
+        mobile ? "px-4.5 pt-1 pb-1" : "pt-2.5 pr-3 pb-1 pl-6",
+      )}
+      data-panel-header=""
+    >
+      {onBack && (
+        <button
+          type="button"
+          // The arrow's glyph, not its hit area, on the content's edge.
+          className={cn(control, "-mr-1.5 text-muted", mobile ? "-ml-2.5" : "-ml-3")}
+          onClick={onBack}
+          aria-label="Tilbake"
+          data-tooltip={mobile ? undefined : "Tilbake"}
+        >
+          <ArrowLeft size={mobile ? 20 : 19} />
+        </button>
+      )}
+      <div
+        className={cn(
+          "flex min-w-0 flex-1 items-center gap-2.5",
+          mobile ? panelTitleTop.mobile : panelTitleTop.desktop,
+        )}
+      >
+        <h1
+          id={id}
+          className={cn("m-0 min-w-0 truncate text-ink", panelTitle)}
+        >
+          {title}
+        </h1>
+        {badge}
+      </div>
+      {/* Offsets put the icon glyphs, not the hit areas, on the content edge. */}
+      <div
+        className={cn(
+          "flex shrink-0 items-center",
+          mobile ? "-mr-[15px]" : "gap-0.5",
+        )}
+      >
+        {actions && (
+          <div className={cn("flex items-center", mobile ? "mr-1" : "mr-1.5")}>
+            {actions}
+          </div>
+        )}
+        {!mobile && (
+          <MaximizeButton maximized={maximized} onToggle={onToggleMaximized} />
+        )}
+        <button
+          type="button"
+          className={control}
+          onClick={onClose}
+          aria-label={closeLabel}
+          data-sidebar-close=""
+        >
+          <X size={20} />
+        </button>
+      </div>
+    </header>
+  );
+}
+
 /**
  * A panel's frame: back and close over its scrolling content, plus the
  * sidebar's mode control on desktop. Escape closes the panel on top.
@@ -166,7 +281,7 @@ export function Panel({
   onClose,
   onBack,
   closeLabel = "Lukk",
-  floatingClose = false,
+  titled = false,
   children,
 }: {
   mobile: boolean;
@@ -181,10 +296,10 @@ export function Panel({
   onBack?: () => void;
   closeLabel?: string;
   /**
-   * Phones: the close button sits on the content's own heading row, which
-   * then leaves room for it, instead of on a bar above it.
+   * The content renders a `PanelHeader`, which carries the controls beside
+   * its title, instead of a bar of controls above it.
    */
-  floatingClose?: boolean;
+  titled?: boolean;
   children: ReactNode;
 }) {
   // Escape steps down from a maximized panel before closing it.
@@ -192,6 +307,64 @@ export function Panel({
     active,
     maximized && !mobile ? onToggleMaximized : onClose,
   );
+  const [scrolled, setScrolled] = useState(false);
+  const body = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = body.current;
+    if (!titled || !root) return;
+    // Scroll doesn't bubble, but it does pass ancestors on the way down.
+    // Only the content's own scroller counts, not menus inside it.
+    const onScroll = (event: Event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.hasAttribute("data-drawer-scroll"))
+        setScrolled(target.scrollTop > 0);
+    };
+    root.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () =>
+      root.removeEventListener("scroll", onScroll, { capture: true });
+  }, [titled]);
+  const frame: PanelFrame = {
+    mobile,
+    maximized,
+    onToggleMaximized,
+    onClose,
+    onBack,
+    closeLabel,
+    scrolled,
+  };
+  if (titled) {
+    const content = (
+      <PanelFrameContext value={frame}>
+        <div
+          ref={body}
+          className="flex min-h-0 flex-1 flex-col"
+          data-panel-body=""
+        >
+          {children}
+        </div>
+      </PanelFrameContext>
+    );
+    if (!mobile)
+      return (
+        <SidebarPanel
+          name={name}
+          maximized={maximized}
+          onToggleMaximized={onToggleMaximized}
+          onClose={onClose}
+          bar={false}
+        >
+          {content}
+        </SidebarPanel>
+      );
+    return (
+      <div
+        className="flex h-full min-h-0 flex-1 flex-col bg-surface"
+        data-sidebar-panel={name}
+      >
+        {content}
+      </div>
+    );
+  }
   if (!mobile)
     return (
       <SidebarPanel
@@ -205,49 +378,33 @@ export function Panel({
         {children}
       </SidebarPanel>
     );
-  const close = (
-    <button
-      type="button"
-      className={cn(
-        mobileControl,
-        floatingClose ? "absolute top-0.5 right-1.5 z-10" : "ml-auto",
-      )}
-      onClick={onClose}
-      aria-label={closeLabel}
-      data-sidebar-close=""
-    >
-      <X size={20} />
-    </button>
-  );
-  if (floatingClose)
-    return (
-      <div
-        className="relative flex h-full min-h-0 flex-1 flex-col bg-surface"
-        data-sidebar-panel={name}
-      >
-        {close}
-        {children}
-      </div>
-    );
   return (
-      <div
-        className="flex h-full min-h-0 flex-1 flex-col bg-surface"
-        data-sidebar-panel={name}
-      >
-        <div className="-mt-1 flex h-11 shrink-0 items-center px-1.5">
-          {onBack && (
-            <button
-              type="button"
-              className={cn(mobileControl, "text-muted")}
-              onClick={onBack}
-              aria-label="Tilbake"
-            >
-              <ArrowLeft size={20} />
-            </button>
-          )}
-          {close}
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+    <div
+      className="flex h-full min-h-0 flex-1 flex-col bg-surface"
+      data-sidebar-panel={name}
+    >
+      <div className="-mt-1 flex h-11 shrink-0 items-center px-1.5">
+        {onBack && (
+          <button
+            type="button"
+            className={cn(mobileControl, "text-muted")}
+            onClick={onBack}
+            aria-label="Tilbake"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
+        <button
+          type="button"
+          className={cn(mobileControl, "ml-auto")}
+          onClick={onClose}
+          aria-label={closeLabel}
+          data-sidebar-close=""
+        >
+          <X size={20} />
+        </button>
       </div>
+      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+    </div>
   );
 }

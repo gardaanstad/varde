@@ -77,7 +77,7 @@ import {
 } from "../lib/places";
 import { errorMessage } from "../lib/api-client";
 import { profileHref } from "../lib/profiles";
-import { chooseUsernameEvent, useAuth } from "./auth-provider";
+import { useAuth } from "./auth-provider";
 import { useCommunity } from "./community-provider";
 import AccountPanel from "./account-panel";
 import ProfileAvatar from "./profile-avatar";
@@ -96,7 +96,7 @@ import FollowedProjects, {
 import { useFollowing } from "./following-provider";
 import { unreadCount, unreadProjects } from "../lib/following";
 import EmptyState from "./empty-state";
-import Toast, { type ToastMessage } from "./toast";
+import { notify } from "./toast";
 import {
   Drawer,
   DrawerContent,
@@ -379,7 +379,6 @@ export default memo(function Explorer({
   const { following: followed, markSeen } = useFollowing();
   // The badge counts projects with something new, as the Følger rows do.
   const unread = unreadProjects(followed);
-  const pendingFollows = useRef(new Set<string>());
   const [initial] = useState(() =>
     parseExploreState(new URLSearchParams(initialSearch)),
   );
@@ -454,8 +453,6 @@ export default memo(function Explorer({
   // The editor's own close, which asks before dropping a draft.
   const editorClose = useRef<(() => void) | null>(null);
   const editorDirty = useRef<(() => boolean) | null>(null);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
-  const notify = (message: string) => setToast({ message });
   const searchRef = useRef<HTMLInputElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLElement>(null);
@@ -492,7 +489,6 @@ export default memo(function Explorer({
     // Clear of the bar and card over the top of the map.
     onFrame: (points) =>
       mapApi.current?.fit(points, { maxZoom: 14, top: 230 }),
-    notify: setToast,
     // The list slides aside or back as the mode turns on or off.
     beforeToggle: () => {
       if (!isMobile && !collapsedPref && !maximized) animateFrom();
@@ -583,6 +579,25 @@ export default memo(function Explorer({
     );
     return set || Math.round(Math.min(Math.max(innerWidth * 0.36, 380), 540));
   }
+  // The list's header never overflows: the sidebar is at least its width.
+  const headerNavRef = useRef<HTMLElement>(null);
+  function headerWidth() {
+    const nav = headerNavRef.current;
+    const header = nav?.parentElement;
+    const aside = panelRef.current;
+    if (!nav || !header || !aside) return 0;
+    const brand = nav.previousElementSibling as HTMLElement | null;
+    const style = getComputedStyle(header);
+    return (
+      parseFloat(style.paddingLeft) +
+      (brand?.offsetWidth ?? 0) +
+      parseFloat(style.columnGap) +
+      nav.offsetWidth +
+      parseFloat(style.paddingRight) +
+      // The sidebar's border.
+      (aside.offsetWidth - header.offsetWidth)
+    );
+  }
   function leavePostView() {
     const view = postView.current;
     if (!view) return;
@@ -669,12 +684,6 @@ export default memo(function Explorer({
     };
   }, [openSearch]);
 
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 6000);
-    return () => clearTimeout(timer);
-  }, [toast]);
-
   // "Aktuelt" ranks by discussion over the past week, then by latest update.
   const [weekAgo] = useState(() =>
     new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
@@ -728,10 +737,6 @@ export default memo(function Explorer({
         ? projectInBounds(project, listBounds)
         : !listPlace || !!placesOf.get(project.id)?.includes(listPlace),
     [listBounds, listPlace, placesOf],
-  );
-  const inView = useMemo(
-    () => projects.filter(inPlace),
-    [inPlace, projects],
   );
   const statusMatch = useCallback(
     (project: Project) =>
@@ -965,18 +970,11 @@ export default memo(function Explorer({
   const onOpenProfile = useEffectEvent((event: Event) =>
     showProfile((event as CustomEvent<string>).detail),
   );
-  // Signed in without a username: it is chosen in the account panel.
-  const onChooseUsername = useEffectEvent((event: Event) => {
-    event.preventDefault();
-    openProfile();
-  });
-  useEffect(() => {
+  // A layout effect, so the listener is there in the commit that hydrates
+  // the page: a click just after hydration would otherwise go unanswered.
+  useLayoutEffect(() => {
     window.addEventListener(openProfileEvent, onOpenProfile);
-    window.addEventListener(chooseUsernameEvent, onChooseUsername);
-    return () => {
-      window.removeEventListener(openProfileEvent, onOpenProfile);
-      window.removeEventListener(chooseUsernameEvent, onChooseUsername);
-    };
+    return () => window.removeEventListener(openProfileEvent, onOpenProfile);
   }, []);
   // Forslag's link, opened without an account: the list, and why not.
   const askForSuggestions = useEffectEvent(() => {
@@ -1334,8 +1332,8 @@ export default memo(function Explorer({
     if (openUnread) void markSeen(openUnread.projectId);
   }, [openUnread, markSeen]);
 
-  async function toggleFollow(id: string) {
-    if (pendingFollows.current.has(id)) return;
+  // Following shows at once; a failure puts it back and says so.
+  function toggleFollow(id: string) {
     if (
       !requireLogin("Du må være logget inn for å følge prosjekter.", {
         type: "follow",
@@ -1344,26 +1342,27 @@ export default memo(function Explorer({
     )
       return;
     const exists = followingIds.has(id);
-    pendingFollows.current.add(id);
-    try {
-      await mutate({ action: "follow", projectId: id, following: !exists });
-      const title =
-        projects.find((project) => project.id === id)?.title || "Prosjektet";
-      setToast({
-        message: exists ? `Følger ikke ${title}` : `Følger ${title}`,
-        undo: () => {
-          void mutate({ action: "follow", projectId: id, following: exists })
-            .then(() => setToast(null))
-            .catch((error) =>
-              notify(errorMessage(error, "Kunne ikke angre endringen.")),
-            );
-        },
-      });
-    } catch (error) {
-      notify(errorMessage(error, "Kunne ikke følge prosjektet."));
-    } finally {
-      pendingFollows.current.delete(id);
-    }
+    void mutate({ action: "follow", projectId: id, following: !exists }).catch(
+      (error) =>
+        notify(errorMessage(error, "Kunne ikke følge prosjektet."), {
+          error: true,
+        }),
+    );
+    const title =
+      projects.find((project) => project.id === id)?.title || "Prosjektet";
+    notify(exists ? `Sluttet å følge ${title}` : `Følger ${title}`, {
+      undo: () => {
+        void mutate({
+          action: "follow",
+          projectId: id,
+          following: exists,
+        }).catch((error) =>
+          notify(errorMessage(error, "Kunne ikke angre endringen."), {
+            error: true,
+          }),
+        );
+      },
+    });
   }
 
   // Back from logging in, what was asked for goes ahead.
@@ -1378,7 +1377,9 @@ export default memo(function Explorer({
       projectId: follow.projectId,
       following: true,
     }).catch((error) =>
-      notify(errorMessage(error, "Kunne ikke følge prosjektet.")),
+      notify(errorMessage(error, "Kunne ikke følge prosjektet."), {
+        error: true,
+      }),
     );
     // An intent is consumed once when the account is ready.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1401,10 +1402,6 @@ export default memo(function Explorer({
     setFollowingOnly(false);
     setSnapPoint(1);
   }
-
-  const feedback = toast && (
-    <Toast toast={toast} mobile={isMobile} onClose={() => setToast(null)} />
-  );
 
   const brand = (
     <Link
@@ -1570,39 +1567,18 @@ export default memo(function Explorer({
     </section>
   );
 
-  // Counts follow the map: each filter counts what the other leaves in view.
   const statusOptions = statusOrder.map((value) => ({
     value,
     label: statuses[value].label,
     dot: statusTone[value].dot,
-    ...(!isMobile && {
-      count: inView.filter(
-        (project) => project.status === value && categoryMatch(project),
-      ).length,
-    }),
   }));
-  const categoryCount = (test: (project: Project) => boolean) =>
-    isMobile
-      ? {}
-      : {
-          count: inView.filter(
-            (project) => test(project) && statusMatch(project),
-          ).length,
-        };
   // Main categories; their subcategories open underneath once chosen.
   const categoryOptions = categoryTree.map((node) => ({
     value: node.name,
     label: node.name,
     icon: <CategoryIcon category={node.name} size={16} />,
     more: lessUsedCategories.has(node.name),
-    ...categoryCount((project) =>
-      project.categories.some((value) => mainCategoryOf(value) === node.name),
-    ),
-    children: node.subcategories.map((sub) => ({
-      value: sub,
-      label: sub,
-      ...categoryCount((project) => project.categories.includes(sub)),
-    })),
+    children: node.subcategories.map((sub) => ({ value: sub, label: sub })),
   }));
   // Cities and counties with projects, counted by the other filters.
   const placeOptions = useMemo(() => {
@@ -1635,11 +1611,11 @@ export default memo(function Explorer({
   };
   const statusFilter = (
     <ChoiceSelect
-      label="Status"
+      label="Prosjektstatus"
       multiple
       value={statusValue}
       onChange={pickStatus}
-      triggerLabel="Status"
+      triggerLabel="Prosjektstatus"
       menuTitle
       icon={<StatusDots values={status} />}
       className={cn(
@@ -1752,7 +1728,7 @@ export default memo(function Explorer({
       />
       <span
         className="flex shrink-0"
-        data-tooltip="Status"
+        data-tooltip="Prosjektstatus"
       >
         {statusFilter}
       </span>
@@ -1843,7 +1819,7 @@ export default memo(function Explorer({
     followLatest.current = toggleFollow;
   });
   const followCard = useCallback(
-    (id: string) => void followLatest.current(id),
+    (id: string) => followLatest.current(id),
     [],
   );
   const hoverCard = useCallback(
@@ -2072,6 +2048,7 @@ export default memo(function Explorer({
       aria-label={`Din profil${reviewed ? ` (${reviewed} behandlet)` : ""}`}
       aria-haspopup="dialog"
       aria-expanded={modal === "profile"}
+      data-press=""
       data-tooltip={
         isMobile || authPending
           ? undefined
@@ -2113,6 +2090,7 @@ export default memo(function Explorer({
       prefetch={false}
       className={cn(compactIconAction, "relative text-muted hover:text-ink")}
       aria-label={`Forslag${suggestions ? ` (${suggestions})` : ""}`}
+      data-press=""
       data-tooltip={isMobile ? undefined : "Forslag"}
       onClick={(event) => {
         // A panel over the explorer, not a page of its own.
@@ -2139,6 +2117,7 @@ export default memo(function Explorer({
       className={cn(compactIconAction, "relative text-muted hover:text-ink")}
       aria-label={unread > 0 ? `Følger, ${unread} med nytt` : "Følger"}
       aria-pressed={followingOnly}
+      data-press=""
       data-tooltip={isMobile ? undefined : "Følger"}
       onClick={() => (followingOnly ? leaveFollowing() : showFollowing())}
     >
@@ -2164,6 +2143,7 @@ export default memo(function Explorer({
       aria-expanded={sidebarMode !== "collapsed"}
       aria-controls="project-panel"
       data-sidebar-toggle=""
+      data-press=""
       onClick={toggleCollapsed}
     >
       {sidebarMode === "collapsed" ? (
@@ -2242,30 +2222,21 @@ export default memo(function Explorer({
         return (
           <Panel
             {...frame}
-            floatingClose
-            onBack={!isMobile && sectionFrom === "profile" ? leaveFollowing : undefined}
+            titled
+            onBack={sectionFrom === "profile" ? leaveFollowing : undefined}
           >
-            <div
-              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4.5 pb-8 scrollbar-thin md:px-gutter-scroll"
-              data-followed-scroll=""
-              data-drawer-scroll
-            >
-              <FollowedProjects
-                projects={projects}
-                followingIds={following}
-                following={followed}
-                onBack={
-                  isMobile && sectionFrom === "profile" ? leaveFollowing : undefined
-                }
-                onOpen={openPost}
-                onUnfollow={(id) => void toggleFollow(id)}
-              />
-            </div>
+            <FollowedProjects
+              projects={projects}
+              followingIds={following}
+              following={followed}
+              onOpen={openPost}
+              onUnfollow={toggleFollow}
+            />
           </Panel>
         );
       case "editor":
         return (
-          <Panel {...frame} floatingClose>
+          <Panel {...frame} titled>
             {canModerate ? (
               <ProjectEditor
                 key={editorSeed.key}
@@ -2304,20 +2275,15 @@ export default memo(function Explorer({
         return (
           <Panel
             {...frame}
-            floatingClose
+            titled
             onBack={
-              !isMobile && sectionFrom === "profile"
+              sectionFrom === "profile"
                 ? () => closeSuggestions(true)
                 : undefined
             }
           >
             <SuggestionList
               embedded
-              onBack={
-                isMobile && sectionFrom === "profile"
-                  ? () => closeSuggestions(true)
-                  : undefined
-              }
               moderator={canModerate}
               onOpenProject={(id) => openPost(id)}
               onClose={() => closeSuggestions()}
@@ -2535,6 +2501,7 @@ export default memo(function Explorer({
             >
               <div data-explorer-brand="">{brand}</div>
               <nav
+                ref={headerNavRef}
                 className="flex items-center gap-0.5"
                 aria-label="Konto"
                 data-explorer-nav=""
@@ -2620,6 +2587,8 @@ export default memo(function Explorer({
               onResizeStart={() => mapApi.current?.beginResize()}
               onResize={() => mapApi.current?.syncSize()}
               onResizeEnd={() => mapApi.current?.endResize()}
+              contentWidth={headerWidth}
+              contentRef={headerNavRef}
             />
           )}
         </aside>
@@ -2818,7 +2787,6 @@ export default memo(function Explorer({
       )}
       {panelDrawers}
       {panelShell}
-      {feedback}
     </div>
   );
 });

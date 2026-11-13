@@ -67,7 +67,8 @@
  * which was the main source of map lag.
  */
 
-[data-project-map] .leaflet-interactive {
+/* Paths only: markers take Leaflet's transform transition while zooming. */
+[data-project-map] path.leaflet-interactive {
   transition:
     stroke-width 160ms ease,
     fill-opacity 160ms ease,
@@ -171,7 +172,6 @@
   font-weight: 600;
   line-height: 1;
   /* The icon itself carries Leaflet's positioning transform. */
-  animation: project-cluster-in 160ms ease-out;
   transition:
     transform 120ms ease,
     background-color 120ms ease,
@@ -197,13 +197,6 @@
     0 0 0 4px var(--color-focus);
 }
 
-@keyframes project-cluster-in {
-  from {
-    opacity: 0;
-    transform: scale(0.7);
-  }
-}
-
 @media (width < theme(--breakpoint-md)) {
   [data-project-map] .leaflet-control-scale {
     display: none;
@@ -219,13 +212,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-project-map] .leaflet-interactive,
+  [data-project-map] path.leaflet-interactive,
   [data-project-map] .project-cluster > span {
     transition: none;
-  }
-
-  [data-project-map] .project-cluster > span {
-    animation: none;
   }
 }
 
