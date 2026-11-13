@@ -110,6 +110,8 @@ export default memo(function ProjectCard({
       )}
     </span>
   );
+  const commentWord = commentCount === 1 ? "kommentar" : "kommentarer";
+  const commentLabel = `${commentCount} ${commentWord}`;
   const updatesTooltip =
     updates.length > 0
       ? `${updates.length} ${updates.length === 1 ? "oppdatering" : "oppdateringer"} · sist ${formatDate(updates[0].date)}`
@@ -162,14 +164,16 @@ export default memo(function ProjectCard({
             <button
               type="button"
               className={action}
-              aria-label={`${commentCount} innspill`}
+              aria-label={commentLabel}
               data-press=""
               onClick={() => onOpen(project.id, "discussion")}
             >
               <MessageCircle size={15} aria-hidden="true" />
               <span>
                 {commentCount}
-                <span className="max-[359px]:hidden"> innspill</span>
+                <span className="max-[359px]:hidden">
+                  {` ${commentWord}`}
+                </span>
               </span>
             </button>
             {updates.length > 0 && (
@@ -230,11 +234,13 @@ export default memo(function ProjectCard({
               {status}
               <span
                 className={cardStat}
-                data-tooltip={`${commentCount} innspill`}
+                data-tooltip={commentLabel}
               >
                 <MessageCircle size={13} aria-hidden="true" />
                 {commentCount}
-                <span className="sr-only"> innspill</span>
+                <span className="sr-only">
+                  {` ${commentWord}`}
+                </span>
               </span>
               {updates.length > 0 && (
                 <span className={cardStat} data-tooltip={updatesTooltip}>

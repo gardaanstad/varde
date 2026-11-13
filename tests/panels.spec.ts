@@ -95,7 +95,7 @@ test.describe("login prompt", () => {
       .getByRole("button", { name: "Logg inn", exact: true })
       .first()
       .click();
-    await expect(prompt).toContainText("delta i diskusjonen");
+    await expect(prompt).toContainText("for å kommentere");
     await page.keyboard.press("Escape");
     await expect(prompt).toHaveCount(0);
 
