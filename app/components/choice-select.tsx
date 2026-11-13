@@ -293,7 +293,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
       strokeWidth={2.25}
       aria-hidden="true"
       className={cn(
-        "shrink-0 text-accent transition-opacity duration-150 motion-reduce:transition-none",
+        "shrink-0 transition-opacity duration-150 motion-reduce:transition-none",
         alone && "ml-auto",
         !chosen && "opacity-0",
       )}
@@ -318,8 +318,8 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
           "flex w-full shrink-0 items-center rounded-lg border border-transparent text-left -outline-offset-2",
           // Hover and focus tint at once; only colour changes ease.
           "transition-[color,border-color] duration-150 motion-reduce:transition-none",
-          // Chosen reads in accent; hover tints every row alike.
-          "focus-visible:bg-surface-muted aria-selected:font-medium aria-selected:text-accent-strong",
+          // Chosen reads in medium weight; hover tints every row alike.
+          "focus-visible:bg-surface-muted aria-selected:font-medium",
           sheet
             ? "min-h-12! gap-3 px-3 text-body active:bg-surface-muted"
             : [
@@ -348,22 +348,14 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
         )}
         {option.icon && (
           <span
-            className={cn(
-              "flex shrink-0 text-muted transition-colors duration-150",
-              open && "text-accent",
-            )}
+            className="flex shrink-0 text-muted"
           >
             {option.icon}
           </span>
         )}
         <span>{option.label}</span>
         {option.count !== undefined && (
-          <span
-            className={cn(
-              "ml-auto text-xs text-muted tabular-nums",
-              chosen && "text-accent-strong/70",
-            )}
-          >
+          <span className="ml-auto text-xs text-muted tabular-nums">
             {option.count}
           </span>
         )}
@@ -392,7 +384,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
           "flex w-full shrink-0 items-center rounded-lg text-left text-ink -outline-offset-2",
           "transition-[color] duration-150 motion-reduce:transition-none",
           "focus-visible:bg-surface-muted",
-          "aria-selected:font-medium aria-selected:text-accent-strong",
+          "aria-selected:font-medium",
           sheet
             ? "ml-6 min-h-11 w-auto gap-3 pr-2 pl-3.25 text-ui active:bg-surface-muted"
             : "ml-5.5 min-h-8 w-auto gap-2 pr-1.75 pl-2.25 text-ui hover:bg-surface-muted",
@@ -401,12 +393,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
       >
         <span>{option.label}</span>
         {option.count !== undefined && (
-          <span
-            className={cn(
-              "ml-auto text-xs font-normal text-muted tabular-nums",
-              chosen && "text-accent-strong/70",
-            )}
-          >
+          <span className="ml-auto text-xs font-normal text-muted tabular-nums">
             {option.count}
           </span>
         )}
@@ -509,6 +496,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
             : label
         }
         aria-haspopup="listbox"
+        data-press=""
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={() => {

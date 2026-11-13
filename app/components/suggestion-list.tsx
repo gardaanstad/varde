@@ -903,6 +903,7 @@ function SuggestionRow({
                     <button
                       type="button"
                       className={openLink}
+                      data-press=""
                       onClick={() => openProject(suggestion.projectId!)}
                     >
                       Åpne prosjekt

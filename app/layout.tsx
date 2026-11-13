@@ -8,6 +8,7 @@ import { isModerator } from "./lib/server/http";
 import { AuthProvider } from "./components/auth-provider";
 import TooltipLayer from "./components/tooltip-layer";
 import { Toaster } from "./components/toast";
+import PressLayer from "./components/press-layer";
 import { ThemeColorSync } from "./components/theme-toggle";
 
 const geistSans = Geist({
@@ -73,6 +74,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         </AuthProvider>
         <TooltipLayer />
         <Toaster />
+        <PressLayer />
         <ThemeColorSync />
       </body>
     </html>

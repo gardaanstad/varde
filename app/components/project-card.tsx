@@ -89,6 +89,7 @@ export default memo(function ProjectCard({
           "focus-visible:after:outline-2 focus-visible:after:outline-focus",
         )}
         aria-label={`${project.title} · ${labels.join(", ")} · ${project.city}`}
+        data-press=""
         onClick={() => onOpen(project.id)}
       >
         {project.title}
@@ -162,6 +163,7 @@ export default memo(function ProjectCard({
               type="button"
               className={action}
               aria-label={`${commentCount} innspill`}
+              data-press=""
               onClick={() => onOpen(project.id, "discussion")}
             >
               <MessageCircle size={15} aria-hidden="true" />
@@ -176,6 +178,7 @@ export default memo(function ProjectCard({
                 className={action}
                 aria-label={updatesTooltip}
                 data-tooltip={updatesTooltip}
+                data-press=""
                 onClick={() => onOpen(project.id, "updates")}
               >
                 <Megaphone size={15} aria-hidden="true" />
@@ -221,6 +224,7 @@ export default memo(function ProjectCard({
                 meta,
                 "mt-1 cursor-pointer gap-x-3.5 max-md:gap-x-3",
               )}
+              data-press=""
               onClick={() => onOpen(project.id)}
             >
               {status}

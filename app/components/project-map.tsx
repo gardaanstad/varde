@@ -755,69 +755,119 @@ export default function ProjectMap({
         .filter((project) => project.geometryType === "line")
         .map((project) => [project.id, L.latLngBounds(project.geometry)]),
     );
-    // Greedy screen-space grouping, redone whenever the zoom changes.
+    // Each project's anchor in zoom-0 pixels, where screen distances at
+    // zoom z shrink by 2^z.
+    const anchors = new Map(
+      projects.map((project) => [
+        project.id,
+        map.project(
+          lineBounds.has(project.id)
+            ? dotMarkers.get(project.id)!.getLatLng()
+            : project.center,
+          0,
+        ),
+      ]),
+    );
+    const eligible = (project: Project, zoom: number) => {
+      // The open project stands on its own; a hovered one lights up its
+      // group instead.
+      if (project.id === selectedRef.current) return false;
+      const bounds = lineBounds.get(project.id);
+      return !(
+        bounds &&
+        zoom >= lineDotZoom &&
+        map
+          .project(bounds.getNorthWest(), zoom)
+          .distanceTo(map.project(bounds.getSouthEast(), zoom)) >
+          clusterLineExtent
+      );
+    };
+    // Groups are built zoom step by zoom step from the first grouped level
+    // down, each level merging the groups of the one above. Zooming out only
+    // merges groups and zooming in only splits them, and a group sits at
+    // the mean of its members, so the same group is always in the same place.
+    const groupsAt = (zoom: number) => {
+      const step = map.options.zoomSnap || 1;
+      const levels: number[] = [];
+      for (let level = clusterZoom - step; level > zoom; level -= step)
+        levels.push(level);
+      levels.push(zoom);
+      type Node = { members: Project[]; at: L.Point };
+      let nodes: Node[] = [];
+      const placed = new Set<string>();
+      for (const level of levels) {
+        for (const project of projects)
+          if (!placed.has(project.id) && eligible(project, level)) {
+            placed.add(project.id);
+            nodes.push({ members: [project], at: anchors.get(project.id)! });
+          }
+        const radius = clusterRadius / map.getZoomScale(level, 0);
+        const used = new Set<Node>();
+        const merged: Node[] = [];
+        for (const seed of nodes) {
+          if (used.has(seed)) continue;
+          const near = nodes.filter(
+            (node) => !used.has(node) && node.at.distanceTo(seed.at) <= radius,
+          );
+          for (const node of near) used.add(node);
+          const members = near.flatMap((node) => node.members);
+          merged.push({
+            members,
+            at: members
+              .reduce((sum, project) => sum.add(anchors.get(project.id)!), L.point(0, 0))
+              .divideBy(members.length),
+          });
+        }
+        nodes = merged;
+      }
+      return nodes.filter((node) => node.members.length > 1);
+    };
+    // Group markers by their members; an unchanged group keeps its marker.
+    const groupMarkers = new Map<string, L.Marker>();
     const groupOf = groupOfRef.current;
     const cluster = () => {
-      clusters.clearLayers();
       groupOf.clear();
       const zoom = map.getZoom();
       const grouped = new Set<string>();
-      if (zoom < clusterZoom) {
-        const candidates = projects.flatMap((project) => {
-          // The open project stands on its own; a hovered one lights up
-          // its group instead.
-          if (project.id === selectedRef.current) return [];
-          const bounds = lineBounds.get(project.id);
-          if (
-            bounds &&
-            zoom >= lineDotZoom &&
-            map
-              .project(bounds.getNorthWest(), zoom)
-              .distanceTo(map.project(bounds.getSouthEast(), zoom)) >
-              clusterLineExtent
-          )
-            return [];
-          const anchor = bounds
-            ? dotMarkers.get(project.id)!.getLatLng()
-            : project.center;
-          return [{ project, at: map.project(anchor, zoom) }];
-        });
-        for (const seed of candidates) {
-          if (grouped.has(seed.project.id)) continue;
-          const members = candidates.filter(
-            ({ project, at }) =>
-              !grouped.has(project.id) &&
-              at.distanceTo(seed.at) <= clusterRadius,
-          );
-          if (members.length < 2) continue;
-          for (const { project } of members) grouped.add(project.id);
-          const at = members
-            .reduce((sum, { at }) => sum.add(at), L.point(0, 0))
-            .divideBy(members.length);
-          const list = members.map(({ project }) => project);
-          const marker = L.marker(map.unproject(at, zoom), {
-            icon: clusterIcon(list.length),
-            keyboard: true,
-            bubblingMouseEvents: false,
-          })
-            .addTo(clusters)
-            .on("click", (event) => {
-              L.DomEvent.stopPropagation(event);
-              zoomToGroup(list);
-            });
-          const element = marker.getElement();
-          element?.setAttribute("aria-label", `${list.length} prosjekter`);
-          element?.setAttribute(
-            "data-cluster",
-            list.map((project) => project.id).join(" "),
-          );
+      const kept = new Set<string>();
+      if (zoom < clusterZoom)
+        for (const { members: list, at } of groupsAt(zoom)) {
+          const key = list
+            .map((project) => project.id)
+            .sort()
+            .join(" ");
+          kept.add(key);
+          for (const project of list) grouped.add(project.id);
+          let marker = groupMarkers.get(key);
+          if (!marker) {
+            marker = L.marker(map.unproject(at, 0), {
+              icon: clusterIcon(list.length),
+              keyboard: true,
+              bubblingMouseEvents: false,
+            })
+              .addTo(clusters)
+              .on("click", (event) => {
+                L.DomEvent.stopPropagation(event);
+                zoomToGroup(list);
+              });
+            const element = marker.getElement();
+            element?.setAttribute("aria-label", `${list.length} prosjekter`);
+            element?.setAttribute("data-cluster", key);
+            groupMarkers.set(key, marker);
+          }
           for (const project of list) groupOf.set(project.id, marker);
-          element?.classList.toggle(
-            "is-highlighted",
-            list.some((project) => project.id === highlightedRef.current),
-          );
+          marker
+            .getElement()
+            ?.classList.toggle(
+              "is-highlighted",
+              list.some((project) => project.id === highlightedRef.current),
+            );
         }
-      }
+      for (const [key, marker] of groupMarkers)
+        if (!kept.has(key)) {
+          clusters.removeLayer(marker);
+          groupMarkers.delete(key);
+        }
       for (const project of projects) {
         const line = project.geometryType === "line";
         const ungrouped = !grouped.has(project.id);

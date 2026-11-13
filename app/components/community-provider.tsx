@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -59,6 +60,12 @@ export function CommunityProvider({
     data: initialData,
     userId: initialUserId,
   });
+  // Follows shown before the server confirms them, by project.
+  const [pendingFollows, setPendingFollows] = useState<Record<string, boolean>>(
+    {},
+  );
+  // Each project's follows reach the server in the order they were made.
+  const followQueue = useRef(new Map<string, Promise<unknown>>());
   const identity = useRef(user?.id);
   const revision = useRef(0);
   // Whose data is held: the server's render needs no immediate refetch.
@@ -98,6 +105,34 @@ export function CommunityProvider({
   }, [refresh, user?.id]);
   async function mutate(mutation: CommunityMutation) {
     const current = user?.id;
+    // A follow shows at once and falls back if the server refuses it.
+    const follow = mutation.action === "follow" ? mutation : null;
+    if (!follow) return send(mutation, current);
+    setPendingFollows((pending) => ({
+      ...pending,
+      [follow.projectId]: follow.following,
+    }));
+    const queue = followQueue.current;
+    const previous = queue.get(follow.projectId);
+    const request = (previous ?? Promise.resolve())
+      .catch(() => {})
+      .then(() => send(mutation, current));
+    queue.set(follow.projectId, request);
+    try {
+      await request;
+    } finally {
+      // A later follow of the same project keeps showing until it lands.
+      if (queue.get(follow.projectId) === request) {
+        queue.delete(follow.projectId);
+        setPendingFollows((pending) => {
+          const rest = { ...pending };
+          delete rest[follow.projectId];
+          return rest;
+        });
+      }
+    }
+  }
+  async function send(mutation: CommunityMutation, current?: string) {
     const version = ++revision.current;
     const data = await apiRequest<CommunityData>("/api/community", {
       method: "POST",
@@ -107,6 +142,16 @@ export function CommunityProvider({
       receive(data, current);
     else if (identity.current === current) await refresh();
   }
+  const following = useMemo(() => {
+    const changes = Object.entries(pendingFollows);
+    if (!changes.length) return state.data.following;
+    const ids = new Set(state.data.following);
+    for (const [id, on] of changes) {
+      if (on) ids.add(id);
+      else ids.delete(id);
+    }
+    return [...ids];
+  }, [pendingFollows, state.data.following]);
   async function suggest(suggestion: SuggestionInput) {
     await apiRequest("/api/suggestions", {
       method: "POST",
@@ -123,7 +168,7 @@ export function CommunityProvider({
     <Context.Provider
       value={{
         ...state.data,
-        following: personal ? state.data.following : [],
+        following: personal ? following : [],
         votes: personal ? state.data.votes : {},
         suggestions: personal ? state.data.suggestions : 0,
         reviewed: personal ? state.data.reviewed : 0,

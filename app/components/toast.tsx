@@ -20,7 +20,6 @@ export function notify(message: string, { undo, error }: Options = {}) {
   const id: string = manager.add({
     title: message,
     type: error ? "error" : "success",
-    priority: error ? "high" : "low",
     timeout: undo ? 8000 : error ? 7000 : 5000,
     actionProps: undo && {
       children: "Angre",
