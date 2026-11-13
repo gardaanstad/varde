@@ -8,8 +8,8 @@ export const controlBase = [
 ].join(" ");
 
 /**
- * An outlined pill with a label: the header's log-in button and a project's
- * actions. Beside the filter pills, so the same height and type.
+ * An outlined pill with a label: a project's actions. Beside the filter
+ * pills, so the same height and type.
  */
 export const pillButton = [
   "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border-strong px-3.5 text-ui font-medium text-ink",

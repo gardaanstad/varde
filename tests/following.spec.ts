@@ -69,7 +69,7 @@ test("followed projects count what is new per project and clear one at a time", 
 
   // Commenting follows the project; replies to the reader count separately,
   // and the reader's own comments never count.
-  const mine = await commentAs(request, reader, discussed.id, "Mitt innspill");
+  const mine = await commentAs(request, reader, discussed.id, "Min kommentar");
   await commentAs(request, neighbour, discussed.id, "Svar til deg", mine);
 
   const following = await readFollowing(request, reader);
