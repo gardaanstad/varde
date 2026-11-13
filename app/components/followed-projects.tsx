@@ -95,6 +95,7 @@ function FollowedRow({
             "after:absolute after:inset-x-[-12px] after:inset-y-2 after:rounded-xl max-md:after:inset-x-[-8px] max-md:after:inset-y-1.5",
             "focus-visible:after:outline-2 focus-visible:after:outline-focus",
           )}
+          data-press=""
           onClick={() => onOpen(project.id, summary.first ?? {})}
         >
           {project.title}

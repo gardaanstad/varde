@@ -70,7 +70,7 @@ import BackLink from "./back-link";
 import ProfileAvatar from "./profile-avatar";
 import { fields, type FieldId } from "./project-edit";
 import RelativeTime from "./relative-time";
-import Toast, { type ToastMessage } from "./toast";
+import { notify } from "./toast";
 
 const ProjectMap = dynamic(() => import("./project-map"), { ssr: false });
 const openLink =
@@ -902,6 +902,7 @@ function SuggestionRow({
                     <button
                       type="button"
                       className={openLink}
+                      data-press=""
                       onClick={() => openProject(suggestion.projectId!)}
                     >
                       Åpne prosjekt
@@ -1018,15 +1019,9 @@ export default function SuggestionList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [tab, setTab] = useState<Tab>(moderator ? "queue" : "mine");
-  const [toast, setToast] = useState<ToastMessage | null>(null);
   // One row open at a time.
   const [openId, setOpenId] = useState<string | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 6000);
-    return () => clearTimeout(timer);
-  }, [toast]);
   const queue = lists?.queue ?? [];
   const handled = lists?.handled ?? [];
   const mine = lists?.mine ?? [];
@@ -1053,9 +1048,11 @@ export default function SuggestionList({
     });
     setLists(next);
     onChange?.();
-    setToast({
-      message: mutation.action === "approve" ? "Godkjent" : "Avvist",
-    });
+    notify(
+      mutation.action === "approve"
+        ? "Forslaget er godkjent"
+        : "Forslaget er avvist",
+    );
     // Keyboard reviews carry on with the next suggestion.
     requestAnimationFrame(() => {
       const rows =
@@ -1184,9 +1181,6 @@ export default function SuggestionList({
           )}
         </div>
       </div>
-      {toast && (
-        <Toast toast={toast} mobile={false} onClose={() => setToast(null)} />
-      )}
     </Root>
     </OpenProject>
   );

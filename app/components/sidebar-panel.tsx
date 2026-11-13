@@ -89,6 +89,7 @@ export function MaximizeButton({
     <button
       type="button"
       className={controlButton}
+      data-press=""
       onClick={onToggle}
       aria-label={label}
       data-tooltip={label}

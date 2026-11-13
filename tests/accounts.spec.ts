@@ -399,7 +399,7 @@ test("Google OAuth begins with state and the exact callback; forged callbacks cr
 }) => {
   const response = await mutation(request, "/api/auth/sign-in/social", {
     provider: "google",
-    callbackURL: `/velkommen?next=${encodeURIComponent(`/prosjekt/${project.id}`)}`,
+    callbackURL: `/prosjekt/${project.id}`,
     errorCallbackURL: "/logg-inn?error=google",
     disableRedirect: true,
   });
@@ -427,23 +427,32 @@ test("Google OAuth begins with state and the exact callback; forged callbacks cr
   );
 });
 
-test("new users finish one-step onboarding and return to their project", async ({
+test("new users choose a username over their project, which can't be skipped", async ({
   page,
   context,
 }) => {
   const person = await member();
   await signIn(context, person);
-  await page.goto(
-    `/velkommen?next=${encodeURIComponent(`/prosjekt/${project.id}`)}`,
-  );
-  await expect(
-    page.getByRole("heading", { name: "Hva skal vi kalle deg?" }),
-  ).toBeVisible();
+  await page.goto(`/prosjekt/${project.id}`);
+  const prompt = page.getByRole("dialog", { name: "Hva skal vi kalle deg?" });
+  await expect(prompt).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await expect(prompt).toBeVisible();
+  const field = prompt.getByLabel("Brukernavn", { exact: true });
+  const proceed = prompt.getByRole("button", { name: "Fortsett" });
+  await expect(proceed).toBeDisabled();
+  await field.fill("ab");
+  await expect(proceed).toBeDisabled();
   const username = uniqueName();
-  await page.getByLabel("Brukernavn", { exact: true }).fill(username);
-  await expect(page.getByText(`@${username} er ledig`)).toBeVisible();
-  await page.getByRole("button", { name: "Fortsett" }).click();
-  await expect(page).toHaveURL(new RegExp(`/prosjekt/${project.id}$`));
+  await field.fill(username);
+  await expect(prompt.getByText("Ledig", { exact: true })).toBeVisible();
+  await shot(page, "username-prompt");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await shot(page, "username-prompt-mobile");
+  await proceed.click();
+  await expect(prompt).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(`/prosjekt/${project.id}(\\?|$)`));
   await expect(
     page.getByRole("textbox", { name: "Overskrift" }),
   ).toHaveCount(0);

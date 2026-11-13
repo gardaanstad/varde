@@ -76,7 +76,7 @@ import {
 } from "../lib/places";
 import { errorMessage } from "../lib/api-client";
 import { profileHref } from "../lib/profiles";
-import { chooseUsernameEvent, useAuth } from "./auth-provider";
+import { useAuth } from "./auth-provider";
 import { useCommunity } from "./community-provider";
 import AccountPanel from "./account-panel";
 import ProfileAvatar from "./profile-avatar";
@@ -94,7 +94,7 @@ import FollowedProjects, {
 import { useFollowing } from "./following-provider";
 import { unreadCount, unreadProjects } from "../lib/following";
 import EmptyState from "./empty-state";
-import Toast, { type ToastMessage } from "./toast";
+import { notify } from "./toast";
 import {
   Drawer,
   DrawerContent,
@@ -376,7 +376,6 @@ export default memo(function Explorer({
   const { following: followed, markSeen } = useFollowing();
   // The badge counts projects with something new, as the Følger rows do.
   const unread = unreadProjects(followed);
-  const pendingFollows = useRef(new Set<string>());
   const [initial] = useState(() =>
     parseExploreState(new URLSearchParams(initialSearch)),
   );
@@ -439,8 +438,6 @@ export default memo(function Explorer({
   const [editorOpen, setEditorOpen] = useState(false);
   // The editor's own close, which asks before dropping a draft.
   const editorClose = useRef<(() => void) | null>(null);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
-  const notify = (message: string) => setToast({ message });
   const searchRef = useRef<HTMLInputElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLElement>(null);
@@ -660,12 +657,6 @@ export default memo(function Explorer({
     };
   }, [openSearch]);
 
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 6000);
-    return () => clearTimeout(timer);
-  }, [toast]);
-
   // "Aktuelt" ranks by discussion over the past week, then by latest update.
   const [weekAgo] = useState(() =>
     new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
@@ -719,10 +710,6 @@ export default memo(function Explorer({
         ? projectInBounds(project, listBounds)
         : !listPlace || !!placesOf.get(project.id)?.includes(listPlace),
     [listBounds, listPlace, placesOf],
-  );
-  const inView = useMemo(
-    () => projects.filter(inPlace),
-    [inPlace, projects],
   );
   const statusMatch = useCallback(
     (project: Project) =>
@@ -956,21 +943,11 @@ export default memo(function Explorer({
   const onOpenProfile = useEffectEvent((event: Event) =>
     showProfile((event as CustomEvent<string>).detail),
   );
-  // Signed in without a username: it is chosen in the account panel.
-  const onChooseUsername = useEffectEvent((event: Event) => {
-    event.preventDefault();
-    openProfile();
-  });
-  // A layout effect, so the listeners are there in the commit that hydrates
-  // the page: a click just after hydration would otherwise go unanswered and
-  // fall back to the full-page welcome flow.
+  // A layout effect, so the listener is there in the commit that hydrates
+  // the page: a click just after hydration would otherwise go unanswered.
   useLayoutEffect(() => {
     window.addEventListener(openProfileEvent, onOpenProfile);
-    window.addEventListener(chooseUsernameEvent, onChooseUsername);
-    return () => {
-      window.removeEventListener(openProfileEvent, onOpenProfile);
-      window.removeEventListener(chooseUsernameEvent, onChooseUsername);
-    };
+    return () => window.removeEventListener(openProfileEvent, onOpenProfile);
   }, []);
   // Forslag's link, opened without an account: the list, and why not.
   const askForSuggestions = useEffectEvent(() => {
@@ -1328,8 +1305,8 @@ export default memo(function Explorer({
     if (openUnread) void markSeen(openUnread.projectId);
   }, [openUnread, markSeen]);
 
-  async function toggleFollow(id: string) {
-    if (pendingFollows.current.has(id)) return;
+  // Following shows at once; a failure puts it back and says so.
+  function toggleFollow(id: string) {
     if (
       !requireLogin("Du må være logget inn for å følge prosjekter.", {
         type: "follow",
@@ -1338,26 +1315,27 @@ export default memo(function Explorer({
     )
       return;
     const exists = followingIds.has(id);
-    pendingFollows.current.add(id);
-    try {
-      await mutate({ action: "follow", projectId: id, following: !exists });
-      const title =
-        projects.find((project) => project.id === id)?.title || "Prosjektet";
-      setToast({
-        message: exists ? `Følger ikke ${title}` : `Følger ${title}`,
-        undo: () => {
-          void mutate({ action: "follow", projectId: id, following: exists })
-            .then(() => setToast(null))
-            .catch((error) =>
-              notify(errorMessage(error, "Kunne ikke angre endringen.")),
-            );
-        },
-      });
-    } catch (error) {
-      notify(errorMessage(error, "Kunne ikke følge prosjektet."));
-    } finally {
-      pendingFollows.current.delete(id);
-    }
+    void mutate({ action: "follow", projectId: id, following: !exists }).catch(
+      (error) =>
+        notify(errorMessage(error, "Kunne ikke følge prosjektet."), {
+          error: true,
+        }),
+    );
+    const title =
+      projects.find((project) => project.id === id)?.title || "Prosjektet";
+    notify(exists ? `Sluttet å følge ${title}` : `Følger ${title}`, {
+      undo: () => {
+        void mutate({
+          action: "follow",
+          projectId: id,
+          following: exists,
+        }).catch((error) =>
+          notify(errorMessage(error, "Kunne ikke angre endringen."), {
+            error: true,
+          }),
+        );
+      },
+    });
   }
 
   // Back from logging in, what was asked for goes ahead.
@@ -1372,7 +1350,9 @@ export default memo(function Explorer({
       projectId: follow.projectId,
       following: true,
     }).catch((error) =>
-      notify(errorMessage(error, "Kunne ikke følge prosjektet.")),
+      notify(errorMessage(error, "Kunne ikke følge prosjektet."), {
+        error: true,
+      }),
     );
     // An intent is consumed once when the account is ready.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1395,10 +1375,6 @@ export default memo(function Explorer({
     setFollowingOnly(false);
     setSnapPoint(1);
   }
-
-  const feedback = toast && (
-    <Toast toast={toast} mobile={isMobile} onClose={() => setToast(null)} />
-  );
 
   const brand = (
     <Link
@@ -1564,39 +1540,18 @@ export default memo(function Explorer({
     </section>
   );
 
-  // Counts follow the map: each filter counts what the other leaves in view.
   const statusOptions = statusOrder.map((value) => ({
     value,
     label: statuses[value].label,
     dot: statusTone[value].dot,
-    ...(!isMobile && {
-      count: inView.filter(
-        (project) => project.status === value && categoryMatch(project),
-      ).length,
-    }),
   }));
-  const categoryCount = (test: (project: Project) => boolean) =>
-    isMobile
-      ? {}
-      : {
-          count: inView.filter(
-            (project) => test(project) && statusMatch(project),
-          ).length,
-        };
   // Main categories; their subcategories open underneath once chosen.
   const categoryOptions = categoryTree.map((node) => ({
     value: node.name,
     label: node.name,
     icon: <CategoryIcon category={node.name} size={16} />,
     more: lessUsedCategories.has(node.name),
-    ...categoryCount((project) =>
-      project.categories.some((value) => mainCategoryOf(value) === node.name),
-    ),
-    children: node.subcategories.map((sub) => ({
-      value: sub,
-      label: sub,
-      ...categoryCount((project) => project.categories.includes(sub)),
-    })),
+    children: node.subcategories.map((sub) => ({ value: sub, label: sub })),
   }));
   // Cities and counties with projects, counted by the other filters.
   const placeOptions = useMemo(() => {
@@ -1629,11 +1584,11 @@ export default memo(function Explorer({
   };
   const statusFilter = (
     <ChoiceSelect
-      label="Status"
+      label="Prosjektstatus"
       multiple
       value={statusValue}
       onChange={pickStatus}
-      triggerLabel="Status"
+      triggerLabel="Prosjektstatus"
       menuTitle
       icon={<StatusDots values={status} />}
       className={cn(
@@ -1746,7 +1701,7 @@ export default memo(function Explorer({
       />
       <span
         className="flex shrink-0"
-        data-tooltip="Status"
+        data-tooltip="Prosjektstatus"
       >
         {statusFilter}
       </span>
@@ -1837,7 +1792,7 @@ export default memo(function Explorer({
     followLatest.current = toggleFollow;
   });
   const followCard = useCallback(
-    (id: string) => void followLatest.current(id),
+    (id: string) => followLatest.current(id),
     [],
   );
   const hoverCard = useCallback(
@@ -2057,6 +2012,7 @@ export default memo(function Explorer({
       aria-label={`Din profil${reviewed ? ` (${reviewed} behandlet)` : ""}`}
       aria-haspopup="dialog"
       aria-expanded={modal === "profile"}
+      data-press=""
       data-tooltip={
         isMobile || authPending
           ? undefined
@@ -2098,6 +2054,7 @@ export default memo(function Explorer({
       prefetch={false}
       className={cn(compactIconAction, "relative text-muted hover:text-ink")}
       aria-label={`Forslag${suggestions ? ` (${suggestions})` : ""}`}
+      data-press=""
       data-tooltip={isMobile ? undefined : "Forslag"}
       onClick={(event) => {
         // A panel over the explorer, not a page of its own.
@@ -2124,6 +2081,7 @@ export default memo(function Explorer({
       className={cn(compactIconAction, "relative text-muted hover:text-ink")}
       aria-label={unread > 0 ? `Følger, ${unread} med nytt` : "Følger"}
       aria-pressed={followingOnly}
+      data-press=""
       data-tooltip={isMobile ? undefined : "Følger"}
       onClick={() => (followingOnly ? leaveFollowing() : showFollowing())}
     >
@@ -2149,6 +2107,7 @@ export default memo(function Explorer({
       aria-expanded={sidebarMode !== "collapsed"}
       aria-controls="project-panel"
       data-sidebar-toggle=""
+      data-press=""
       onClick={toggleCollapsed}
     >
       {sidebarMode === "collapsed" ? (
@@ -2235,7 +2194,7 @@ export default memo(function Explorer({
               followingIds={following}
               following={followed}
               onOpen={openPost}
-              onUnfollow={(id) => void toggleFollow(id)}
+              onUnfollow={toggleFollow}
             />
           </Panel>
         );
@@ -2765,7 +2724,6 @@ export default memo(function Explorer({
       )}
       {panelDrawers}
       {panelShell}
-      {feedback}
     </div>
   );
 });

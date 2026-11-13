@@ -96,6 +96,7 @@ export default function ProfileOverlay({
                   className={cn(secondaryButton, "size-10 min-h-10 px-0")}
                   aria-label="Kontoinnstillinger"
                   data-tooltip="Kontoinnstillinger"
+                  data-press=""
                   onClick={onSettings}
                 >
                   <Settings size={16} aria-hidden="true" />

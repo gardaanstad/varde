@@ -314,8 +314,8 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
         (element) => element.parentElement!.getBoundingClientRect().top,
       );
     // A tap still chooses.
-    await filters.getByRole("button", { name: /^Status:/ }).click();
-    const status = page.getByRole("listbox", { name: "Status", exact: true });
+    await filters.getByRole("button", { name: /^Prosjektstatus:/ }).click();
+    const status = page.getByRole("listbox", { name: "Prosjektstatus", exact: true });
     await expect(status).toBeVisible();
     const rest = await offset(status);
     await status.getByRole("option", { name: /^Ferdigstilt/ }).tap();
@@ -343,7 +343,7 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     await drag(page, status.getByRole("option").nth(1), 120);
     await expect(status).toBeHidden();
     await expect(
-      filters.getByRole("button", { name: "Status: Planlagt, Under bygging, Ferdigstilt", exact: true }),
+      filters.getByRole("button", { name: "Prosjektstatus: Planlagt, Under bygging, Ferdigstilt", exact: true }),
     ).toBeVisible();
     // A list that scrolls closes from its top.
     await filters.getByRole("button", { name: /^Sted/ }).click();
@@ -390,8 +390,8 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
         ),
       );
     // Everything fits: no fade.
-    await filters.getByRole("button", { name: /^Status:/ }).click();
-    const status = page.getByRole("listbox", { name: "Status", exact: true });
+    await filters.getByRole("button", { name: /^Prosjektstatus:/ }).click();
+    const status = page.getByRole("listbox", { name: "Prosjektstatus", exact: true });
     await expect(status).toBeVisible();
     await expect.poll(() => opacity(status)).toBe(0);
     await page.keyboard.press("Escape");
@@ -450,9 +450,9 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     });
     await expect(filters).toBeVisible();
     await shot(page, "mobile-390");
-    await filters.getByRole("button", { name: /^Status:/ }).click();
+    await filters.getByRole("button", { name: /^Prosjektstatus:/ }).click();
     await expect(
-      page.getByRole("listbox", { name: "Status", exact: true }),
+      page.getByRole("listbox", { name: "Prosjektstatus", exact: true }),
     ).toBeVisible();
     await shot(page, "mobile-390-status-sheet");
     await page.keyboard.press("Escape");
@@ -498,18 +498,18 @@ test.describe(`mobile explorer at ${viewport.width}px`, () => {
     });
     await filters
       .getByRole("button", {
-        name: "Status: Planlagt, Under bygging",
+        name: "Prosjektstatus: Planlagt, Under bygging",
         exact: true,
       })
       .click();
-    const status = page.getByRole("listbox", { name: "Status", exact: true });
+    const status = page.getByRole("listbox", { name: "Prosjektstatus", exact: true });
     await expectMenuFits(status);
     await expect(status.getByRole("option", { selected: true })).toHaveCount(
       2,
     );
     // The sheet opens over a trigger that keeps still: no turned chevron, no
     // open highlight.
-    const statusTrigger = filters.getByRole("button", { name: /^Status:/ });
+    const statusTrigger = filters.getByRole("button", { name: /^Prosjektstatus:/ });
     await expect(statusTrigger.locator("svg.lucide-chevron-down")).toHaveCSS(
       "transform",
       "none",
@@ -820,7 +820,7 @@ test.describe("desktop explorer", () => {
     });
     // A dot per status shown, a ring for finished ones, hidden by default.
     const trigger = filters.getByRole("button", {
-      name: "Status: Planlagt, Under bygging",
+      name: "Prosjektstatus: Planlagt, Under bygging",
       exact: true,
     });
     await expect(trigger.locator("[data-status-dots]")).toHaveAttribute(
@@ -828,7 +828,7 @@ test.describe("desktop explorer", () => {
       "planned,construction",
     );
     await trigger.click();
-    const menu = page.getByRole("listbox", { name: "Status", exact: true });
+    const menu = page.getByRole("listbox", { name: "Prosjektstatus", exact: true });
     // Several can be chosen, and each chosen one is checked.
     await expect(menu).toHaveAttribute("aria-multiselectable", "true");
     await expect(menu.getByRole("option", { selected: true })).toHaveCount(2);
@@ -880,11 +880,11 @@ test.describe("desktop explorer", () => {
     await expect(active).toBeHidden();
     await filters
       .getByRole("button", {
-        name: "Status: Planlagt, Under bygging",
+        name: "Prosjektstatus: Planlagt, Under bygging",
         exact: true,
       })
       .click();
-    const status = page.getByRole("listbox", { name: "Status", exact: true });
+    const status = page.getByRole("listbox", { name: "Prosjektstatus", exact: true });
     await status.getByRole("option", { name: /^Planlagt/ }).click();
     await page.keyboard.press("Escape");
     await expect(
@@ -970,7 +970,7 @@ test.describe("desktop explorer", () => {
     await expect(page).toHaveURL(/sorter=title/);
     await page.reload();
     await expect(
-      filters.getByRole("button", { name: "Status: Under bygging", exact: true }),
+      filters.getByRole("button", { name: "Prosjektstatus: Under bygging", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", {
@@ -1096,6 +1096,60 @@ test.describe("desktop explorer", () => {
       right: map.x + map.width,
       bottom: map.y + map.height,
     });
+  });
+
+  test("groups only merge and split as the map zooms, and keep their place", async ({
+    page,
+  }) => {
+    await page.goto("/?kart=59.9100,10.7500,10");
+    await expect(page.locator(".project-cluster").first()).toBeVisible();
+    const groups = () =>
+      page.locator(".project-cluster").evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            ids: element.getAttribute("data-cluster")!.split(" "),
+            x: rect.x + rect.width / 2,
+            y: rect.y + rect.height / 2,
+          };
+        }),
+      );
+    const before = await groups();
+    // While a zoom animates, groups glide with the map like its shapes do.
+    expect(
+      await page.locator(".project-cluster").first().evaluate((element) => {
+        element.closest(".leaflet-map-pane")!.classList.add("leaflet-zoom-anim");
+        const property = getComputedStyle(element).transitionProperty;
+        element.closest(".leaflet-map-pane")!.classList.remove("leaflet-zoom-anim");
+        return property;
+      }),
+    ).toContain("transform");
+    const marker = page.locator(`.project-cluster[data-cluster="${before[0].ids.join(" ")}"]`);
+    await marker.evaluate((element) => element.setAttribute("data-old", ""));
+    await page.getByRole("button", { name: "Zoom ut", exact: true }).click();
+    await expect.poll(() => mapParam(page)).toMatch(/,9$/);
+    // Zoomed out, every group lies whole inside a larger one.
+    const out = await groups();
+    for (const { ids } of before)
+      expect(
+        out.some((group) => ids.every((id) => group.ids.includes(id))),
+        ids.join(" "),
+      ).toBe(true);
+    await page.getByRole("button", { name: "Zoom inn", exact: true }).click();
+    await expect.poll(() => mapParam(page)).toMatch(/,10$/);
+    // Back in, the same groups stand in the same places.
+    const after = await groups();
+    expect(after.map(({ ids }) => ids).sort()).toEqual(
+      before.map(({ ids }) => ids).sort(),
+    );
+    for (const group of before) {
+      const match = after.find(({ ids }) => ids.join(" ") === group.ids.join(" "))!;
+      expect(Math.abs(match.x - group.x)).toBeLessThan(1);
+      expect(Math.abs(match.y - group.y)).toBeLessThan(1);
+    }
+    // A group that stays the same keeps its marker rather than being redrawn.
+    if (out.some(({ ids }) => ids.join(" ") === before[0].ids.join(" ")))
+      await expect(marker).toHaveAttribute("data-old", "");
   });
 
   test("a project clicked on the map shows no focus ring; the keyboard's does", async ({
@@ -1912,4 +1966,52 @@ test.describe("the list holds what the uncovered map shows", () => {
       await expect(listed(page, area.title)).toBeVisible();
     });
   });
+});
+
+test("menus, the sidebar and projects open as the mouse goes down", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  const sort = page.getByRole("button", { name: /^Sorter prosjekter:/ });
+  // The server renders the menu, so a click can land before hydration.
+  await expect(async () => {
+    await sort.click();
+    await expect(sort).toHaveAttribute("aria-expanded", "true", {
+      timeout: 1000,
+    });
+  }).toPass();
+  await page.keyboard.press("Escape");
+  await expect(sort).toHaveAttribute("aria-expanded", "false");
+
+  const press = async (target: Locator) => {
+    const box = (await target.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+  };
+  // The release doesn't act again: the menu stays open, then a press shuts it.
+  await press(sort);
+  await expect(sort).toHaveAttribute("aria-expanded", "true");
+  await page.mouse.up();
+  await expect(
+    page.getByRole("listbox", { name: "Sorter prosjekter" }),
+  ).toBeVisible();
+  await press(sort);
+  await expect(sort).toHaveAttribute("aria-expanded", "false");
+  await page.mouse.up();
+
+  const panel = page.locator("#project-panel");
+  await press(page.getByRole("button", { name: "Skjul prosjektlisten" }));
+  await expect(panel).toHaveAttribute("data-sidebar-mode", "collapsed");
+  await page.mouse.up();
+  await press(page.getByRole("button", { name: "Vis prosjektlisten" }));
+  await expect(panel).toHaveAttribute("data-sidebar-mode", "normal");
+  await page.mouse.up();
+
+  const card = page.locator("[data-card-id]").first();
+  const id = await card.getAttribute("data-card-id");
+  await press(card.locator("h2 button"));
+  await expect(page.locator("[data-project-post]")).toBeVisible();
+  await page.mouse.up();
+  await expect(page).toHaveURL(new RegExp(`/prosjekt/${id}`));
 });
