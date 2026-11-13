@@ -509,6 +509,7 @@ export default function ChoiceSelect(props: ChoiceSelectProps) {
             : label
         }
         aria-haspopup="listbox"
+        data-press=""
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={() => {

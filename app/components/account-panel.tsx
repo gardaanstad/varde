@@ -267,6 +267,7 @@ export default function AccountPanel({
                   ref={settingsTrigger}
                   type="button"
                   className={cn(secondaryButton, "size-10 min-h-10 px-0")}
+                  data-press=""
                   onClick={() => switchView("settings")}
                   aria-label="Kontoinnstillinger"
                   data-tooltip="Kontoinnstillinger"
@@ -280,6 +281,7 @@ export default function AccountPanel({
                     <button
                       type="button"
                       className={profileLink}
+                      data-press=""
                       onClick={onFollowing}
                     >
                       <Bell size={18} aria-hidden="true" />
@@ -296,6 +298,7 @@ export default function AccountPanel({
                     <button
                       type="button"
                       className={profileLink}
+                      data-press=""
                       onClick={onSuggestions}
                     >
                       {suggestionsLink}

@@ -376,7 +376,6 @@ export default memo(function Explorer({
   const { following: followed, markSeen } = useFollowing();
   // The badge counts projects with something new, as the Følger rows do.
   const unread = unreadProjects(followed);
-  const pendingFollows = useRef(new Set<string>());
   const [initial] = useState(() =>
     parseExploreState(new URLSearchParams(initialSearch)),
   );
@@ -1328,8 +1327,8 @@ export default memo(function Explorer({
     if (openUnread) void markSeen(openUnread.projectId);
   }, [openUnread, markSeen]);
 
-  async function toggleFollow(id: string) {
-    if (pendingFollows.current.has(id)) return;
+  // Following shows at once; a failure puts it back and says so.
+  function toggleFollow(id: string) {
     if (
       !requireLogin("Du må være logget inn for å følge prosjekter.", {
         type: "follow",
@@ -1338,26 +1337,24 @@ export default memo(function Explorer({
     )
       return;
     const exists = followingIds.has(id);
-    pendingFollows.current.add(id);
-    try {
-      await mutate({ action: "follow", projectId: id, following: !exists });
-      const title =
-        projects.find((project) => project.id === id)?.title || "Prosjektet";
-      setToast({
-        message: exists ? `Følger ikke ${title}` : `Følger ${title}`,
-        undo: () => {
-          void mutate({ action: "follow", projectId: id, following: exists })
-            .then(() => setToast(null))
-            .catch((error) =>
-              notify(errorMessage(error, "Kunne ikke angre endringen.")),
-            );
-        },
-      });
-    } catch (error) {
-      notify(errorMessage(error, "Kunne ikke følge prosjektet."));
-    } finally {
-      pendingFollows.current.delete(id);
-    }
+    void mutate({ action: "follow", projectId: id, following: !exists }).catch(
+      (error) => notify(errorMessage(error, "Kunne ikke følge prosjektet.")),
+    );
+    const title =
+      projects.find((project) => project.id === id)?.title || "Prosjektet";
+    setToast({
+      message: exists ? `Følger ikke ${title}` : `Følger ${title}`,
+      undo: () => {
+        setToast(null);
+        void mutate({
+          action: "follow",
+          projectId: id,
+          following: exists,
+        }).catch((error) =>
+          notify(errorMessage(error, "Kunne ikke angre endringen.")),
+        );
+      },
+    });
   }
 
   // Back from logging in, what was asked for goes ahead.
@@ -1837,7 +1834,7 @@ export default memo(function Explorer({
     followLatest.current = toggleFollow;
   });
   const followCard = useCallback(
-    (id: string) => void followLatest.current(id),
+    (id: string) => followLatest.current(id),
     [],
   );
   const hoverCard = useCallback(
@@ -2057,6 +2054,7 @@ export default memo(function Explorer({
       aria-label={`Din profil${reviewed ? ` (${reviewed} behandlet)` : ""}`}
       aria-haspopup="dialog"
       aria-expanded={modal === "profile"}
+      data-press=""
       data-tooltip={
         isMobile || authPending
           ? undefined
@@ -2098,6 +2096,7 @@ export default memo(function Explorer({
       prefetch={false}
       className={cn(compactIconAction, "relative text-muted hover:text-ink")}
       aria-label={`Forslag${suggestions ? ` (${suggestions})` : ""}`}
+      data-press=""
       data-tooltip={isMobile ? undefined : "Forslag"}
       onClick={(event) => {
         // A panel over the explorer, not a page of its own.
@@ -2124,6 +2123,7 @@ export default memo(function Explorer({
       className={cn(compactIconAction, "relative text-muted hover:text-ink")}
       aria-label={unread > 0 ? `Følger, ${unread} med nytt` : "Følger"}
       aria-pressed={followingOnly}
+      data-press=""
       data-tooltip={isMobile ? undefined : "Følger"}
       onClick={() => (followingOnly ? leaveFollowing() : showFollowing())}
     >
@@ -2149,6 +2149,7 @@ export default memo(function Explorer({
       aria-expanded={sidebarMode !== "collapsed"}
       aria-controls="project-panel"
       data-sidebar-toggle=""
+      data-press=""
       onClick={toggleCollapsed}
     >
       {sidebarMode === "collapsed" ? (
@@ -2243,7 +2244,7 @@ export default memo(function Explorer({
                   isMobile && sectionFrom === "profile" ? leaveFollowing : undefined
                 }
                 onOpen={openPost}
-                onUnfollow={(id) => void toggleFollow(id)}
+                onUnfollow={toggleFollow}
               />
             </div>
           </Panel>

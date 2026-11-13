@@ -311,3 +311,33 @@ test("on touch screens the unfollow button stays visible", async ({
   await expect(unfollow).toHaveCSS("opacity", "1");
   await context.close();
 });
+
+test("following shows at once and goes back if the server refuses it", async ({
+  page,
+  context,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const project = seedProjects[14];
+  const reader = await member({ username: uniqueName() });
+  await signIn(context, reader);
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/community", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    await held;
+    await route.fulfill({ status: 500, json: { error: "Serveren svarte ikke." } });
+  });
+  await page.goto(`/prosjekt/${project.id}`);
+  const followButton = page.locator("[data-follow]");
+  // The server renders the button, so a click can land before hydration.
+  await expect(async () => {
+    await followButton.click();
+    await expect(followButton).toHaveAttribute("aria-pressed", "true", {
+      timeout: 1000,
+    });
+  }).toPass();
+  await expect(page.getByText(`Følger ${project.title}`)).toBeVisible();
+  release();
+  await expect(followButton).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByText("Serveren svarte ikke.")).toBeVisible();
+});

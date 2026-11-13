@@ -1913,3 +1913,51 @@ test.describe("the list holds what the uncovered map shows", () => {
     });
   });
 });
+
+test("menus, the sidebar and projects open as the mouse goes down", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  const sort = page.getByRole("button", { name: /^Sorter prosjekter:/ });
+  // The server renders the menu, so a click can land before hydration.
+  await expect(async () => {
+    await sort.click();
+    await expect(sort).toHaveAttribute("aria-expanded", "true", {
+      timeout: 1000,
+    });
+  }).toPass();
+  await page.keyboard.press("Escape");
+  await expect(sort).toHaveAttribute("aria-expanded", "false");
+
+  const press = async (target: Locator) => {
+    const box = (await target.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+  };
+  // The release doesn't act again: the menu stays open, then a press shuts it.
+  await press(sort);
+  await expect(sort).toHaveAttribute("aria-expanded", "true");
+  await page.mouse.up();
+  await expect(
+    page.getByRole("listbox", { name: "Sorter prosjekter" }),
+  ).toBeVisible();
+  await press(sort);
+  await expect(sort).toHaveAttribute("aria-expanded", "false");
+  await page.mouse.up();
+
+  const panel = page.locator("#project-panel");
+  await press(page.getByRole("button", { name: "Skjul prosjektlisten" }));
+  await expect(panel).toHaveAttribute("data-sidebar-mode", "collapsed");
+  await page.mouse.up();
+  await press(page.getByRole("button", { name: "Vis prosjektlisten" }));
+  await expect(panel).toHaveAttribute("data-sidebar-mode", "normal");
+  await page.mouse.up();
+
+  const card = page.locator("[data-card-id]").first();
+  const id = await card.getAttribute("data-card-id");
+  await press(card.locator("h2 button"));
+  await expect(page.locator("[data-project-post]")).toBeVisible();
+  await page.mouse.up();
+  await expect(page).toHaveURL(new RegExp(`/prosjekt/${id}`));
+});

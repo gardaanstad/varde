@@ -162,6 +162,7 @@ export default function UserIdentity({
         tabIndex={-1}
         aria-hidden="true"
         className="shrink-0 rounded-full"
+        data-press=""
         onClick={go}
         {...hover}
       >
@@ -185,6 +186,7 @@ export default function UserIdentity({
               if (!skipFocus.current && event.target.matches(":focus-visible"))
                 show();
             }}
+            data-press=""
             onClick={go}
             {...hover}
           >
@@ -232,6 +234,7 @@ export default function UserIdentity({
         )}
         <a
           href={profileHref(username)}
+          data-press=""
           onClick={go}
           className={cn(
             "mt-3 flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-surface-muted text-ui font-medium text-ink",
