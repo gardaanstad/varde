@@ -22,6 +22,7 @@ import { fieldControl } from "../lib/ui";
 import ImagePicker from "./image-picker";
 import CategoryPicker from "./category-picker";
 import DrawingMap from "./drawing-map";
+import { PanelHeader } from "./panel";
 import {
   actionBar,
   barProblem,
@@ -185,6 +186,8 @@ export default function ProjectEditor({
   });
 
   return (
+    <>
+    <PanelHeader title={suggest ? "Foreslå prosjekt" : "Nytt prosjekt"} />
     <div
       className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin"
       data-project-editor=""
@@ -199,11 +202,6 @@ export default function ProjectEditor({
           void save();
         }}
       >
-        <div className="flex min-h-14 items-center px-4.5 md:px-gutter-scroll max-md:min-h-12 max-md:pr-13">
-          <h1 className="text-title max-md:text-[1.125rem]">
-            {suggest ? "Foreslå prosjekt" : "Nytt prosjekt"}
-          </h1>
-        </div>
         <div className="flex flex-1 flex-col gap-5 px-4.5 pt-3 pb-8 md:px-gutter-scroll">
           <Field
             id="title"
@@ -437,5 +435,6 @@ export default function ProjectEditor({
         </div>
       </form>
     </div>
+    </>
   );
 }

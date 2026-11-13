@@ -2227,30 +2227,21 @@ export default memo(function Explorer({
         return (
           <Panel
             {...frame}
-            floatingClose
-            onBack={!isMobile && sectionFrom === "profile" ? leaveFollowing : undefined}
+            titled
+            onBack={sectionFrom === "profile" ? leaveFollowing : undefined}
           >
-            <div
-              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4.5 pb-8 scrollbar-thin md:px-gutter-scroll"
-              data-followed-scroll=""
-              data-drawer-scroll
-            >
-              <FollowedProjects
-                projects={projects}
-                followingIds={following}
-                following={followed}
-                onBack={
-                  isMobile && sectionFrom === "profile" ? leaveFollowing : undefined
-                }
-                onOpen={openPost}
-                onUnfollow={(id) => void toggleFollow(id)}
-              />
-            </div>
+            <FollowedProjects
+              projects={projects}
+              followingIds={following}
+              following={followed}
+              onOpen={openPost}
+              onUnfollow={(id) => void toggleFollow(id)}
+            />
           </Panel>
         );
       case "editor":
         return (
-          <Panel {...frame} floatingClose>
+          <Panel {...frame} titled>
             {canModerate ? (
               <ProjectEditor
                 closeRef={editorClose}
@@ -2286,20 +2277,15 @@ export default memo(function Explorer({
         return (
           <Panel
             {...frame}
-            floatingClose
+            titled
             onBack={
-              !isMobile && sectionFrom === "profile"
+              sectionFrom === "profile"
                 ? () => closeSuggestions(true)
                 : undefined
             }
           >
             <SuggestionList
               embedded
-              onBack={
-                isMobile && sectionFrom === "profile"
-                  ? () => closeSuggestions(true)
-                  : undefined
-              }
               moderator={canModerate}
               onOpenProject={(id) => openPost(id)}
               onClose={() => closeSuggestions()}

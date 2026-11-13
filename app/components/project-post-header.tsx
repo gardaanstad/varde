@@ -15,7 +15,13 @@ import {
 } from "lucide-react";
 import type { Project } from "../lib/data";
 import { cn } from "../lib/cn";
-import { fieldControl, iconButton, pillButton } from "../lib/ui";
+import {
+  fieldControl,
+  iconButton,
+  panelTitle,
+  panelTitleTop,
+  pillButton,
+} from "../lib/ui";
 import ActionSheet, { type SheetAction } from "./action-sheet";
 import { EditField, editState, useProjectEdit } from "./project-edit";
 
@@ -27,7 +33,7 @@ const headerIconButton = cn(
 /** Desktop: the project's own actions, outlined pills with a label. */
 const actionPill = cn(pillButton, "px-3");
 
-const titleType = "text-display max-md:text-[1.5rem]";
+const titleType = panelTitle;
 
 // The full page's column: 1120px wide with 40px inside, centred beside the
 // scrollbar (see `--scrollbar-width` in project-post.tsx). The bar's pills
@@ -247,7 +253,10 @@ export default function ProjectPostHeader({
     <EditField
       id="title"
       inline
-      className={cn("min-w-0 flex-1 pb-1", mobile ? "pt-1.5" : "pt-[7px]")}
+      className={cn(
+        "min-w-0 flex-1 pb-1",
+        mobile ? panelTitleTop.mobile : panelTitleTop.desktop,
+      )}
     >
       {/* Same type as the heading, with the field's padding outside the text. */}
       <textarea
@@ -275,8 +284,8 @@ export default function ProjectPostHeader({
       tabIndex={-1}
       className={cn(
         "m-0 line-clamp-2 min-w-0 flex-1 overflow-hidden text-ink outline-none wrap-break-word",
-        // The first line centred on the buttons beside it (44px, 40px on phones).
-        mobile ? "pt-1.5" : "pt-[7px]",
+        // The first line level with the buttons beside it; see panelTitleTop.
+        mobile ? panelTitleTop.mobile : panelTitleTop.desktop,
         titleType,
       )}
     >
@@ -327,7 +336,7 @@ export default function ProjectPostHeader({
     >
       <div
         // Controls centred 32px down, as on the list's header and every panel's.
-        className="flex items-start gap-2 pt-2.5 pr-3 pb-2 pl-6"
+        className="flex items-start gap-2 pt-2.5 pr-3 pb-1 pl-6"
         style={
           wide
             ? { paddingLeft: columnStart, paddingRight: columnEnd }
