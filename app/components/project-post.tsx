@@ -1253,7 +1253,7 @@ export default function ProjectPost({
   const tabs = [
     {
       id: "discussion",
-      label: "Diskusjon",
+      label: "Kommentarer",
       icon: MessageCircle,
     },
     {
