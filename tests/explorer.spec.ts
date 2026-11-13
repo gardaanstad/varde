@@ -841,7 +841,7 @@ test.describe("desktop explorer", () => {
     await shot(page, "list-expanded-hover");
 
     // Like a feed post: the counts and follow sit under the photos.
-    const comments = first.getByRole("button", { name: /^\d+ innspill$/ });
+    const comments = first.getByRole("button", { name: /^\d+ kommentarer?$/ });
     const [galleryBox, commentsBox] = await Promise.all([
       gallery.boundingBox(),
       comments.boundingBox(),
@@ -851,7 +851,7 @@ test.describe("desktop explorer", () => {
     // The comment count opens the project at its discussion.
     await comments.click();
     await expect(
-      page.getByRole("button", { name: /^Diskusjon/ }),
+      page.getByRole("button", { name: /^Kommentarer/ }),
     ).toBeInViewport();
     await page.goBack();
 
