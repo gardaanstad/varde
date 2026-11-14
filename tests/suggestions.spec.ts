@@ -210,6 +210,74 @@ test("suggestions are authorized, validated and applied on the server", async ({
   );
 });
 
+test("members suggest photos; approval credits and publishes them", async ({
+  request,
+}) => {
+  const moderator = await member({
+    username: name(),
+    email: "suggestion-photo-moderator@example.test",
+  });
+  const person = await member({ username: name() });
+  const project = await freshProject(request, moderator);
+  const upload = async (account: Account) =>
+    (
+      await (
+        await request.post("/api/uploads", {
+          headers: { Origin: origin, ...cookieHeaders(account) },
+          multipart: { file: { name: "a.png", mimeType: "image/png", buffer: png() } },
+        })
+      ).json()
+    ).src as string;
+  const submit = (changes: unknown, account: Account) =>
+    mutation(
+      request,
+      "/api/suggestions",
+      {
+        action: "submit",
+        suggestion: { kind: "correction", projectId: project.id, changes, note: "" },
+      },
+      account,
+    );
+  const photo = await upload(person);
+  // Someone else's private photo can't be suggested.
+  const stranger = await member({ username: name() });
+  expect((await submit({ image: photo }, stranger)).status()).toBe(400);
+  // Credits are the server's to give.
+  expect(
+    (
+      await submit(
+        {
+          image: photo,
+          images: [{ src: project.image, credit: "@noen_andre" }],
+        },
+        person,
+      )
+    ).status(),
+  ).toBe(201);
+  expect((await request.get(photo)).status()).toBe(404);
+  const pending = (await lists(request, moderator)).queue!.find(
+    (item) => item.projectId === project.id,
+  )!;
+  expect(
+    (
+      await mutation(
+        request,
+        "/api/suggestions",
+        { action: "approve", id: pending.id },
+        moderator,
+      )
+    ).status(),
+  ).toBe(200);
+  const saved = await readProject(request, project.id);
+  expect(saved.image).toBe(photo);
+  expect(saved.imageCredit).toBe(`@${person.username}`);
+  expect(saved.imageSource).toBeUndefined();
+  expect(saved.images).toEqual([
+    { src: project.image, alt: project.title, credit: project.imageCredit },
+  ]);
+  expect((await request.get(photo)).status()).toBe(200);
+});
+
 test("members are limited to ten suggestions an hour", async ({ request }) => {
   const person = await member({ username: name() });
   const tip = {

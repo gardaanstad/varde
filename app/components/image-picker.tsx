@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useId, useState } from "react";
 import Image from "next/image";
-import { ImagePlus, LoaderCircle, X } from "lucide-react";
+import { ImagePlus, LoaderCircle, Star, X } from "lucide-react";
 import { errorMessage } from "../lib/api-client";
 import { cn } from "../lib/cn";
 import { uploadImage } from "../lib/upload-image";
@@ -11,16 +11,19 @@ const tile = "relative aspect-4/3 overflow-hidden rounded-lg";
 /**
  * Picks images from the device and uploads them straight away; `value` holds
  * the uploaded URLs in order. Reports in-flight uploads through `onBusy`.
+ * With `cover`, the first image is the cover and any other can take its place.
  */
 export default function ImagePicker({
   value,
   onChange,
   onBusy,
   max = 10,
+  cover = false,
   id,
   className,
 }: {
   id?: string;
+  cover?: boolean;
   value: string[];
   onChange: (update: (current: string[]) => string[]) => void;
   onBusy?: (busy: boolean) => void;
@@ -78,6 +81,27 @@ export default function ImagePicker({
             >
               <X size={14} />
             </button>
+            {cover &&
+              (index === 0 ? (
+                <span className="absolute bottom-1.5 left-1.5 rounded-full bg-scrim/60 px-2 py-0.5 text-2xs font-semibold text-white">
+                  Forside
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="absolute top-1.5 left-1.5 grid size-7 place-items-center rounded-full bg-scrim/60 text-white transition-colors hover:bg-scrim/80"
+                  aria-label={`Bruk bilde ${index + 1} som forside`}
+                  data-tooltip="Bruk som forside"
+                  onClick={() =>
+                    onChange((current) => [
+                      src,
+                      ...current.filter((item) => item !== src),
+                    ])
+                  }
+                >
+                  <Star size={14} />
+                </button>
+              ))}
           </li>
         ))}
         {Array.from({ length: pending }, (_, index) => (

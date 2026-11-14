@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { seedProjects } from "../app/lib/data";
-import { cookieHeaders, member, mutation, origin, png, signIn } from "./support";
+import { cookieHeaders, member, mutation, origin, png, shot, signIn } from "./support";
 
 const name = () => `test_${randomUUID().slice(0, 8)}`;
 
@@ -117,4 +117,65 @@ test("moderators add photos while creating a project; without one it shows no im
   await create(`Uten bilde ${randomUUID().slice(0, 6)}`, false);
   await expect(about).toBeVisible();
   await expect(about.locator("img")).toHaveCount(0);
+});
+
+test("moderators add photos while editing a project and choose the cover", async ({
+  page,
+  context,
+  request,
+}) => {
+  const moderator = await member({
+    username: name(),
+    email: "upload-edit-moderator@example.test",
+  });
+  const project = {
+    ...seedProjects[0],
+    id: `test-${randomUUID()}`,
+    image: "/images/park.jpg",
+    imageCredit: "Fotograf",
+    imageSource: "https://example.org/foto",
+    images: undefined,
+    updates: [],
+  };
+  expect(
+    (
+      await mutation(
+        request,
+        "/api/community",
+        { action: "project", create: true, project },
+        moderator,
+      )
+    ).ok(),
+  ).toBe(true);
+  await signIn(context, moderator);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/prosjekt/${project.id}`);
+  await page.getByRole("button", { name: "Rediger prosjekt", exact: true }).click();
+
+  const photos = page.locator('[data-field="images"]');
+  await expect(photos.getByRole("img")).toHaveCount(1);
+  await expect(photos).toContainText("Forside");
+  await photos
+    .getByLabel("Legg til bilde")
+    .setInputFiles({ name: "foto.png", mimeType: "image/png", buffer: png() });
+  await expect(photos.getByRole("img")).toHaveCount(2);
+  const bar = page.getByRole("region", { name: "Redigering", exact: true });
+  await expect(bar).toContainText("1 endring");
+  await photos.getByRole("button", { name: "Bruk bilde 2 som forside" }).click();
+  await shot(page, "edit-photos");
+  await bar.getByRole("button", { name: "Lagre", exact: true }).click();
+  await expect(bar).toContainText("1 bilde");
+  await expect(bar).toContainText("2 bilder");
+  await bar.getByRole("button", { name: "Bekreft og lagre", exact: true }).click();
+  await expect(page.getByText("Endringen er lagret")).toBeVisible();
+
+  const data = await (await request.get("/api/community")).json();
+  const saved = data.projects.find((item: { id: string }) => item.id === project.id);
+  expect(saved.image).toMatch(/^\/api\/uploads\/[a-f0-9]{32}$/);
+  // The old cover moves along with its credit; its source stays behind.
+  expect(saved.imageCredit).toBeUndefined();
+  expect(saved.imageSource).toBeUndefined();
+  expect(saved.images).toEqual([
+    { src: "/images/park.jpg", alt: project.title, credit: "Fotograf" },
+  ]);
 });

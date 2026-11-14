@@ -50,6 +50,8 @@ export default defineConfig({
           "discussion-moderator@example.test",
           "upload-moderator@example.test",
           "upload-api-moderator@example.test",
+          "upload-edit-moderator@example.test",
+          "suggestion-photo-moderator@example.test",
           "suggestion-api-moderator@example.test",
           "suggestion-moderator@example.test",
           "suggestion-project-moderator@example.test",

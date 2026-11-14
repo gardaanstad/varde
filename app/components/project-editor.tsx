@@ -247,6 +247,7 @@ export default function ProjectEditor({
           </Field>
           <Field id="images" label="Bilder" optional>
             <ImagePicker
+              cover
               value={images}
               onChange={setImages}
               onBusy={setUploading}

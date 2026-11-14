@@ -4,6 +4,7 @@ import { AlertCircle, ArrowRight, RotateCcw } from "lucide-react";
 import {
   categoryLabels,
   centroid,
+  ownPhotos,
   projectPlace,
   statuses,
   type Project,
@@ -15,6 +16,7 @@ import { controlBase, fieldControl, primaryButton } from "../lib/ui";
 export type FieldId =
   | "title"
   | "description"
+  | "images"
   | "status"
   | "year"
   | "categories"
@@ -22,6 +24,9 @@ export type FieldId =
   | "developer"
   | "website"
   | "geometry";
+
+const plural = (count: number, one: string, many: string) =>
+  `${count} ${count === 1 ? one : many}`;
 
 const minimumPoints = (project: Project) =>
   project.geometryType === "area" ? 3 : 2;
@@ -50,6 +55,14 @@ export const fields: Record<
         ? `${p.description.slice(0, 90).trimEnd()} …`
         : p.description,
     error: (p) => (p.description ? undefined : "Skriv en beskrivelse"),
+  },
+  images: {
+    label: "Bilder",
+    keys: ["image", "images"],
+    show: (p) => {
+      const count = ownPhotos(p).length;
+      return count ? plural(count, "bilde", "bilder") : "–";
+    },
   },
   status: {
     label: "Status",
@@ -178,8 +191,12 @@ type ProjectEdit = {
   original: Project;
   /** `changedFields(draft, original)`, computed once per render. */
   changed: FieldId[];
-  change: (patch: Partial<Project>) => void;
+  /** A patch, or one worked out from the latest draft. */
+  change: (patch: Partial<Project> | ((draft: Project) => Partial<Project>)) => void;
   revert: (id: FieldId) => void;
+  /** Photos still uploading hold back saving. */
+  uploading: boolean;
+  onUploading: (uploading: boolean) => void;
 };
 export const ProjectEditContext = createContext<ProjectEdit | null>(null);
 /** The open edit session, or null outside edit mode. */
@@ -315,9 +332,6 @@ export const barProblem = cn(
 );
 
 export type EditStage = "edit" | "review" | "discard";
-
-const plural = (count: number, one: string, many: string) =>
-  `${count} ${count === 1 ? one : many}`;
 
 /**
  * Pinned to the bottom while editing: the change count, then a review of
@@ -479,7 +493,7 @@ export function EditBar({
           <button
             type="button"
             className={primaryBarButton}
-            disabled={!changed.length || invalid.length > 0}
+            disabled={!changed.length || invalid.length > 0 || edit.uploading}
             onClick={() => onStage("review")}
           >
             {suggestion ? "Send" : "Lagre"}

@@ -20,6 +20,7 @@ import {
   Plus,
 } from "lucide-react";
 import {
+  arrangePhotos,
   categoryLabels,
   formatDateYear,
   getProjectUpdates,
@@ -32,8 +33,10 @@ import {
   statuses,
   statusOrder,
   type Comment,
+  ownPhotos,
   unknownDeveloper,
 } from "../lib/data";
+import { applyChanges } from "../lib/suggestions";
 import { useAuth } from "./auth-provider";
 import { useCommunity } from "./community-provider";
 import { errorMessage } from "../lib/api-client";
@@ -354,6 +357,31 @@ function EditDescription() {
         maxLength={10000}
         value={edit.draft.description}
         onChange={(event) => edit.change({ description: event.target.value })}
+      />
+    </EditField>
+  );
+}
+
+/** Edit mode: the project's own photos, cover first. */
+function EditImages() {
+  const edit = useProjectEdit();
+  if (!edit) return null;
+  const { original, change, onUploading } = edit;
+  return (
+    <EditField id="images" className="mt-5">
+      <ImagePicker
+        cover
+        max={21}
+        value={ownPhotos(edit.draft).map((photo) => photo.src)}
+        onChange={(update) =>
+          change((draft) =>
+            arrangePhotos(
+              original,
+              update(ownPhotos(draft).map((photo) => photo.src)),
+            ),
+          )
+        }
+        onBusy={onUploading}
       />
     </EditField>
   );
@@ -1133,6 +1161,7 @@ export default function ProjectPost({
   const [draft, setDraft] = useState<Project | null>(null);
   const [stage, setStage] = useState<EditStage>("edit");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [uploading, setUploading] = useState(false);
   // Members' edits become a suggestion, with an optional note.
   const [note, setNote] = useState("");
   const changed = draft ? changedFields(draft, project) : [];
@@ -1141,8 +1170,16 @@ export default function ProjectPost({
     draft,
     original: project,
     changed,
-    change: (patch: Partial<Project>) =>
-      setDraft((current) => current && { ...current, ...patch }),
+    change: (patch: Partial<Project> | ((draft: Project) => Partial<Project>)) =>
+      setDraft(
+        (current) =>
+          current && {
+            ...current,
+            ...(typeof patch === "function" ? patch(current) : patch),
+          },
+      ),
+    uploading,
+    onUploading: setUploading,
     revert: (id: FieldId) => {
       const saved = toDraft(project);
       setDraft(
@@ -1172,12 +1209,14 @@ export default function ProjectPost({
     )
       return;
     setDraft(toDraft(project));
+    setUploading(false);
     setNote("");
     setStage("edit");
     contentRef.current?.scrollTo({ top: 0 });
   }
   function stopEditing() {
     setDraft(null);
+    setUploading(false);
     setStage("edit");
     requestAnimationFrame(() =>
       document
@@ -1204,12 +1243,12 @@ export default function ProjectPost({
       requestAnimationFrame(resumeEdit);
   }, [member, project.id]);
   async function saveEdits() {
-    if (!draft || !dirty || savingEdit) return;
+    if (!draft || !dirty || savingEdit || uploading) return;
     setSavingEdit(true);
     try {
       const changes = changesToSave(draft, changed);
       if (canModerate) {
-        await onUpdate({ ...project, ...changes });
+        await onUpdate(applyChanges(project, changes));
         stopEditing();
         onNotify(
           changed.length === 1
@@ -1221,10 +1260,13 @@ export default function ProjectPost({
           kind: "correction",
           projectId: project.id,
           // A removed link travels as an empty one.
-          changes:
-            "website" in changes
-              ? { ...changes, website: changes.website ?? "" }
-              : changes,
+          // A removed link travels as an empty one, and no further photos
+          // as an empty list.
+          changes: {
+            ...changes,
+            ...("website" in changes && { website: changes.website ?? "" }),
+            ...("images" in changes && { images: changes.images ?? [] }),
+          },
           note,
         });
         stopEditing();
@@ -1387,6 +1429,7 @@ export default function ProjectPost({
                 // Fields follow the description, where the map has room.
                 <div className="pb-6" data-project-header-hero="">
                   <EditDescription />
+                  <EditImages />
                   <EditFacts />
                 </div>
               ) : (

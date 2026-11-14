@@ -182,6 +182,41 @@ export function projectPhotos(project: Project): ProjectImage[] {
     if (!photos.some((photo) => photo.src === image.src)) photos.push(image);
   return photos;
 }
+/** The project's own photos, cover first; update photos are left out. */
+export function ownPhotos(project: Project): ProjectImage[] {
+  return [
+    ...(hasPhoto(project)
+      ? [{ src: project.image, alt: project.title, credit: project.imageCredit }]
+      : []),
+    ...(project.images ?? []),
+  ];
+}
+/**
+ * The cover and further photos for `srcs` in order, reusing what `project`
+ * already knows about each photo. New ones get `credit`.
+ */
+export function arrangePhotos(
+  project: Project,
+  srcs: string[],
+  credit?: string,
+): Pick<Project, "image" | "images"> {
+  const known = new Map(projectPhotos(project).map((photo) => [photo.src, photo]));
+  const stored = new Map((project.images ?? []).map((photo) => [photo.src, photo]));
+  const [cover, ...more] = srcs;
+  const images = more.map(
+    (src) =>
+      stored.get(src) ?? {
+        src,
+        alt: known.get(src)?.alt ?? project.title,
+        credit: known.get(src) ? known.get(src)?.credit : credit,
+      },
+  );
+  return {
+    // A project without photos keeps its old category tile, if it had one.
+    image: cover ?? (hasPhoto(project) ? "" : project.image),
+    images: images.length ? images : undefined,
+  };
+}
 export function projectHref(id: string) {
   return `/prosjekt/${encodeURIComponent(id)}`;
 }
