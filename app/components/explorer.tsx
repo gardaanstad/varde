@@ -18,7 +18,6 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   ArrowDownUp,
-  Bookmark,
   Construction,
   ChevronsLeft,
   ChevronsRight,
@@ -408,10 +407,6 @@ export default memo(function Explorer({
   const [category, setCategory] = useState<string[]>(initial.category);
   const [sort, setSort] = useState(initial.sort);
   const [savedOnly, setSavedOnly] = useState(false);
-  // Where Lagret or Forslag was opened from, to return there.
-  const [sectionFrom, setSectionFrom] = useState<"profile" | "explorer">(
-    "explorer",
-  );
   // Desktop: the suggestion list as a sidebar panel (`/forslag`).
   // Guests opening its link get the login prompt over the list instead.
   const [suggestionsOpen, setSuggestionsOpen] = useState(
@@ -465,10 +460,12 @@ export default memo(function Explorer({
     initialProfile || null,
   );
   const [modal, setModal] = useState<"profile" | null>(null);
-  // The account panel opens on the profile, or on its settings.
-  const [accountStart, setAccountStart] = useState<"profile" | "settings">(
-    "profile",
-  );
+  // The account panel opens on the profile, or on its settings; `n` starts
+  // it afresh when the menu picks one while it is open.
+  const [accountStart, setAccountStart] = useState<{
+    view: "profile" | "settings";
+    n: number;
+  }>({ view: "profile", n: 0 });
   const [editorOpen, setEditorOpen] = useState(false);
   // What a new project starts from, such as a road from OpenStreetMap;
   // a new key starts the editor afresh.
@@ -615,7 +612,6 @@ export default memo(function Explorer({
       "theme",
       user && "add",
       canModerate && "suggestions",
-      user?.username && "saved",
       "maximize",
     ].filter((id): id is string => Boolean(id)),
   );
@@ -2071,31 +2067,20 @@ export default memo(function Explorer({
   }
   function openProfile(start: "profile" | "settings" = "profile") {
     rememberTrigger("account");
-    setAccountStart(start);
+    setAccountStart(({ n }) => ({ view: start, n: n + 1 }));
     setModal("profile");
   }
-  /** The header bookmark opens the saved projects. */
+  /** The account menu opens the saved projects. */
   function showSaved() {
     if (!requireLogin("Du må være logget inn for å se lagrede prosjekter."))
       return;
-    setSectionFrom("explorer");
     rememberTrigger("saved");
     if (postId) closePost();
     setModal(null);
     setSavedOnly(true);
   }
-  /** The profile also links to them, and they lead back there. */
-  function openSavedFromProfile() {
-    showSaved();
-    setSectionFrom("profile");
-  }
-  function leaveSaved() {
-    setSavedOnly(false);
-    if (sectionFrom === "profile") openProfile();
-  }
   /** Desktop: Forslag opens as a panel, on its own URL. */
-  function openSuggestions(from: "profile" | "explorer" = "explorer") {
-    setSectionFrom(from);
+  function openSuggestions() {
     rememberTrigger("suggestions");
     setModal(null);
     setSavedOnly(false);
@@ -2106,12 +2091,10 @@ export default memo(function Explorer({
       withSearch("/forslag"),
     );
   }
-  /** Closes Forslag; `back` returns to the profile it was opened from. */
-  function closeSuggestions(back = false) {
+  function closeSuggestions() {
     setSuggestionsOpen(false);
     if (window.history.state?.suggestionsOverlay) stepBack();
     else window.history.replaceState({}, "", withSearch("/"));
-    if (back && sectionFrom === "profile") openProfile();
   }
   function minimizeDrawer() {
     if (postId) closePost(false);
@@ -2146,8 +2129,6 @@ export default memo(function Explorer({
     <AccountMenu
       username={user.username}
       mobile={isMobile}
-      reviewed={reviewed}
-      suggestions={suggestions}
       triggerClassName={profileButtonClass}
       triggerLabel={`Konto${reviewed ? ` (${reviewed} behandlet)` : ""}`}
       triggerTooltip={isMobile || authPending ? undefined : `@${user.username}`}
@@ -2159,7 +2140,6 @@ export default memo(function Explorer({
       }
       onProfile={() => openProfile()}
       onSaved={showSaved}
-      onSuggestions={() => openSuggestions()}
       onSettings={() => openProfile("settings")}
       onMemberView={switchMemberView}
       onSignOut={() => void signOut()}
@@ -2222,18 +2202,6 @@ export default memo(function Explorer({
       )}
     </Link>
   );
-  const savedButton = user?.username && (
-    <button
-      className={cn(compactIconAction, "text-muted hover:text-ink")}
-      aria-label="Lagret"
-      aria-pressed={savedOnly}
-      data-press=""
-      data-tooltip={isMobile ? undefined : "Lagret"}
-      onClick={() => (savedOnly ? leaveSaved() : showSaved())}
-    >
-      <Bookmark size={20} fill={savedOnly ? "currentColor" : "none"} />
-    </button>
-  );
   /** One of the list header's actions, while it fits beside the others. */
   const inline = (id: string, node: ReactNode) =>
     node && !headerOverflow.hidden.has(id) ? (
@@ -2255,13 +2223,6 @@ export default memo(function Explorer({
         label: canModerate ? "Legg til prosjekt" : "Foreslå prosjekt",
         icon: <Plus size={16} />,
         onSelect: () => openEditor(),
-      },
-      user?.username && {
-        id: "saved",
-        label: "Lagret",
-        icon: <Bookmark size={16} />,
-        checked: savedOnly,
-        onSelect: () => (savedOnly ? leaveSaved() : showSaved()),
       },
       {
         id: "theme",
@@ -2345,10 +2306,6 @@ export default memo(function Explorer({
               username={panelProfileName!}
               embedded
               onOpenProject={openFromProfile}
-              onSettings={() => {
-                closeProfile();
-                openProfile("settings");
-              }}
             />
           </Panel>
         );
@@ -2356,12 +2313,8 @@ export default memo(function Explorer({
         return (
           <Panel {...frame}>
             <AccountPanel
-              onSaved={openSavedFromProfile}
-              onSuggestions={() => openSuggestions("profile")}
-              savedCount={savedProjects.length}
-              suggestionCount={suggestions}
-              reviewedCount={reviewed}
-              initialView={accountStart}
+              key={accountStart.n}
+              initialView={accountStart.view}
               onSignedOut={() => {
                 setModal(null);
                 notify("Du er logget ut");
@@ -2371,11 +2324,7 @@ export default memo(function Explorer({
         );
       case "saved":
         return (
-          <Panel
-            {...frame}
-            titled
-            onBack={sectionFrom === "profile" ? leaveSaved : undefined}
-          >
+          <Panel {...frame} titled>
             <SavedProjects
               projects={savedProjects}
               commentsByProject={commentsByProject}
@@ -2426,15 +2375,7 @@ export default memo(function Explorer({
         );
       case "suggestions":
         return (
-          <Panel
-            {...frame}
-            titled
-            onBack={
-              sectionFrom === "profile"
-                ? () => closeSuggestions(true)
-                : undefined
-            }
-          >
+          <Panel {...frame} titled>
             <SuggestionList
               // A moderator viewing the app as a member sees a member's list.
               key={canModerate ? "queue" : "mine"}
@@ -2470,7 +2411,6 @@ export default memo(function Explorer({
                   <Plus size={21} />
                 </button>
               )}
-              {savedButton}
               <ThemeToggle tooltip={false} />
               {profileButton}
             </div>
@@ -2692,7 +2632,6 @@ export default memo(function Explorer({
                   </button>
                   ),
                 )}
-                {inline("saved", savedButton)}
                 {inline("theme", <ThemeToggle />)}
                 {overflowActions.length > 0 && (
                   <OverflowMenu actions={overflowActions} />

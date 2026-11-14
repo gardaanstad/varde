@@ -137,7 +137,7 @@ export default function ActionSheet({
     >
       <div
         ref={sheet}
-        className="rounded-t-sheet bg-surface px-2 pb-[calc(10px+env(safe-area-inset-bottom))] shadow-bar motion-safe:animate-sheet-in"
+        className="rounded-t-sheet border-t border-border bg-surface px-2 pb-[calc(10px+env(safe-area-inset-bottom))] shadow-bar motion-safe:animate-sheet-in"
       >
         <div aria-hidden="true" className="flex justify-center pt-2 pb-3">
           <span className="h-1 w-9 rounded-full bg-ink/15" />

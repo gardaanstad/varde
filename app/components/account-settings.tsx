@@ -89,30 +89,28 @@ export default function AccountSettings({
 
   return (
     <div className={cn("flex min-h-0 flex-col", embedded && "h-full")}>
-      {!embedded && (
-        <header className="mb-6">
-          <h1 className="text-display">
-            Kontoinnstillinger
-          </h1>
-          <div className="mt-5 flex items-center gap-3">
-            <ProfileAvatar name={user.username!} />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold wrap-anywhere">
-                @{user.username}
-              </p>
-            </div>
-          </div>
-        </header>
-      )}
       <div
         data-drawer-scroll
         className={cn(
           "min-h-0",
           embedded &&
-            "flex-1 overflow-y-auto overscroll-contain px-6 py-6 scrollbar-thin",
+            "flex-1 overflow-y-auto overscroll-contain px-4.5 pt-1 pb-8 scrollbar-thin md:px-gutter-scroll",
         )}
       >
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-subtle px-4 py-3">
+        {embedded ? (
+          <h2 className="mb-3 text-heading">Kontoinnstillinger</h2>
+        ) : (
+          <header className="mb-4">
+            <h1 className="text-title">Kontoinnstillinger</h1>
+            <div className="mt-3 flex items-center gap-2.5">
+              <ProfileAvatar name={user.username!} className="size-8 text-xs" />
+              <p className="min-w-0 text-sm font-semibold wrap-anywhere">
+                @{user.username}
+              </p>
+            </div>
+          </header>
+        )}
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-subtle px-3.5 py-2.5">
           <ShieldCheck
             size={18}
             className="shrink-0 text-accent"
@@ -123,11 +121,11 @@ export default function AccountSettings({
             <p className="text-sm wrap-anywhere">{user.email}</p>
           </div>
         </div>
-        <div className="mt-2">
+        <div className="mt-1.5">
           <button
             type="button"
             disabled={!!busy}
-            className={cn(accountAction, "min-h-12")}
+            className={cn(accountAction, "min-h-11")}
             onClick={() =>
               void perform("logout", async () => {
                 const result = await authClient.signOut();
@@ -144,7 +142,7 @@ export default function AccountSettings({
           <button
             type="button"
             disabled={!!busy}
-            className={cn(accountAction, "min-h-12")}
+            className={cn(accountAction, "min-h-11")}
             onClick={() =>
               void perform("sessions", async () => {
                 const result = await authClient.revokeOtherSessions();
@@ -163,14 +161,14 @@ export default function AccountSettings({
           </button>
           {notice(feedback?.action === "logout" ? "logout" : "sessions")}
         </div>
-        <div className="mt-2 border-t border-border pt-2">
+        <div className="mt-1.5 border-t border-border pt-1.5">
           <button
             ref={deleteTrigger}
             type="button"
             disabled={!!busy}
             className={cn(
               accountAction,
-              "min-h-12 text-danger hover:bg-danger-soft hover:text-danger-strong [&>svg]:text-danger",
+              "min-h-11 text-danger hover:bg-danger-soft hover:text-danger-strong [&>svg]:text-danger",
               deleting && "hidden",
             )}
             onClick={() => {

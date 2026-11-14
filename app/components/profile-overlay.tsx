@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { LoaderCircle, Settings, UserRound, X } from "lucide-react";
+import { LoaderCircle, UserRound, X } from "lucide-react";
 import {
   accountProfile,
   getSeedProfile,
@@ -10,7 +9,7 @@ import {
 } from "../lib/profiles";
 import { apiRequest } from "../lib/api-client";
 import { cn } from "../lib/cn";
-import { iconButton, secondaryButton } from "../lib/ui";
+import { iconButton } from "../lib/ui";
 import { useAuth } from "./auth-provider";
 import { ProfileContent, ProfileEditDialog } from "./profile-page";
 
@@ -20,11 +19,8 @@ export default function ProfileOverlay({
   embedded = false,
   onClose,
   onOpenProject,
-  onSettings,
 }: {
   username: string;
-  /** Opens account settings in place; otherwise they are a page. */
-  onSettings?: () => void;
   embedded?: boolean;
   /** Without it there is no close button: the sidebar panel has its own. */
   onClose?: () => void;
@@ -89,29 +85,6 @@ export default function ProfileOverlay({
           <ProfileContent
             profile={profile}
             onEdit={() => setEditing(true)}
-            actions={
-              onSettings ? (
-                <button
-                  type="button"
-                  className={cn(secondaryButton, "size-10 min-h-10 px-0")}
-                  aria-label="Kontoinnstillinger"
-                  data-tooltip="Kontoinnstillinger"
-                  data-press=""
-                  onClick={onSettings}
-                >
-                  <Settings size={16} aria-hidden="true" />
-                </button>
-              ) : (
-                <Link
-                  href="/konto"
-                  className={cn(secondaryButton, "size-10 min-h-10 px-0")}
-                  aria-label="Kontoinnstillinger"
-                  data-tooltip="Kontoinnstillinger"
-                >
-                  <Settings size={16} aria-hidden="true" />
-                </Link>
-              )
-            }
             onOpenProject={onOpenProject}
           />
         ) : (

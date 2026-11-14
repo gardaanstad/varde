@@ -129,6 +129,11 @@ export function accountMenuItem(page: Page, name: string | RegExp) {
     .or(page.getByRole("menuitemcheckbox", { name }))
     .or(page.getByRole("dialog", { name: "Konto" }).getByRole("switch", { name }));
 }
+/** Opens the saved projects from the avatar's menu. */
+export async function openSaved(page: Page) {
+  await page.getByRole("button", { name: "Konto", exact: true }).click();
+  await accountMenuItem(page, /^Lagret$/).click();
+}
 /** Opens one's own profile from the avatar's menu. */
 export async function openOwnProfile(page: Page) {
   await page.getByRole("button", { name: "Konto", exact: true }).click();

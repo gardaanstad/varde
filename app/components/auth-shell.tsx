@@ -8,11 +8,12 @@ export default function AuthShell({
   back = "/",
 }: {
   children: ReactNode;
-  back?: string;
+  /** Where the back link leads; `null` leaves it out. */
+  back?: string | null;
 }) {
   return (
     <main className="flex min-h-dvh flex-col bg-canvas px-5 py-5 sm:px-10 sm:py-8">
-      <BackLink href={back} />
+      {back !== null && <BackLink href={back} />}
       <div className="m-auto w-full max-w-110 py-8">
         <Link
           href="/"

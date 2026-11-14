@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState, type ReactNode } from "react";
 import { Menu } from "@base-ui/react/menu";
-import { Bookmark, Inbox, LogOut, Settings, ShieldOff } from "lucide-react";
+import { Bookmark, LogOut, Settings, ShieldOff } from "lucide-react";
 import { useAuth } from "./auth-provider";
 import ActionSheet, { SwitchTrack, type SheetAction } from "./action-sheet";
 import ProfileAvatar from "./profile-avatar";
@@ -13,49 +13,38 @@ const item = cn(
   "[&>svg]:shrink-0 [&>svg]:text-muted",
 );
 const separator = "-mx-1.5 my-1.5 h-px bg-border";
-const count = "ml-auto pl-3 text-xs text-muted tabular-nums";
-const badge =
-  "ml-auto inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-on-accent tabular-nums";
 
 /**
- * The signed-in member's menu from their avatar: their profile, what they
- * follow, suggestions and settings, then logging out. Moderators can also
+ * The signed-in member's menu from their avatar: their profile and
+ * settings, what they saved, then logging out. Moderators can also
  * view the app as a member. A dropdown on desktop, a sheet on phones.
  */
 export default function AccountMenu({
   username,
   mobile,
-  reviewed,
-  suggestions,
   trigger,
   triggerLabel,
   triggerTooltip,
   triggerClassName,
   onProfile,
   onSaved,
-  onSuggestions,
   onSettings,
   onMemberView,
   onSignOut,
 }: {
   username: string;
   mobile: boolean;
-  /** One's own suggestions reviewed since last looked. */
-  reviewed: number;
-  /** The queue, for moderators. */
-  suggestions: number;
   trigger: ReactNode;
   triggerLabel: string;
   triggerTooltip?: string;
   triggerClassName: string;
   onProfile: () => void;
   onSaved: () => void;
-  onSuggestions: () => void;
   onSettings: () => void;
   onMemberView: (on: boolean) => void;
   onSignOut: () => void;
 }) {
-  const { isModerator, canModerate, memberView } = useAuth();
+  const { isModerator, memberView } = useAuth();
   const [sheetOpen, setSheetOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   // A panel opened from the menu returns focus to the avatar, not to the
@@ -64,17 +53,6 @@ export default function AccountMenu({
     button.current?.focus({ preventScroll: true });
     action();
   }
-  const suggestionCount = reviewed || (canModerate ? suggestions : 0);
-  const suggestionTrailing =
-    reviewed > 0 ? (
-      <span className={badge} data-reviewed="">
-        {reviewed}
-        <span className="sr-only"> behandlet</span>
-      </span>
-    ) : suggestionCount > 0 ? (
-      <span className={count}>{suggestionCount}</span>
-    ) : null;
-
   if (mobile) {
     const actions: SheetAction[] = [
       {
@@ -85,24 +63,17 @@ export default function AccountMenu({
         onSelect: onProfile,
       },
       {
+        id: "settings",
+        label: "Kontoinnstillinger",
+        icon: <Settings size={20} />,
+        onSelect: onSettings,
+      },
+      {
         id: "saved",
         label: "Lagret",
         icon: <Bookmark size={20} />,
         onSelect: onSaved,
         divided: true,
-      },
-      {
-        id: "suggestions",
-        label: "Forslag",
-        icon: <Inbox size={20} />,
-        trailing: suggestionTrailing,
-        onSelect: onSuggestions,
-      },
-      {
-        id: "settings",
-        label: "Kontoinnstillinger",
-        icon: <Settings size={20} />,
-        onSelect: onSettings,
       },
       ...(isModerator
         ? [
@@ -183,19 +154,14 @@ export default function AccountMenu({
                 <span className="text-xs text-muted">Din profil</span>
               </span>
             </Menu.Item>
+            <Menu.Item className={item} onClick={() => run(onSettings)}>
+              <Settings size={16} aria-hidden="true" />
+              Kontoinnstillinger
+            </Menu.Item>
             <Menu.Separator className={separator} />
             <Menu.Item className={item} onClick={() => run(onSaved)}>
               <Bookmark size={16} aria-hidden="true" />
               Lagret
-            </Menu.Item>
-            <Menu.Item className={item} onClick={() => run(onSuggestions)}>
-              <Inbox size={16} aria-hidden="true" />
-              Forslag
-              {suggestionTrailing}
-            </Menu.Item>
-            <Menu.Item className={item} onClick={() => run(onSettings)}>
-              <Settings size={16} aria-hidden="true" />
-              Kontoinnstillinger
             </Menu.Item>
             {isModerator && (
               <>

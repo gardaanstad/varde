@@ -7,7 +7,14 @@ import {
 } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { seedProjects } from "../app/lib/data";
-import { member, mutation, openOwnProfile, shot, signIn } from "./support";
+import {
+  member,
+  mutation,
+  openOwnProfile,
+  openSaved,
+  shot,
+  signIn,
+} from "./support";
 
 const project = seedProjects[0];
 const projectPath = `/prosjekt/${project.id}`;
@@ -784,8 +791,7 @@ test("saved projects keep their collection and full reading height", async ({
   await page.goto("/");
   // Desktop markup comes first here, then the mobile drawer replaces it.
   await expect(page.locator("[data-explorer-drawer]")).toBeVisible();
-  await openOwnProfile(page);
-  await page.getByRole("button", { name: /^Lagret/ }).click();
+  await openSaved(page);
   // Panels open in drawers of their own, over the explorer where it was.
   await expectDrawerHeight(page, 1, "saved");
   await expectDrawerHeight(page, 0.58);
@@ -802,8 +808,6 @@ test("saved projects keep their collection and full reading height", async ({
     page.getByRole("heading", { name: "Lagret", exact: true, level: 1 }),
   ).toBeVisible();
   await expectDrawerHeight(page, 1, "saved");
-  await page.getByRole("button", { name: "Tilbake", exact: true }).click();
-  await expect(page.locator("[data-account-panel]")).toBeVisible();
 });
 
 test.describe("desktop explorer", () => {
@@ -1416,8 +1420,8 @@ test.describe("desktop explorer", () => {
         .evaluate((element) => element.getBoundingClientRect().right);
     // Narrowing a step at a time, actions leave one by one, dark mode first.
     await handle.focus();
-    await page.keyboard.press("ArrowLeft");
-    await page.keyboard.press("ArrowLeft");
+    // Five steps narrow it past the first action.
+    for (let step = 0; step < 5; step++) await page.keyboard.press("ArrowLeft");
     await expect(menu).toBeVisible();
     await expect(header.getByRole("switch", { name: "Mørk modus" })).toHaveCount(0);
     await expect(header.getByRole("link", { name: "Forslag" })).toBeVisible();
@@ -1446,7 +1450,6 @@ test.describe("desktop explorer", () => {
     await expect(items).toHaveText([
       "Forslag",
       "Legg til prosjekt",
-      "Lagret",
       "Mørk modus",
       "Vis som helside",
     ]);
@@ -2041,7 +2044,7 @@ test.describe("desktop sidebar panels", () => {
     await expect(page).toHaveURL(atList);
 
     // Lagret and the profile open the same way.
-    await page.getByRole("button", { name: "Lagret", exact: true }).click();
+    await openSaved(page);
     const saved = page.locator('[data-sidebar-panel="saved"]');
     await expect(saved).toBeVisible();
     await expect.poll(() => besideMap("saved")).toEqual([0, 0, 0, 800]);
@@ -2054,12 +2057,6 @@ test.describe("desktop sidebar panels", () => {
     // Maximized, panels opened over it stay maximized.
     await account.getByRole("button", { name: "Vis som helside", exact: true }).click();
     await expect.poll(() => box("account")).toEqual([0, 0, 1280, 800]);
-    // From the profile, Forslag opens over it and leads back to it.
-    await account.getByRole("button", { name: /^Forslag/ }).click();
-    await expect(suggestions).toBeVisible();
-    await expect.poll(() => box("suggestions")).toEqual([0, 0, 1280, 800]);
-    await suggestions.getByRole("button", { name: "Tilbake", exact: true }).click();
-    await expect(account).toBeVisible();
     // Closing returns to the mode the profile opened in.
     await account.getByRole("button", { name: "Lukk", exact: true }).click();
     await expect(account).toHaveCount(0);

@@ -1,17 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import {
-  ArrowLeft,
-  Bookmark,
-  ChevronRight,
-  Inbox,
-  LoaderCircle,
-  Settings,
-  UserRound,
-  X,
-} from "lucide-react";
-import { useRef, useState } from "react";
+import { LoaderCircle, UserRound, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./auth-provider";
 import GoogleSignIn from "./google-sign-in";
 import AccountSettings from "./account-settings";
@@ -20,41 +10,14 @@ import { ProfileContent } from "./profile-page";
 import { currentPath } from "./username-form";
 import { accountProfile } from "../lib/profiles";
 import { cn } from "../lib/cn";
-import {
-  accountView,
-  iconButton,
-  secondaryButton,
-  textButton,
-} from "../lib/ui";
-
-/** A row in the profile's shortcut list, divided like the project list. */
-const profileLink = cn(
-  "relative isolate flex min-h-12 w-full items-center gap-3 border-b border-border text-left text-sm font-medium text-ink",
-  "before:absolute before:inset-x-[-10px] before:inset-y-0.5 before:-z-1 before:rounded-lg hover:before:bg-surface-muted/65",
-  "outline-none focus-visible:before:outline-2 focus-visible:before:outline-focus",
-  "[&>svg]:shrink-0 [&>svg]:text-muted",
-);
+import { accountView, iconButton } from "../lib/ui";
 
 export default function AccountPanel({
   onBack,
-  onSaved,
-  onSuggestions,
-  savedCount = 0,
-  suggestionCount = 0,
-  reviewedCount = 0,
   initialView = "profile",
   onSignedOut,
 }: {
   onBack?: () => void;
-  /** Opens the saved projects, where the app has no other entry to them. */
-  onSaved?: () => void;
-  /** Opens the suggestions in place; otherwise they are a link. */
-  onSuggestions?: () => void;
-  savedCount?: number;
-  /** Pending suggestions: one's own, or the whole queue for moderators. */
-  suggestionCount?: number;
-  /** One's own suggestions reviewed since last looked; shown as a badge. */
-  reviewedCount?: number;
   initialView?: "profile" | "settings";
   /** Signed out in place; without it the page reloads where it is. */
   onSignedOut?: () => void;
@@ -63,27 +26,25 @@ export default function AccountPanel({
   const [view, setView] = useState<"profile" | "edit" | "settings">(
     initialView,
   );
-  const settingsTrigger = useRef<HTMLButtonElement>(null);
   const editTrigger = useRef<HTMLButtonElement>(null);
-  const backButton = useRef<HTMLButtonElement>(null);
+  const editHeading = useRef<HTMLHeadingElement>(null);
   // Without a username there is no profile yet; one is chosen in UsernamePrompt.
   const activeView = user?.username ? view : "signin";
 
+  // Focus follows a switch once the view it lands on is shown.
+  const switched = useRef(false);
   function switchView(next: typeof view) {
-    const from = view;
+    switched.current = true;
     setView(next);
-    requestAnimationFrame(() => {
-      const target =
-        next !== "profile"
-          ? backButton
-          : from === "settings"
-            ? settingsTrigger
-            : editTrigger;
-      target.current?.focus({ preventScroll: true });
-    });
   }
+  useEffect(() => {
+    if (!switched.current) return;
+    switched.current = false;
+    (view === "edit" ? editHeading : editTrigger).current?.focus({
+      preventScroll: true,
+    });
+  }, [view]);
 
-  const subView = activeView === "edit" || activeView === "settings";
   const scroll =
     "min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin";
   // Top-level views read like any profile; the dialog or this button closes.
@@ -93,70 +54,20 @@ export default function AccountPanel({
     onBack ? "pt-7 max-sm:pt-1" : "pt-1",
   );
 
-  const suggestionsLink = (
-    <>
-      <Inbox size={18} aria-hidden="true" />
-      <span className="flex-1">Forslag</span>
-      {reviewedCount > 0 ? (
-        <span
-          className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1.25 text-2xs leading-none font-semibold text-on-accent tabular-nums"
-          data-reviewed
-        >
-          {reviewedCount}
-          <span className="sr-only"> behandlet</span>
-        </span>
-      ) : (
-        suggestionCount > 0 && (
-          <span className="text-ui text-muted tabular-nums">
-            {suggestionCount}
-          </span>
-        )
-      )}
-      <ChevronRight size={16} aria-hidden="true" />
-    </>
-  );
-
   return (
     <div
       data-account-panel
       className="relative flex h-full min-h-0 flex-col bg-surface"
     >
-      {subView ? (
-        <header
-          className={cn(
-            "flex h-19 shrink-0 items-center gap-3 border-b border-border px-6",
-            !onBack && "pr-18",
-          )}
+      {onBack && (
+        <button
+          type="button"
+          className={cn(iconButton, "absolute top-0 right-1.5 z-10 rounded-lg")}
+          onClick={onBack}
+          aria-label="Lukk"
         >
-          <button
-            ref={backButton}
-            type="button"
-            className={cn(textButton, "-ml-2 shrink-0 text-muted")}
-            onClick={() => switchView("profile")}
-          >
-            <ArrowLeft size={16} aria-hidden="true" />
-            Tilbake
-          </button>
-          <h2 className="min-w-0 text-sm font-semibold">
-            {activeView === "settings"
-              ? "Kontoinnstillinger"
-              : "Rediger profil"}
-          </h2>
-        </header>
-      ) : (
-        onBack && (
-          <button
-            type="button"
-            className={cn(
-              iconButton,
-              "absolute top-0 right-1.5 z-10 rounded-lg",
-            )}
-            onClick={onBack}
-            aria-label="Lukk"
-          >
-            <X size={20} />
-          </button>
-        )
+          <X size={20} />
+        </button>
       )}
       <div
         data-drawer-scroll
@@ -213,71 +124,28 @@ export default function AccountPanel({
               profile={accountProfile({ ...user, username: user.username })}
               onEdit={() => switchView("edit")}
               editRef={editTrigger}
-              actions={
-                <button
-                  ref={settingsTrigger}
-                  type="button"
-                  className={cn(secondaryButton, "size-10 min-h-10 px-0")}
-                  data-press=""
-                  onClick={() => switchView("settings")}
-                  aria-label="Kontoinnstillinger"
-                  data-tooltip="Kontoinnstillinger"
-                >
-                  <Settings size={16} aria-hidden="true" />
-                </button>
-              }
-              links={
-                <div className="mt-5 border-t border-border">
-                  {onSaved && (
-                    <button
-                      type="button"
-                      className={profileLink}
-                      data-press=""
-                      onClick={onSaved}
-                    >
-                      <Bookmark size={18} aria-hidden="true" />
-                      <span className="flex-1">Lagret</span>
-                      {savedCount > 0 && (
-                        <span className="text-ui text-muted tabular-nums">
-                          {savedCount}
-                        </span>
-                      )}
-                      <ChevronRight size={16} aria-hidden="true" />
-                    </button>
-                  )}
-                  {onSuggestions ? (
-                    <button
-                      type="button"
-                      className={profileLink}
-                      data-press=""
-                      onClick={onSuggestions}
-                    >
-                      {suggestionsLink}
-                    </button>
-                  ) : (
-                    <Link
-                      href="/forslag"
-                      // Opening the page marks reviews as seen; never prefetch it.
-                      prefetch={false}
-                      className={profileLink}
-                    >
-                      {suggestionsLink}
-                    </Link>
-                  )}
-                </div>
-              }
             />
           </div>
           <div
             data-drawer-scroll
             className={cn(
-              scroll,
-              "p-6",
+              top,
               accountView,
               activeView !== "edit" && "hidden",
             )}
           >
-            <ProfileEditor key={user.id} user={user} />
+            <h2
+              ref={editHeading}
+              tabIndex={-1}
+              className="mb-4 text-heading outline-none"
+            >
+              Rediger profil
+            </h2>
+            <ProfileEditor
+              key={user.id}
+              user={user}
+              onSaved={() => switchView("profile")}
+            />
           </div>
           <div
             className={cn(

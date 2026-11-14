@@ -7,7 +7,14 @@ import {
 } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { seedProjects } from "../app/lib/data";
-import { accountMenuItem, member, openOwnProfile, shot, signIn } from "./support";
+import {
+  accountMenuItem,
+  member,
+  openOwnProfile,
+  openSaved,
+  shot,
+  signIn,
+} from "./support";
 
 const project = seedProjects[0];
 const projectPath = `/prosjekt/${project.id}`;
@@ -223,14 +230,6 @@ test.describe("mobile panels", () => {
     expect(await scale()).toBe(transform);
     await shot(page, "mobile-profile-drawer");
 
-    // Lagret opens over the profile and leads back to it.
-    await account.getByRole("button", { name: /^Lagret/ }).click();
-    const saved = page.locator('[data-panel-drawer="saved"]');
-    await expect(
-      saved.getByRole("heading", { name: "Lagret", exact: true, level: 1 }),
-    ).toBeVisible();
-    await saved.getByRole("button", { name: "Tilbake", exact: true }).click();
-    await expect(account.locator("[data-account-panel]")).toBeVisible();
     await account.getByRole("button", { name: "Lukk", exact: true }).click();
     await expect(account).toHaveCount(0);
     expect(await top(page, explorer)).toBe(before);
@@ -354,16 +353,8 @@ test.describe("desktop headers", () => {
     await expect(page.locator('[data-sidebar-panel="suggestions"]')).toBeVisible();
     await level("suggestions");
     await page.goto("/");
-    const saved = page
-      .getByRole("navigation", { name: "Konto" })
-      .getByRole("button", { name: "Lagret", exact: true });
-    // The server renders the entry, so a click can land before hydration.
-    await expect(async () => {
-      await saved.click();
-      await expect(page.locator('[data-sidebar-panel="saved"]')).toBeVisible({
-        timeout: 1000,
-      });
-    }).toPass();
+    await openSaved(page);
+    await expect(page.locator('[data-sidebar-panel="saved"]')).toBeVisible();
     await level("saved");
     await shot(page, "desktop-saved-header");
   });
@@ -447,24 +438,15 @@ test.describe("flows stay in the explorer", () => {
   }) => {
     const person = await member({ username: `flow_${randomUUID().slice(0, 8)}` });
     await signIn(context, person);
-    // Settings from one's own public profile open in the account panel.
-    await page.goto(`/profil/${person.username}`);
-    const profile = page.locator('[data-sidebar-panel="profile"]');
-    await profile
-      .getByRole("button", { name: "Kontoinnstillinger", exact: true })
-      .click();
+    // Settings open from the menu in the account panel, in place.
+    await page.goto("/?kart=59.9100,10.7500,13");
+    await page.getByRole("button", { name: "Konto", exact: true }).click();
+    await accountMenuItem(page, "Kontoinnstillinger").click();
     const account = page.locator('[data-sidebar-panel="account"]');
     await expect(
       account.getByRole("heading", { name: "Kontoinnstillinger" }),
     ).toBeVisible();
     await expect(page).not.toHaveURL(/\/konto/);
-    await account.getByRole("button", { name: "Tilbake", exact: true }).click();
-
-    await page.goto("/?kart=59.9100,10.7500,13");
-    await openOwnProfile(page);
-    await account
-      .getByRole("button", { name: "Kontoinnstillinger", exact: true })
-      .click();
     await account.getByRole("button", { name: "Logg ut", exact: true }).click();
     await expect(
       page.getByRole("button", { name: "Logg inn", exact: true }).first(),
@@ -490,9 +472,8 @@ test.describe("account menu", () => {
     const menu = page.getByRole("menu", { name: "Konto" });
     await expect(menu.getByRole("menuitem")).toHaveText([
       new RegExp(`@${person.username}\\s*Din profil`),
-      "Lagret",
-      "Forslag",
       "Kontoinnstillinger",
+      "Lagret",
       "Logg ut",
     ]);
     // Members have no moderator's view to leave.
@@ -641,7 +622,8 @@ test.describe("mobile project actions, signed in", () => {
     const trigger = page.getByRole("button", { name: "Konto", exact: true });
     await trigger.click();
     const sheet = page.getByRole("dialog", { name: "Konto" });
-    await swipeDown(page, sheet.getByRole("button", { name: "Lagret", exact: true }));
+    // From the top row, so the swipe runs the sheet's full height.
+    await swipeDown(page, sheet.getByRole("button", { name: /Din profil/ }));
     await expect(sheet).toHaveCount(0);
     await expect(trigger).toBeFocused();
     expect(await top()).toBeCloseTo(before, 0);

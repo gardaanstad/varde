@@ -2,7 +2,14 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { seedProjects } from "../app/lib/data";
 import type { Unread } from "../app/lib/unread";
-import { cookieHeaders, member, mutation, shot, signIn } from "./support";
+import {
+  cookieHeaders,
+  member,
+  mutation,
+  openSaved,
+  shot,
+  signIn,
+} from "./support";
 
 // Projects no other spec comments on, one set per test, so each test's
 // unread counts only change through the test itself.
@@ -207,7 +214,7 @@ for (const [viewport, project, saved] of [
     await expect(page.locator("[data-unread-badge]")).toHaveCount(0);
 
     // Lagret shows saved projects as the same cards, news included.
-    await page.getByRole("button", { name: "Lagret", exact: true }).click();
+    await openSaved(page);
     const list = mobile
       ? page.locator('[data-panel-drawer="saved"] [data-saved-projects]')
       : page.locator('[data-sidebar-panel="saved"] [data-saved-projects]');
@@ -260,10 +267,7 @@ test("opening a project page starts its read state; saving can be undone", async
   await button.click();
   await expect(button).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Lukk prosjekt", exact: true }).click();
-  await page
-    .getByRole("navigation", { name: "Konto" })
-    .getByRole("button", { name: "Lagret", exact: true })
-    .click();
+  await openSaved(page);
   const panel = page.locator('[data-sidebar-panel="saved"]');
   await expect(panel.locator(`[data-card-id="${project.id}"]`)).toBeVisible();
   await expect(panel.locator("[data-unread-mark]")).toHaveCount(0);

@@ -10,8 +10,11 @@ import { fieldControl, primaryButton } from "../lib/ui";
 
 export default function ProfileEditor({
   user,
+  onSaved,
 }: {
   user: typeof authClient.$Infer.Session.user;
+  /** Leaves the editor once the profile is saved. */
+  onSaved?: () => void;
 }) {
   const { refetch } = authClient.useSession();
   const id = useId();
@@ -62,6 +65,7 @@ export default function ProfileEditor({
             setLocation(profile.location);
             setSaved({ bio: profile.bio, location: profile.location });
             await refetch({ query: { disableCookieCache: true } });
+            onSaved?.();
             return "Profilen er oppdatert.";
           });
         }}

@@ -14,6 +14,7 @@ import {
 import {
   cookieHeaders,
   db,
+  accountMenuItem,
   member,
   mutation,
   openOwnProfile,
@@ -615,11 +616,12 @@ test("a save intent survives login and profile settings update the public page",
   });
   await editor.getByLabel("Om deg").fill("Jeg vil ha flere trær i gata.");
   await editor.getByLabel("Sted", { exact: false }).fill("Tøyen, Oslo");
+  await expect(
+    editor.getByRole("button", { name: "Tilbake", exact: true }),
+  ).toHaveCount(0);
+  // Saving closes the editor, back on the profile.
   await editor.getByRole("button", { name: "Lagre profil" }).click();
-  await expect(editor.getByRole("status")).toContainText(
-    "Profilen er oppdatert",
-  );
-  await editor.getByRole("button", { name: "Tilbake", exact: true }).click();
+  await expect(editor).toHaveCount(0);
   await expect(page.getByText("Jeg vil ha flere trær i gata.")).toBeVisible();
   await expect(page.getByText("Tøyen, Oslo")).toBeVisible();
   await expect(page.getByText("Eksempelprofil")).toHaveCount(0);
@@ -655,12 +657,7 @@ for (const viewport of [
           height: Math.round(rect.height),
         };
       });
-    const back = panel.getByRole("button", { name: "Tilbake", exact: true });
     const publicProfile = panel.locator("[data-public-profile]");
-    const settings = panel.getByRole("button", {
-      name: "Kontoinnstillinger",
-      exact: true,
-    });
     // Let the dialog or drawer finish opening before measuring.
     let before = await bounds();
     await expect
@@ -671,10 +668,9 @@ for (const viewport of [
         return settled;
       })
       .toBe(true);
-    // Saved projects are reached through the profile at every width.
-    await expect(
-      panel.getByRole("button", { name: /^Lagret/ }),
-    ).toHaveCount(1);
+    // The profile is the profile: shortcuts and settings live in the menu.
+    for (const name of [/^Lagret/, /^Forslag/, /^Kontoinnstillinger/])
+      await expect(panel.getByRole("button", { name })).toHaveCount(0);
     await expect(page).toHaveURL(/:\d+\/(\?|$)/);
     await expect(
       publicProfile.getByRole("heading", {
@@ -693,17 +689,60 @@ for (const viewport of [
     });
     await edit.click();
     const bio = panel.getByRole("textbox", { name: "Om deg", exact: true });
+    await expect(
+      panel.getByRole("heading", { name: "Rediger profil", exact: true }),
+    ).toBeFocused();
+    await expect(
+      panel.getByRole("button", { name: "Tilbake", exact: true }),
+    ).toHaveCount(0);
     await bio.fill("Flere trær og gode møteplasser.");
     await panel
       .getByRole("textbox", { name: "Sted", exact: true })
       .fill("Tøyen, Oslo");
-    await back.click();
+    let fail = true;
+    await page.route("**/api/account/profile", async (route) => {
+      if (fail) {
+        fail = false;
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Kunne ikke lagre akkurat nå." }),
+        });
+      } else await route.continue();
+    });
+    await panel.getByRole("button", { name: "Lagre profil" }).click();
+    await expect(panel.getByRole("alert")).toHaveText(
+      "Kunne ikke lagre akkurat nå.",
+    );
+    await expect(bio).toHaveValue("Flere trær og gode møteplasser.");
+    await expect.poll(bounds).toEqual(before);
+    await shot(page, `profile-editor-${viewport.width}`);
+    // Saved, the profile is back with focus on its edit button.
+    await panel.getByRole("button", { name: "Lagre profil" }).click();
     await expect(edit).toBeFocused();
-    await settings.click();
+    await expect(
+      publicProfile.getByText("Flere trær og gode møteplasser."),
+    ).toBeVisible();
+    await expect(publicProfile.getByText("Tøyen, Oslo")).toBeVisible();
+    await expect(page).toHaveURL(/:\d+\/(\?|$)/);
+    await expect.poll(bounds).toEqual(before);
+    // Settings come from the menu.
+    if (viewport.width >= 800) await page.keyboard.press("Escape");
+    else
+      await page
+        .locator('[data-panel-drawer="account"]')
+        .getByRole("button", { name: "Lukk", exact: true })
+        .click();
+    await expect(panel).toHaveCount(0);
+    await trigger.click();
+    await accountMenuItem(page, "Kontoinnstillinger").click();
     await expect(panel.getByText("Koblet til Google")).toBeVisible();
+    await expect(
+      panel.getByRole("heading", { name: "Kontoinnstillinger" }),
+    ).toBeVisible();
     await expect(panel.getByRole("tab")).toHaveCount(0);
     await expect(
-      panel.getByRole("textbox", { name: "Om deg", exact: true }),
+      panel.getByRole("button", { name: "Tilbake", exact: true }),
     ).toHaveCount(0);
     await expect.poll(bounds).toEqual(before);
     await shot(page, `account-settings-${viewport.width}`);
@@ -721,44 +760,6 @@ for (const viewport of [
           );
         }),
       ).toBe(true);
-    }
-    await back.click();
-    await expect(settings).toBeFocused();
-    await edit.click();
-    await expect(bio).toHaveValue("Flere trær og gode møteplasser.");
-    let fail = true;
-    await page.route("**/api/account/profile", async (route) => {
-      if (fail) {
-        fail = false;
-        await route.fulfill({
-          status: 500,
-          contentType: "application/json",
-          body: JSON.stringify({ error: "Kunne ikke lagre akkurat nå." }),
-        });
-      } else await route.continue();
-    });
-    await panel.getByRole("button", { name: "Lagre profil" }).click();
-    await expect(panel.getByRole("alert")).toHaveText(
-      "Kunne ikke lagre akkurat nå.",
-    );
-    await expect(bio).toHaveValue("Flere trær og gode møteplasser.");
-    await panel.getByRole("button", { name: "Lagre profil" }).click();
-    await expect(panel.getByRole("status")).toContainText(
-      "Profilen er oppdatert",
-    );
-    await expect(
-      panel.getByRole("button", { name: "Lagre profil" }),
-    ).toBeDisabled();
-    await expect.poll(bounds).toEqual(before);
-    await shot(page, `profile-editor-${viewport.width}`);
-    await back.click();
-    await expect(
-      publicProfile.getByText("Flere trær og gode møteplasser."),
-    ).toBeVisible();
-    await expect(publicProfile.getByText("Tøyen, Oslo")).toBeVisible();
-    await expect(page).toHaveURL(/:\d+\/(\?|$)/);
-    await expect.poll(bounds).toEqual(before);
-    if (viewport.width >= 800) {
       await page.keyboard.press("Escape");
       await expect(trigger).toBeFocused();
     }
@@ -815,5 +816,5 @@ test("account settings contain account actions and deletion can be cancelled", a
   );
   await expect(
     page.getByRole("link", { name: "Tilbake", exact: true }),
-  ).toHaveAttribute("href", `/profil/${person.username}`);
+  ).toHaveCount(0);
 });
