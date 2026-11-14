@@ -251,11 +251,11 @@ test("opening a project page starts its read state; saving can be undone", async
       timeout: 1000,
     });
   }).toPass();
-  await expect(button).toHaveText("Lagret");
+  await expect(button).toHaveAccessibleName("Lagret");
   await expect(page.getByText(`Lagret ${project.title}`)).toBeVisible();
   await page.getByRole("button", { name: "Angre" }).click();
   await expect(button).toHaveAttribute("aria-pressed", "false");
-  await expect(button).toHaveText("Lagre");
+  await expect(button).toHaveAccessibleName("Lagre");
 
   await button.click();
   await expect(button).toHaveAttribute("aria-pressed", "true");

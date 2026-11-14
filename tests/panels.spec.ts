@@ -278,37 +278,56 @@ test.describe("mobile panels", () => {
 test.describe("desktop headers", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test("a project's actions sit between its intro and its tabs", async ({
+  test("a project's actions sit in its bar, and give way to a menu as it narrows", async ({
     page,
   }) => {
     await page.goto(projectPath);
     const post = page.locator("[data-project-post]");
     await expect(post).toBeVisible();
     const actions = post.locator("[data-project-actions]");
-    for (const name of ["Lagre", "Foreslå endring", "Del"])
+    const menu = actions.getByRole("button", { name: "Flere valg" });
+    for (const name of ["Lagre", "Foreslå endring", "Kopier lenke"])
       await expect(actions.getByRole("button", { name, exact: true })).toBeVisible();
+    await expect(menu).toHaveCount(0);
     const box = (selector: string) =>
       post.locator(selector).first().evaluate((element) => {
         const rect = element.getBoundingClientRect();
         return { top: rect.top, bottom: rect.bottom, middle: rect.top + rect.height / 2 };
       });
-    // The bar keeps only the panel's controls, as on every other panel.
+    // The actions sit level with the panel's controls.
     const full = await box("[data-project-full]");
-    expect(Math.round((await box("[data-project-close]")).middle)).toBe(
-      Math.round(full.middle),
-    );
+    for (const selector of ["[data-project-close]", "[data-save]", "[data-share]"])
+      expect(Math.round((await box(selector)).middle)).toBe(Math.round(full.middle));
     // The title's capitals sit level with them, as far below the panel's
     // top as they are in from its side.
     const title = await capitals(post.locator("#project-card-title"));
     expect(Math.abs(title.top - title.left)).toBeLessThanOrEqual(1);
     expect(title.top).toBeGreaterThanOrEqual(full.top);
     expect(title.bottom).toBeLessThanOrEqual(full.bottom);
-    const intro = await box('section[aria-label="Om prosjektet"]');
-    const row = await box("[data-project-actions]");
-    const tabs = await box("#project-sections");
-    expect(row.top).toBeGreaterThanOrEqual(intro.bottom - 1);
-    expect(tabs.top).toBeGreaterThanOrEqual(row.bottom);
     await shot(page, "desktop-project-header");
+
+    // At the sidebar's narrowest, they wait in a menu, and still work there.
+    const handle = page.getByRole("separator", {
+      name: "Bredde på prosjektlisten",
+    });
+    await handle.focus();
+    await page.keyboard.press("Home");
+    await expect(actions.locator("[data-overflow-item]")).toHaveCount(0);
+    await expect(menu).toBeVisible();
+    await menu.click();
+    const items = page.getByRole("menu").locator("[data-overflow-action]");
+    await expect(items).toHaveText(["Lagre", "Foreslå endring", "Kopier lenke"]);
+    await shot(page, "desktop-project-header-menu");
+    await page.getByRole("menuitemcheckbox", { name: "Lagre" }).click();
+    await expect(page.getByRole("dialog", { name: "Logg inn" })).toContainText(
+      "lagre prosjekter",
+    );
+    await page.keyboard.press("Escape");
+    // Widened again, they return.
+    await handle.focus();
+    await page.keyboard.press("End");
+    await expect(menu).toHaveCount(0);
+    await expect(actions.locator("[data-overflow-item]")).toHaveCount(3);
   });
 
   test("Lagret and Forslag carry their title where a project does", async ({
