@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useState, type RefObject } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import {
   Bookmark,
   Check,
@@ -19,9 +25,13 @@ import {
   iconButton,
   panelTitle,
   panelTitleTop,
-  pillButton,
 } from "../lib/ui";
 import ActionSheet, { type SheetAction } from "./action-sheet";
+import {
+  OverflowMenu,
+  useHeaderOverflow,
+  type OverflowAction,
+} from "./header-overflow";
 import { EditField, editState, useProjectEdit } from "./project-edit";
 
 const headerIconButton = cn(
@@ -29,14 +39,14 @@ const headerIconButton = cn(
   "rounded-lg max-md:size-10 active:scale-100 pointer-fine:active:scale-[0.97]",
 );
 
-/** Desktop: the project's own actions, outlined pills with a label. */
-const actionPill = cn(pillButton, "px-3");
-
 const titleType = panelTitle;
 
+/** Desktop: the width the title keeps before the actions give way to a menu. */
+const titleReserve = 160;
+
 // The full page's column: 1120px wide with 40px inside, centred beside the
-// scrollbar (see `--scrollbar-width` in project-post.tsx). The bar's pills
-// start on its edge; icon glyphs, not hit areas, end on it.
+// scrollbar (see `--scrollbar-width` in project-post.tsx). The title starts
+// on its edge; icon glyphs, not hit areas, end on it.
 const column = "(100% - var(--scrollbar-width, 0px) - 1120px) / 2 + 2.5rem";
 const columnStart = `max(1.5rem, calc(${column}))`;
 const columnEnd = `max(0.75rem, calc(${column} + var(--scrollbar-width, 0px) - 12px))`;
@@ -69,68 +79,97 @@ type HeaderProps = {
   mobile?: boolean;
 };
 
-/** Desktop: save, suggest a change and share, under the intro. */
-export function DesktopActions({
+/**
+ * Desktop: save, suggest a change and share, as icons in the bar beside the
+ * panel's own controls. As the bar narrows they leave for a menu, share
+ * first, so the title keeps its room.
+ */
+function DesktopActions({
   onEdit,
   suggest = false,
   copied,
   saved,
   onSave,
   onShare,
-}: ProjectActionsProps) {
+  hidden,
+}: ProjectActionsProps & { hidden: Set<string> }) {
+  const editLabel = suggest ? "Foreslå endring" : "Rediger prosjekt";
+  const inline = (id: string, node: ReactNode) =>
+    hidden.has(id) ? null : (
+      <div className="flex shrink-0" data-overflow-item={id}>
+        {node}
+      </div>
+    );
+  const menu: OverflowAction[] = [
+    {
+      id: "save",
+      label: saved ? "Lagret" : "Lagre",
+      icon: <Bookmark size={16} />,
+      checked: saved,
+      onSelect: onSave,
+    },
+    ...(onEdit
+      ? [
+          {
+            id: "edit",
+            label: editLabel,
+            icon: <Pencil size={16} />,
+            onSelect: onEdit,
+          },
+        ]
+      : []),
+    {
+      id: "share",
+      label: copied ? "Lenke kopiert" : "Kopier lenke",
+      icon: copied ? <Check size={16} /> : <Share2 size={16} />,
+      onSelect: onShare,
+    },
+  ].filter((action) => hidden.has(action.id));
   return (
-    <div
-      className="@container flex min-w-0 items-center gap-1.5"
-      data-project-actions=""
-    >
-      <button
-        type="button"
-        className={cn(
-          actionPill,
-          saved &&
-            "border-transparent bg-accent-soft text-accent-strong hover:bg-accent/16",
-        )}
-        onClick={onSave}
-        data-save=""
-        aria-pressed={saved}
-        data-tooltip={saved ? "Fjern fra lagrede" : undefined}
-      >
-        <Bookmark
-          size={14}
-          fill={saved ? "currentColor" : "none"}
-          aria-hidden="true"
-        />
-        {saved ? "Lagret" : "Lagre"}
-      </button>
-      {onEdit && (
+    <>
+      {inline(
+        "save",
         <button
           type="button"
-          className={cn(actionPill, "@max-[430px]:size-9 @max-[430px]:justify-center @max-[430px]:px-0")}
-          aria-label={suggest ? "Foreslå endring" : "Rediger prosjekt"}
-          data-tooltip={suggest ? "Foreslå endring" : "Rediger"}
-          onClick={onEdit}
+          className={cn(headerIconButton, saved && "text-accent hover:text-accent")}
+          onClick={onSave}
+          data-save=""
+          aria-label={saved ? "Lagret" : "Lagre"}
+          aria-pressed={saved}
+          data-tooltip={saved ? "Fjern fra lagrede" : "Lagre"}
         >
-          <Pencil size={14} aria-hidden="true" />
-          <span className="@max-[430px]:sr-only">
-            {suggest ? "Foreslå endring" : "Rediger"}
-          </span>
-        </button>
+          <Bookmark size={18} fill={saved ? "currentColor" : "none"} />
+        </button>,
       )}
-      <button
-        type="button"
-        className={cn(actionPill, copied && "text-accent-strong")}
-        onClick={onShare}
-        data-tooltip={copied ? undefined : "Kopier lenke"}
-        data-share=""
-      >
-        {copied ? (
-          <Check size={14} aria-hidden="true" />
-        ) : (
-          <Share2 size={14} aria-hidden="true" />
+      {onEdit &&
+        inline(
+          "edit",
+          <button
+            type="button"
+            className={headerIconButton}
+            aria-label={editLabel}
+            data-tooltip={suggest ? "Foreslå endring" : "Rediger"}
+            onClick={onEdit}
+          >
+            <Pencil size={18} />
+          </button>,
         )}
-        {copied ? "Kopiert" : "Del"}
-      </button>
-    </div>
+      {inline(
+        "share",
+        <button
+          type="button"
+          className={cn(headerIconButton, copied && "text-accent hover:text-accent")}
+          aria-label="Kopier lenke"
+          data-tooltip={copied ? "Kopiert" : "Kopier lenke"}
+          onClick={onShare}
+          data-share=""
+        >
+          {copied ? <Check size={18} /> : <Share2 size={18} />}
+        </button>,
+      )}
+      {menu.length > 0 && <OverflowMenu actions={menu} />}
+      <span aria-hidden="true" className="mx-1.5 h-5 w-px shrink-0 bg-border" />
+    </>
   );
 }
 
@@ -226,6 +265,14 @@ export default function ProjectPostHeader({
   const [compact, setCompact] = useState(false);
   const edit = useProjectEdit();
   const editing = Boolean(edit);
+  const controlsRef = useRef<HTMLDivElement>(null);
+  const overflow = useHeaderOverflow(
+    controlsRef,
+    mobile || edit
+      ? []
+      : ["share", ...(actions.onEdit ? ["edit"] : []), "save"],
+    titleReserve,
+  );
 
   useEffect(() => {
     const root = scrollRootRef.current;
@@ -326,8 +373,8 @@ export default function ProjectPostHeader({
     );
 
   // Desktop: a bar like every sidebar panel's, the mode and close controls
-  // where the others have them, level with the title's first line. The
-  // project's actions sit under its intro.
+  // where the others have them, level with the title's first line, and the
+  // project's own actions before them.
   return (
     <header
       className={cn("z-20 shrink-0 border-b bg-surface", border)}
@@ -343,7 +390,12 @@ export default function ProjectPostHeader({
         }
       >
         {title}
-        <div className="flex shrink-0 items-center gap-0.5">
+        <div
+          ref={controlsRef}
+          className="flex shrink-0 items-center gap-0.5"
+          data-project-actions=""
+        >
+          {!edit && <DesktopActions {...actions} hidden={overflow.hidden} />}
           {onToggleFull && (
             <button
               type="button"

@@ -49,7 +49,7 @@ import {
   statusTone,
 } from "../lib/ui";
 import DrawingMap from "./drawing-map";
-import ProjectPostHeader, { DesktopActions } from "./project-post-header";
+import ProjectPostHeader from "./project-post-header";
 import ProjectDiscussion from "./project-discussion";
 import CategoryIcon from "./category-icon";
 import CategoryPicker from "./category-picker";
@@ -1221,7 +1221,8 @@ export default function ProjectPost({
     requestAnimationFrame(() =>
       document
         .querySelector<HTMLElement>(
-          '[aria-label="Rediger prosjekt"], [aria-label="Foreslå endring"]',
+          // The edit button, or the menu it has moved into.
+          '[data-project-actions] [aria-label="Rediger prosjekt"], [data-project-actions] [aria-label="Foreslå endring"], [data-project-actions] [data-overflow-menu]',
         )
         ?.focus({ preventScroll: true }),
     );
@@ -1442,11 +1443,6 @@ export default function ProjectPost({
                 </>
               )}
             </section>
-            {!mobile && !draft && (
-              <div className={cn("pb-4", !wide && "px-gutter-scroll")}>
-                <DesktopActions {...actions} />
-              </div>
-            )}
             <nav
               className={cn(
                 "border-b border-border",

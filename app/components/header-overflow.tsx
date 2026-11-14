@@ -33,11 +33,13 @@ const fallbackItem = 46;
  * header holds a brand, then `nav`; the nav's overflowing items carry
  * `data-overflow-item={id}` and leave in `order`, first to last. Returns
  * the ids in the menu, and the header width the nav needs with every item
- * in place (`all`) or none.
+ * in place (`all`) or none. Where the element before the nav grows to fill
+ * the row, such as a title, `reserve` is the width it keeps instead.
  */
 export function useHeaderOverflow(
   nav: RefObject<HTMLElement | null>,
   order: string[],
+  reserve?: number,
 ) {
   const [hidden, setHidden] = useState(0);
   const widths = useRef(new Map<string, number>());
@@ -67,7 +69,7 @@ export function useHeaderOverflow(
       around:
         parseFloat(style.paddingLeft) +
         parseFloat(style.paddingRight) +
-        (brand?.offsetWidth ?? 0) +
+        (reserve ?? brand?.offsetWidth ?? 0) +
         (parseFloat(style.columnGap) || 0),
       header: header.clientWidth,
     };
