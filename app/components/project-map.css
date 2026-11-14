@@ -96,8 +96,10 @@
   transition: stroke-width 160ms ease, opacity 200ms ease;
 }
 
-[data-project-map] .osm-line.is-hovered:not(.is-selected) {
-  stroke-width: 5.5px;
+@media (hover: hover) and (pointer: fine) {
+  [data-project-map] .osm-line.is-hovered:not(.is-selected) {
+    stroke-width: 5.5px;
+  }
 }
 
 [data-project-map][data-osm-selection] .leaflet-osm-pane path:not(.is-selected):not(.project-hit) {
@@ -142,6 +144,13 @@
   padding: 8px 12px !important;
 }
 
+/* Touch has no hover: a tap opens the project, not its name over the map. */
+@media not ((hover: hover) and (pointer: fine)) {
+  [data-project-map] .project-tooltip {
+    display: none;
+  }
+}
+
 /* Leaflet's arrow is drawn in white. */
 [data-project-map] .project-tooltip.leaflet-tooltip-top::before {
   border-top-color: var(--color-surface);
@@ -179,8 +188,10 @@
     color 120ms ease;
 }
 
-[data-project-map] .project-cluster:hover > span {
-  transform: scale(1.08);
+@media (hover: hover) and (pointer: fine) {
+  [data-project-map] .project-cluster:hover > span {
+    transform: scale(1.08);
+  }
 }
 
 /* A hovered project inside the group, e.g. its card in the list. */
@@ -251,14 +262,19 @@
   opacity: 0.75;
 }
 
-.draw-vertex:hover::after,
-.draw-midpoint:hover::after,
 .leaflet-dragging .draw-vertex::after {
   transform: scale(1.3);
 }
 
-.draw-midpoint:hover::after {
-  opacity: 1;
+@media (hover: hover) and (pointer: fine) {
+  .draw-vertex:hover::after,
+  .draw-midpoint:hover::after {
+    transform: scale(1.3);
+  }
+
+  .draw-midpoint:hover::after {
+    opacity: 1;
+  }
 }
 
 .leaflet-dragging .draw-vertex,
