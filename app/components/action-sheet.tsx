@@ -2,6 +2,7 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { LogIn } from "lucide-react";
 import { cn } from "../lib/cn";
+import { useSwipeDismiss } from "./use-swipe-dismiss";
 
 const reduced = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -64,6 +65,7 @@ export default function ActionSheet({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLUListElement>(null);
   const trigger = useRef<Element | null>(null);
   const closing = useRef(false);
 
@@ -79,7 +81,15 @@ export default function ActionSheet({
     return () => dialog?.close();
   }, []);
 
-  function close(then?: () => void) {
+  // Swiped down, like the drawers; it has already slid away by then.
+  useSwipeDismiss({
+    enabled: true,
+    sheet,
+    scroller: list,
+    onDismiss: () => close(undefined, false),
+  });
+
+  function close(then?: () => void, animate = true) {
     const dialog = ref.current;
     const panel = sheet.current;
     if (closing.current) return;
@@ -92,7 +102,7 @@ export default function ActionSheet({
       onClose();
       then?.();
     };
-    if (!dialog || !panel || reduced()) return done();
+    if (!dialog || !panel || !animate || reduced()) return done();
     const options = { duration: 200, easing: "ease-in", fill: "forwards" as const };
     const out = panel.animate(
       [{ transform: "none" }, { transform: "translateY(100%)" }],
@@ -110,6 +120,8 @@ export default function ActionSheet({
       ref={ref}
       aria-label={label}
       data-action-sheet=""
+      // Its swipes are its own, not those of a drawer it opened from.
+      data-base-ui-swipe-ignore=""
       tabIndex={-1}
       className={cn(
         "m-auto mb-0 w-full max-w-none overflow-visible border-0 bg-transparent p-0 text-ink outline-none",
@@ -130,7 +142,7 @@ export default function ActionSheet({
         <div aria-hidden="true" className="flex justify-center pt-2 pb-3">
           <span className="h-1 w-9 rounded-full bg-ink/15" />
         </div>
-        <ul className="flex flex-col gap-0.5">
+        <ul ref={list} className="flex flex-col gap-0.5">
           {actions.map((action) => (
             <li
               key={action.id}

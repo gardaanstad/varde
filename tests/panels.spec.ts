@@ -567,6 +567,35 @@ test.describe("account menu", () => {
   });
 });
 
+/** Drags a finger from the middle of `target` to near the screen's bottom. */
+async function swipeDown(page: Page, target: Locator) {
+  const box = await target.boundingBox();
+  if (!box) throw new Error("Swipe target is not visible");
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  const distance = page.viewportSize()!.height - y - 20;
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x, y }],
+    });
+    for (let step = 1; step <= 20; step++) {
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x, y: y + (distance * step) / 20 }],
+      });
+      await page.waitForTimeout(16);
+    }
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  } finally {
+    await session.detach();
+  }
+}
+
 test.describe("mobile project actions, signed in", () => {
   test.use({
     viewport: devices["iPhone 13"].viewport,
@@ -597,5 +626,24 @@ test.describe("mobile project actions, signed in", () => {
     await page.keyboard.press("Escape");
     await expect(actions).toHaveCount(0);
     await expect(drawer.locator("[data-project-post]")).toBeVisible();
+  });
+
+  test("the account sheet swipes away by itself, not the drawer behind it", async ({
+    page,
+    context,
+  }) => {
+    await signIn(context, await member({ username: `swipe_${randomUUID().slice(0, 8)}` }));
+    await page.goto("/");
+    const drawer = page.locator("[data-explorer-drawer]");
+    await expect(drawer).toBeVisible();
+    const top = () => drawer.evaluate((e) => e.getBoundingClientRect().top);
+    const before = await top();
+    const trigger = page.getByRole("button", { name: "Konto", exact: true });
+    await trigger.click();
+    const sheet = page.getByRole("dialog", { name: "Konto" });
+    await swipeDown(page, sheet.getByRole("button", { name: "Lagret", exact: true }));
+    await expect(sheet).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    expect(await top()).toBeCloseTo(before, 0);
   });
 });
