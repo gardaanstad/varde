@@ -80,13 +80,22 @@
   }
 
   /* Hovering any part of a thread's line darkens all of it. */
-  .thread:has(
-      > .self > .rail:is(:hover, :focus-visible),
-      > .replies > .branch > :is(.through, .elbow):hover
-    ) {
+  .thread:has(> .self > .rail:focus-visible) {
     & > .self > .rail,
     & > .replies > .branch > :is(.through, .elbow) {
       color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+    }
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .thread:has(
+        > .self > .rail:hover,
+        > .replies > .branch > :is(.through, .elbow):hover
+      ) {
+      & > .self > .rail,
+      & > .replies > .branch > :is(.through, .elbow) {
+        color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+      }
     }
   }
 }

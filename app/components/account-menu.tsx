@@ -9,7 +9,7 @@ import { cn } from "../lib/cn";
 
 const item = cn(
   "flex min-h-9 cursor-default items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-ink outline-none select-none",
-  "data-highlighted:bg-surface-muted pointer-coarse:min-h-11",
+  "pointer-fine:data-highlighted:bg-surface-muted focus-visible:bg-surface-muted pointer-coarse:min-h-11",
   "[&>svg]:shrink-0 [&>svg]:text-muted",
 );
 const separator = "-mx-1.5 my-1.5 h-px bg-border";

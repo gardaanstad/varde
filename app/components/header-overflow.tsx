@@ -125,7 +125,7 @@ export function useHeaderOverflow(
 
 const item = cn(
   "flex min-h-9 cursor-default items-center gap-2.5 rounded-lg py-1.5 pr-2 pl-2.5 text-ink outline-none select-none",
-  "data-highlighted:bg-surface-muted pointer-coarse:min-h-11",
+  "pointer-fine:data-highlighted:bg-surface-muted focus-visible:bg-surface-muted pointer-coarse:min-h-11",
   "[&>svg:first-child]:shrink-0 [&>svg:first-child]:text-muted",
 );
 

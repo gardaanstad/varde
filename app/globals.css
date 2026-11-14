@@ -185,6 +185,19 @@
 }
 
 /*
+ * Hover is for a mouse or trackpad. Touch screens keep `:hover` on whatever
+ * was last tapped, and some phones report `hover: hover`, so `hover:` (and
+ * `group-hover:` and the like) also asks for a fine pointer.
+ */
+@custom-variant hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
+  }
+}
+
+/*
  * Dark mode: the system's, or the one picked with the toggle (`data-theme`
  * on <html>, see lib/theme.ts). `dark:` utilities follow the same rule.
  */

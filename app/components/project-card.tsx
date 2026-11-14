@@ -172,7 +172,10 @@ export default memo(function ProjectCard({
       onPointerLeave={(event) => {
         if (event.pointerType === "mouse") onHover?.(project.id, false);
       }}
-      onFocus={() => onHover?.(project.id, true)}
+      // From the keyboard only: a tap focuses the card too.
+      onFocus={(event) => {
+        if (event.target.matches(":focus-visible")) onHover?.(project.id, true);
+      }}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget))
           onHover?.(project.id, false);

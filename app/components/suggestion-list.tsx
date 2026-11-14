@@ -441,7 +441,7 @@ function FieldMenu({
         <Menu.Positioner side="bottom" align="end" sideOffset={4} className="z-50">
           <Menu.Popup className="min-w-52 rounded-xl border border-border bg-surface p-1.5 text-ui shadow-popover outline-none motion-safe:animate-menu-enter">
             <Menu.Item
-              className="flex min-h-9 cursor-default items-center gap-2 rounded-lg px-2.5 py-1.5 text-ink outline-none select-none data-highlighted:bg-surface-muted"
+              className="flex min-h-9 cursor-default items-center gap-2 rounded-lg px-2.5 py-1.5 text-ink outline-none select-none pointer-fine:data-highlighted:bg-surface-muted focus-visible:bg-surface-muted"
               onClick={() => onExclude(true)}
             >
               <CircleSlash size={14} className="text-muted" aria-hidden="true" />
