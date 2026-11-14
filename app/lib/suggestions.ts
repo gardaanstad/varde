@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { id, image, projectFields, projectSchema, sourceUrl } from "./community-rules";
-import { centroid, type Project } from "./data";
+import {
+  arrangePhotos,
+  centroid,
+  hasPhoto,
+  ownPhotos,
+  projectPhotos,
+  type Project,
+} from "./data";
 
 export type SuggestionKind = "project" | "correction" | "update";
 export type SuggestionStatus = "pending" | "approved" | "rejected";
@@ -19,6 +26,8 @@ export const correctionKeys = [
   "geometry",
   "geometryType",
   "center",
+  "image",
+  "images",
 ] as const;
 export type CorrectionKey = (typeof correctionKeys)[number];
 /** An empty website means the link is removed. */
@@ -88,9 +97,25 @@ export function tipTitle(text: string) {
   return first.length > 80 ? `${first.slice(0, 79).trimEnd()}…` : first;
 }
 
-/** Lays changes over a project the way a moderator's edit would save. */
-export function applyChanges(current: Project, changes: CorrectionChanges): Project {
+/**
+ * Lays changes over a project the way a moderator's edit would save. Photos
+ * keep what the project knows about them; new ones get `credit`.
+ */
+export function applyChanges(
+  current: Project,
+  changes: CorrectionChanges,
+  credit?: string,
+): Project {
   const next = { ...current, ...changes };
+  if ("image" in changes || "images" in changes) {
+    const srcs = ownPhotos(next).map((photo) => photo.src);
+    const known = new Map(projectPhotos(current).map((photo) => [photo.src, photo]));
+    Object.assign(next, arrangePhotos(current, srcs, credit));
+    const cover = known.get(next.image);
+    next.imageCredit = cover ? cover.credit : hasPhoto(next) ? credit : undefined;
+    // The source belongs to the cover it was given for.
+    if (next.image !== current.image) next.imageSource = undefined;
+  }
   if ("website" in changes) next.website = changes.website || undefined;
   if (changes.city !== undefined || changes.district !== undefined)
     next.district = next.district.trim() || next.city;
@@ -112,6 +137,8 @@ const correctionFields = projectFields
     geometry: true,
     geometryType: true,
     center: true,
+    image: true,
+    images: true,
   })
   .extend({ website: z.union([sourceUrl, z.literal("")]) })
   .partial()

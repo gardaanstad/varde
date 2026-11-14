@@ -41,6 +41,7 @@ import {
 } from "../lib/diff";
 import {
   categoryLabels,
+  ownPhotos,
   projectHref,
   projectPhotos,
   type Project,
@@ -331,6 +332,55 @@ function Photos({ srcs }: { srcs: string[] }) {
   );
 }
 
+/** The photos after a correction, cover first; new and removed ones marked. */
+function PhotoDiff({ before, after }: { before: Project; after: Project }) {
+  const was = ownPhotos(before).map((photo) => photo.src);
+  const now = ownPhotos(after).map((photo) => photo.src);
+  const tiles = [
+    ...now.map((src) => ({ src, state: was.includes(src) ? "kept" : "added" })),
+    ...was
+      .filter((src) => !now.includes(src))
+      .map((src) => ({ src, state: "removed" })),
+  ];
+  const marks: Record<string, string | undefined> = {
+    added: "Ny",
+    removed: "Fjernet",
+  };
+  const badge = (index: number, state: string) =>
+    [index === 0 && state !== "removed" && "Forside", marks[state]]
+      .filter(Boolean)
+      .join(" · ");
+  return (
+    <ul className="grid list-none grid-cols-4 gap-2 p-0 max-sm:grid-cols-3">
+      {tiles.map(({ src, state }, index) => (
+        <li
+          key={src}
+          className={cn(
+            "relative aspect-4/3 overflow-hidden rounded-lg bg-surface-muted",
+            state === "added" && "ring-2 ring-diff-add-ink",
+            state === "removed" && "opacity-50 ring-2 ring-diff-remove-ink",
+          )}
+          data-photo={state}
+        >
+          <Image
+            src={src}
+            alt={`Bilde ${index + 1}`}
+            fill
+            sizes="180px"
+            unoptimized
+            className="object-cover"
+          />
+          {badge(index, state) && (
+            <span className="absolute bottom-1 left-1 rounded-full bg-scrim/60 px-1.5 text-2xs font-semibold text-white">
+              {badge(index, state)}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 const changedIds = (changes: CorrectionChanges) =>
   fieldOrder.filter((id) =>
     fields[id].keys.some((key) => key !== "center" && key in changes),
@@ -486,6 +536,8 @@ function CorrectionBody({
                 </p>
               ) : field === "geometry" ? (
                 <GeometryDiff before={before} after={after} />
+              ) : field === "images" ? (
+                <PhotoDiff before={before} after={after} />
               ) : (
                 <ValueChange before={value(before)} after={value(after)} />
               )}

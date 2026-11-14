@@ -91,10 +91,20 @@ export async function submitSuggestion(userId: string, input: Submission) {
     }
     case "correction": {
       const current = await findProject(input.projectId);
+      const proposed: CorrectionChanges = { ...input.changes };
+      if ("image" in proposed || "images" in proposed) {
+        // Credits and captions are the project's, never the member's.
+        const next = applyChanges(current, proposed);
+        proposed.image = next.image;
+        // None left travels as an empty list, which storage keeps.
+        if (next.images || current.images) proposed.images = next.images ?? [];
+        else delete proposed.images;
+        await requireOwnImages(projectImages(next), userId);
+      }
       const changes: CorrectionChanges = {};
       for (const key of correctionKeys)
-        if (key in input.changes && !sameValue(input.changes[key], current[key]))
-          Object.assign(changes, { [key]: input.changes[key] });
+        if (key in proposed && !sameValue(proposed[key], current[key]))
+          Object.assign(changes, { [key]: proposed[key] });
       // The centre follows the drawing and never changes on its own.
       delete changes.center;
       if (!Object.keys(changes).length)
@@ -220,12 +230,16 @@ async function apply(
       changes.geometry = data.changes.geometry ?? current.geometry;
       changes.geometryType = data.changes.geometryType ?? current.geometryType;
     }
+    // So do the cover and the further photos.
+    if ("image" in changes || "images" in changes) {
+      changes.image = data.changes.image ?? current.image;
+      changes.images = "images" in data.changes ? data.changes.images : current.images;
+    }
     if (!Object.keys(changes).length)
       throw new HttpError(400, "Velg minst én endring.");
-    await saveProject(
-      projectSchema.parse(applyChanges(current, changes)) as Project,
-      false,
-    );
+    const next = applyChanges(current, changes, credit);
+    await saveProject(projectSchema.parse(next) as Project, false);
+    await publishUploads(projectImages(next));
     await record(row, { ...data, applied: Object.keys(changes) as CorrectionKey[] });
     return;
   }
